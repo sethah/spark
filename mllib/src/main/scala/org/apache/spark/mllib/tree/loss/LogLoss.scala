@@ -21,6 +21,10 @@ import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.model.TreeEnsembleModel
 import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.tree.model.DecisionTreeModel
+
+import org.apache.spark.mllib.tree.DevUtil
 
 
 /**
@@ -52,4 +56,20 @@ object LogLoss extends Loss {
     // The following is equivalent to 2.0 * log(1 + exp(-margin)) but more numerically stable.
     2.0 * MLUtils.log1pExp(-margin)
   }
+
+  private[mllib] def calculateRefinement(nodesAndPointsAndPreds: RDD[(Int, (LabeledPoint, Double))]): Map[Int, Double] = {
+    val gradientVector = nodesAndPointsAndPreds.map { case (id, (lp, pred)) =>
+      (id, -gradient(pred, lp.label))
+    }
+
+    val num = gradientVector.reduceByKey(_+_)
+    val den = gradientVector.map { case (id, negGrad) =>
+      (id, math.abs(negGrad) * (2 - math.abs(negGrad) / 2))
+    }.reduceByKey(_+_)
+
+    num.zip(den).map {
+      case ((id, numVal), (_, denVal)) => (id, numVal / denVal)
+    }.collect().toMap
+  }
+
 }

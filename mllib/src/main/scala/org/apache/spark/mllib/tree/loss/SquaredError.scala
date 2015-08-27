@@ -19,7 +19,8 @@ package org.apache.spark.mllib.tree.loss
 
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.tree.model.TreeEnsembleModel
+import org.apache.spark.mllib.tree.model.{DecisionTreeModel, TreeEnsembleModel}
+import org.apache.spark.rdd.RDD
 
 
 /**
@@ -48,5 +49,12 @@ object SquaredError extends Loss {
   override private[mllib] def computeError(prediction: Double, label: Double): Double = {
     val err = label - prediction
     err * err
+  }
+
+  private[mllib] def calculateRefinement(nodesAndPointsAndPreds: RDD[(Int, (LabeledPoint, Double))]): Map[Int, Double] = {
+    val counts = nodesAndPointsAndPreds.countByKey()
+    nodesAndPointsAndPreds.map { case (id, (lp, pred)) =>
+      (id, -gradient(pred, lp.label) / counts(id))
+    }.reduceByKey(_+_).collect().toMap
   }
 }

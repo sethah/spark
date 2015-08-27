@@ -232,12 +232,18 @@ object GradientBoostedTrees extends Logging {
       logDebug("###################################################")
       val model = new DecisionTree(treeStrategy).run(data)
       timer.stop(s"building tree $m")
+
+      val refinedModel = loss.terminalNodeRefinement(input, predError, model)
+      // val refinedModel = terminalNodeRefinement(data, predError, model, loss)
+
       // Update partial model
-      baseLearners(m) = model
+      baseLearners(m) = refinedModel
       // Note: The setting of baseLearnerWeights is incorrect for losses other than SquaredError.
       //       Technically, the weight should be optimized for the particular loss.
       //       However, the behavior should be reasonable, though not optimal.
       baseLearnerWeights(m) = learningRate
+
+
 
       predError = GradientBoostedTreesModel.updatePredictionError(
         input, predError, baseLearnerWeights(m), baseLearners(m), loss)

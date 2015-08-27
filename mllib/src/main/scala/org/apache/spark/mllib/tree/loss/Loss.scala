@@ -21,7 +21,9 @@ import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.model.TreeEnsembleModel
 import org.apache.spark.rdd.RDD
-
+import org.apache.spark.mllib.tree.model.DecisionTreeModel
+import org.apache.spark.mllib.tree.DevUtil
+import org.apache.spark.mllib.tree.model.Node
 
 /**
  * :: DeveloperApi ::
@@ -59,4 +61,29 @@ trait Loss extends Serializable {
    * @return Measure of model error on datapoint.
    */
   private[mllib] def computeError(prediction: Double, label: Double): Double
+
+  /**
+   * @param input Original input RDD.
+   * @param predictionAndError: predictionError RDD
+   * @param treeModel The tree being refined.
+   * @return Measure of model error on datapoint.
+   */
+  private[mllib] def terminalNodeRefinement(input: RDD[LabeledPoint],
+      predictionAndError: RDD[(Double, Double)],
+      treeModel: DecisionTreeModel): DecisionTreeModel = {
+    val treeNode = treeModel.topNode.deepCopy()
+    val nodesAndPoints = input.map { lp =>
+      val leafNode = treeNode.predictLeafNode(lp.features)
+      (leafNode.id, lp)
+    }
+    val nodesAndPointsAndPreds = nodesAndPoints.zip(predictionAndError.keys).map {
+      case ((id, lp), pred) => (id, (lp, pred))
+    }
+    // TODO: squared error is already optimal. How to avoid computing twice?
+    val nodesAndRefinedPreds = calculateRefinement(nodesAndPointsAndPreds)
+    Node.changeTerminalNodePredictions(treeNode, nodesAndRefinedPreds)
+    new DecisionTreeModel(treeNode, treeModel.algo)
+  }
+
+  private[mllib] def calculateRefinement(nodesAndPointsAndPreds: RDD[(Int, (LabeledPoint, Double))]): Map[Int, Double]
 }

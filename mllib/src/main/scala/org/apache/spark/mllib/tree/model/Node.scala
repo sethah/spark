@@ -21,6 +21,8 @@ import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.Logging
 import org.apache.spark.mllib.tree.configuration.FeatureType._
 import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.rdd.RDD
 
 /**
  * :: DeveloperApi ::
@@ -95,6 +97,31 @@ class Node (
           leftNode.get.predict(features)
         } else {
           rightNode.get.predict(features)
+        }
+      }
+    }
+  }
+
+  // TODO: if this is truly necessary, then predict could simply call this
+  // TODO: and then return the result of this.predict.predict
+//  def predict(features: Vector): Double = {
+//    predictLeafNode(features).predict.predict
+//  }
+  def predictLeafNode(features: Vector): Node = {
+    if (isLeaf) {
+      this
+    } else {
+      if (split.get.featureType == Continuous) {
+        if (features(split.get.feature) <= split.get.threshold) {
+          leftNode.get.predictLeafNode(features)
+        } else {
+          rightNode.get.predictLeafNode(features)
+        }
+      } else {
+        if (split.get.categories.contains(features(split.get.feature))) {
+          leftNode.get.predictLeafNode(features)
+        } else {
+          rightNode.get.predictLeafNode(features)
         }
       }
     }
@@ -200,6 +227,21 @@ private[spark] object Node {
       impurity: Double,
       isLeaf: Boolean): Node = {
     new Node(nodeIndex, predict, impurity, isLeaf, None, None, None, None)
+  }
+
+  /**
+   * Change the predictions of the leaf nodes of rootNode.
+   */
+  def changeTerminalNodePredictions(rootNode: Node, nodesAndPreds: Map[Int, Double]): Unit = {
+    val leafNodes = rootNode.subtreeIterator.filter(_.isLeaf)
+    leafNodes.foreach { node =>
+      if (nodesAndPreds.contains(node.id)) {
+        val newPredict = new Predict(nodesAndPreds(node.id))
+        node.predict = newPredict
+      } else {
+        println(s"Warning: node ${node.id} not found")
+      }
+    }
   }
 
   /**
