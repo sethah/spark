@@ -27,14 +27,14 @@ class ImpuritySuite extends SparkFunSuite {
   test("Gini impurity does not support negative labels") {
     val gini = new GiniAggregator(2)
     intercept[IllegalArgumentException] {
-      gini.update(Array(0.0, 1.0, 2.0), 0, -1, 0.0)
+      gini.update(Array(0.0, 1.0, 2.0), 0, -1, 3, 0.0)
     }
   }
 
   test("Entropy does not support negative labels") {
     val entropy = new EntropyAggregator(2)
     intercept[IllegalArgumentException] {
-      entropy.update(Array(0.0, 1.0, 2.0), 0, -1, 0.0)
+      entropy.update(Array(0.0, 1.0, 2.0), 0, -1, 3, 0.0)
     }
   }
 }

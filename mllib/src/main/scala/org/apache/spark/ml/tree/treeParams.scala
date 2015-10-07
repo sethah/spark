@@ -72,6 +72,21 @@ private[ml] trait DecisionTreeParams extends PredictorParams
     " Should be >= 1.", ParamValidators.gtEq(1))
 
   /**
+   * Minimum fraction of the weighted sample count that each child must have after split.
+   * If a split causes the left or right child to have smaller weighted count than
+   * minWeightFractionPerNode, the split will be discarded as invalid.
+   * TODO: above isn't quite right.
+   * Should be in the interval [0.0, 1.0].
+   * (default = 0.0)
+   * @group param
+   */
+  final val minWeightFractionPerNode: DoubleParam = new DoubleParam(this,
+    "minWeightFractionPerNode", "Minimum fraction of the weighted sample count that each child " +
+    "must have after split. If a split causes the left or right child to have less than " +
+    "minWeightFractionPerNode, the split will be discarded as invalid. Should be in interval " +
+    "[0.0, 0.5)", ParamValidators.inRange(0.0, 0.5, lowerInclusive = true, upperInclusive = false))
+
+  /**
    * Minimum information gain for a split to be considered at a tree node.
    * Should be >= 0.0.
    * (default = 0.0)
@@ -104,8 +119,9 @@ private[ml] trait DecisionTreeParams extends PredictorParams
     " algorithm will cache node IDs for each instance. Caching can speed up training of deeper" +
     " trees.")
 
-  setDefault(maxDepth -> 5, maxBins -> 32, minInstancesPerNode -> 1, minInfoGain -> 0.0,
-    maxMemoryInMB -> 256, cacheNodeIds -> false, checkpointInterval -> 10)
+  setDefault(maxDepth -> 5, maxBins -> 32, minInstancesPerNode -> 1,
+    minWeightFractionPerNode -> 0.0, minInfoGain -> 0.0, maxMemoryInMB -> 256,
+    cacheNodeIds -> false, checkpointInterval -> 10)
 
   /**
    * @deprecated This method is deprecated and will be removed in 2.2.0.
@@ -143,6 +159,12 @@ private[ml] trait DecisionTreeParams extends PredictorParams
    */
   @deprecated("This method is deprecated and will be removed in 2.2.0.", "2.1.0")
   def setMinInfoGain(value: Double): this.type = set(minInfoGain, value)
+
+  /** @group setParam */
+  def setMinWeightFractionPerNode(value: Double): this.type = set(minWeightFractionPerNode, value)
+
+  /** @group getParam */
+  final def getMinWeightFractionPerNode: Double = $(minWeightFractionPerNode)
 
   /** @group getParam */
   final def getMinInfoGain: Double = $(minInfoGain)
@@ -196,6 +218,7 @@ private[ml] trait DecisionTreeParams extends PredictorParams
     strategy.maxMemoryInMB = getMaxMemoryInMB
     strategy.minInfoGain = getMinInfoGain
     strategy.minInstancesPerNode = getMinInstancesPerNode
+    strategy.minWeightFractionPerNode = getMinWeightFractionPerNode
     strategy.useNodeIdCache = getCacheNodeIds
     strategy.numClasses = numClasses
     strategy.categoricalFeaturesInfo = categoricalFeatures

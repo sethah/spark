@@ -22,8 +22,9 @@ import org.json4s.JsonDSL._
 
 import org.apache.spark.annotation.Since
 import org.apache.spark.ml.{PredictionModel, Predictor}
-import org.apache.spark.ml.feature.LabeledPoint
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.ml.param.shared.HasWeightCol
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree._
 import org.apache.spark.ml.tree.impl.RandomForest
@@ -31,10 +32,9 @@ import org.apache.spark.ml.util._
 import org.apache.spark.ml.util.DefaultParamsReader.Metadata
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.mllib.tree.model.{RandomForestModel => OldRandomForestModel}
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, Dataset}
+import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.apache.spark.sql.functions._
-
+import org.apache.spark.sql.types.DoubleType
 
 /**
  * <a href="http://en.wikipedia.org/wiki/Random_forest">Random Forest</a>
@@ -44,7 +44,7 @@ import org.apache.spark.sql.functions._
 @Since("1.4.0")
 class RandomForestRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: String)
   extends Predictor[Vector, RandomForestRegressor, RandomForestRegressionModel]
-  with RandomForestRegressorParams with DefaultParamsWritable {
+  with RandomForestRegressorParams with DefaultParamsWritable with HasWeightCol {
 
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("rfr"))
@@ -66,6 +66,10 @@ class RandomForestRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: S
   override def setMinInstancesPerNode(value: Int): this.type = set(minInstancesPerNode, value)
 
   /** @group setParam */
+  @Since("2.2.0")
+  override def setMinWeightFractionPerNode(value: Double): this.type =
+    super.setMinWeightFractionPerNode(value)
+
   @Since("1.4.0")
   override def setMinInfoGain(value: Double): this.type = set(minInfoGain, value)
 
@@ -114,21 +118,38 @@ class RandomForestRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: S
   override def setFeatureSubsetStrategy(value: String): this.type =
     set(featureSubsetStrategy, value)
 
+  var quad = false
+
+  /**
+   * Sets the value of param [[weightCol]].
+   * If this is not set or empty, we treat all instance weights as 1.0.
+   * Default is not set, so all instances have weight one.
+   *
+   * @group setParam
+   */
+  @Since("2.2.0")
+  def setWeightCol(value: String): this.type = set(weightCol, value)
+
   override protected def train(dataset: Dataset[_]): RandomForestRegressionModel = {
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
-    val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
+    val w = if (!isDefined(weightCol) || $(weightCol).isEmpty) lit(1.0) else col($(weightCol))
+    val instances =
+      dataset.select(col($(labelCol)).cast(DoubleType), w, col($(featuresCol))).rdd.map {
+        case Row(label: Double, weight: Double, features: Vector) =>
+          Instance(label, weight, features)
+      }
     val strategy =
       super.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, getOldImpurity)
 
-    val instr = Instrumentation.create(this, oldDataset)
+    val instr = Instrumentation.create(this, instances)
     instr.logParams(params: _*)
 
     val trees = RandomForest
-      .run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed, Some(instr))
+      .run(instances, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed, Some(instr), None,
+        if (quad) 42L else 0L)
       .map(_.asInstanceOf[DecisionTreeRegressionModel])
-
-    val numFeatures = oldDataset.first().features.size
+    val numFeatures = instances.first().features.size
     val m = new RandomForestRegressionModel(trees, numFeatures)
     instr.logSuccess(m)
     m
