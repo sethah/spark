@@ -842,3 +842,118 @@ object HyperLogLogPlusPlus {
   )
   // scalastyle:on
 }
+
+case class MyStd(child: Expression) extends ImperativeAggregate {
+
+  def children: Seq[Expression] = Seq(child)
+
+  def nullable: Boolean = false
+
+  // Return data type.
+  override def dataType: DataType = resultType
+
+  // Expected input data type.
+  // TODO: Right now, we replace old aggregate functions (based on AggregateExpression1) to the
+  // new version at planning time (after analysis phase). For now, NullType is added at here
+  // to make it resolved when we have cases like `select avg(null)`.
+  // We can use our analyzer to cast NullType to the default data type of the NumericType once
+  // we remove the old aggregate functions. Then, we will not need NullType at here.
+  override def inputTypes: Seq[AbstractDataType] = Seq(TypeCollection(NumericType, NullType))
+
+  protected val resultType = DoubleType
+
+  def aggBufferSchema: StructType = StructType.fromAttributes(aggBufferAttributes)
+
+  def cloneBufferAttributes: Seq[Attribute] = aggBufferAttributes.map(_.newInstance())
+
+  val numAggs = 3
+  val aggBufferAttributes: Seq[AttributeReference] = Seq.tabulate(3) { i =>
+    AttributeReference(s"M$i", DoubleType)()
+  }
+
+  /** Initialize all moments to zero */
+  def initialize(buffer: MutableRow): Unit = {
+    var aggIndex = 0
+    while (aggIndex < numAggs) {
+      buffer.setDouble(mutableAggBufferOffset + aggIndex, 0.0)
+      aggIndex += 1
+    }
+  }
+
+  /**
+   * Update the central moments buffer.
+   */
+  def update(buffer: MutableRow, input: InternalRow): Unit = {
+    val v = child.eval(input)
+    if (v != null) {
+      val updateValue = v match {
+        case d: Double => d
+        case _ => 0.0
+      }
+      val currentM0 = buffer.getDouble(mutableAggBufferOffset)
+      val currentM1 = buffer.getDouble(mutableAggBufferOffset + 1)
+      val currentM2 = buffer.getDouble(mutableAggBufferOffset + 2)
+
+      val updateM0 = currentM0 + 1.0
+      val delta = updateValue - currentM1
+      val deltaN = delta / updateM0
+
+      val updateM1 = currentM1 + delta / updateM0
+      val updateM2 = currentM2 + deltaN * delta * (updateM0 - 1)
+
+      buffer.setDouble(mutableAggBufferOffset, updateM0)
+      buffer.setDouble(mutableAggBufferOffset + 1, updateM1)
+      buffer.setDouble(mutableAggBufferOffset + 2, updateM2)
+    }
+  }
+
+  /**
+   * Merge two buffers
+   */
+  def merge(buffer1: MutableRow, buffer2: InternalRow): Unit = {
+    val zeroMoment1 = buffer1.getDouble(mutableAggBufferOffset)
+    val zeroMoment2 = buffer2.getDouble(mutableAggBufferOffset)
+    val firstMoment1 = buffer1.getDouble(mutableAggBufferOffset + 1)
+    val firstMoment2 = buffer2.getDouble(mutableAggBufferOffset + 1)
+    val secondMoment1 = buffer1.getDouble(mutableAggBufferOffset + 2)
+    val secondMoment2 = buffer2.getDouble(mutableAggBufferOffset + 2)
+
+    val zeroMoment = zeroMoment1 + zeroMoment2
+    val delta = firstMoment2 - firstMoment1
+    val deltaN = delta / zeroMoment
+
+    val firstMoment = firstMoment1 + deltaN * zeroMoment2
+    val secondMoment = secondMoment1 + secondMoment2 + delta * deltaN * zeroMoment1 * zeroMoment2
+
+    buffer1.setDouble(mutableAggBufferOffset, zeroMoment)
+    buffer1.setDouble(mutableAggBufferOffset + 1, firstMoment)
+    buffer1.setDouble(mutableAggBufferOffset + 2, secondMoment)
+  }
+
+
+  /**
+   * Compute aggregate
+   */
+  def eval(buffer: InternalRow): Any = {
+    // count = M0
+    // average = M1
+    // variance = M2 / M0
+    // sample_variance = M2 / (M0 - 1.0)
+    // stddev = sqrt(M2 / M0)
+    // sample_stddev = sqrt(M2 / (M0 - 1.0))
+    // skewness = sqrt(M0) * M3 / sqrt(M2^3)
+    // kurtosis = M0 * M4 / M2^2 - 3.0
+    val M0 = buffer.getDouble(mutableAggBufferOffset)
+    val M1 = buffer.getDouble(mutableAggBufferOffset + 1)
+    val M2 = buffer.getDouble(mutableAggBufferOffset + 2)
+
+    val count = M0
+    val avg = M1
+    val stddev = if (M0 == 0.0) {
+      0.0
+    } else {
+      math.sqrt(M2 / M0)
+    }
+    stddev
+  }
+}

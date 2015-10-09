@@ -120,6 +120,12 @@ object Utils {
             aggregateFunction = aggregate.HyperLogLogPlusPlus(child, rsd),
             mode = aggregate.Complete,
             isDistinct = false)
+
+        case expressions.MyStd(child) =>
+          aggregate.AggregateExpression2(
+            aggregateFunction = aggregate.MyStd(child),
+            mode = aggregate.Complete,
+            isDistinct = false)
       }
       // Check if there is any expressions.AggregateExpression1 left.
       // If so, we cannot convert this plan.

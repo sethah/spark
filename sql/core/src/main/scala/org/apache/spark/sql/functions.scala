@@ -338,6 +338,22 @@ object functions {
   def sum(columnName: String): Column = sum(Column(columnName))
 
   /**
+   * Aggregate function: returns the sum of all values in the expression.
+   *
+   * @group agg_funcs
+   * @since 1.3.0
+   */
+  def mystd(e: Column): Column = MyStd(e.expr)
+
+  /**
+   * Aggregate function: returns the sum of all values in the given column.
+   *
+   * @group agg_funcs
+   * @since 1.3.0
+   */
+  def mystd(columnName: String): Column = mystd(Column(columnName))
+
+  /**
    * Aggregate function: returns the sum of distinct values in the expression.
    *
    * @group agg_funcs
