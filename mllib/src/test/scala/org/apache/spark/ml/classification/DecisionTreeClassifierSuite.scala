@@ -20,7 +20,7 @@ package org.apache.spark.ml.classification
 import scala.util.Random
 
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.ml.feature.{VectorIndexer, StringIndexer}
+import org.apache.spark.ml.feature.{Instance, VectorIndexer, StringIndexer}
 import org.apache.spark.ml.impl.TreeTests
 import org.apache.spark.ml.param.ParamsSuite
 import org.apache.spark.ml.tree.{CategoricalSplit, InternalNode, LeafNode}

@@ -85,19 +85,19 @@ private[spark] object TreePoint {
    *                      for categorical features.
    */
   private def labeledPointToTreePoint(
-      weightedLabeledPoint: Instance,
+      instance: Instance,
       thresholds: Array[Array[Double]],
       featureArity: Array[Int]): TreePoint = {
-    val numFeatures = weightedLabeledPoint.features.size
+    val numFeatures = instance.features.size
     val arr = new Array[Int](numFeatures)
     var featureIndex = 0
     while (featureIndex < numFeatures) {
       arr(featureIndex) =
-        findBin(featureIndex, weightedLabeledPoint, featureArity(featureIndex),
+        findBin(featureIndex, instance, featureArity(featureIndex),
           thresholds(featureIndex))
       featureIndex += 1
     }
-    new TreePoint(weightedLabeledPoint.label, arr, weightedLabeledPoint.weight)
+    new TreePoint(instance.label, arr, instance.weight)
   }
 
   /**
@@ -110,10 +110,10 @@ private[spark] object TreePoint {
    */
   private def findBin(
       featureIndex: Int,
-      weightedLabeledPoint: Instance,
+      instance: Instance,
       featureArity: Int,
       thresholds: Array[Double]): Int = {
-    val featureValue = weightedLabeledPoint.features(featureIndex)
+    val featureValue = instance.features(featureIndex)
 
     if (featureArity == 0) {
       val idx = java.util.Arrays.binarySearch(thresholds, featureValue)
@@ -129,7 +129,7 @@ private[spark] object TreePoint {
           s"DecisionTree given invalid data:" +
             s" Feature $featureIndex is categorical with values in {0,...,${featureArity - 1}," +
             s" but a data point gives it value $featureValue.\n" +
-            "  Bad data point: " + weightedLabeledPoint.toString)
+            "  Bad data point: " + instance.toString)
       }
       featureValue.toInt
     }

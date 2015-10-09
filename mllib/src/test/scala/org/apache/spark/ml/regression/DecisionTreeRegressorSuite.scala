@@ -20,7 +20,7 @@ package org.apache.spark.ml.regression
 import scala.util.Random
 
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.ml.feature.VectorIndexer
+import org.apache.spark.ml.feature.{Instance, VectorIndexer}
 import org.apache.spark.ml.impl.TreeTests
 import org.apache.spark.ml.util.MLTestingUtils
 import org.apache.spark.mllib.linalg.Vector
@@ -128,7 +128,7 @@ class DecisionTreeRegressorSuite extends SparkFunSuite with MLlibTestSparkContex
         }
       }
       val weightedTestData2 = testData2.map {
-        p: LabeledPoint => WeightedLabeledPoint(p.label, 1, p.features)
+        p: LabeledPoint => Instance(p.label, 1, p.features)
       }
 
       (sqlContext.createDataFrame(sc.parallelize(overSampledTestData1 ++ testData2, 2)),
