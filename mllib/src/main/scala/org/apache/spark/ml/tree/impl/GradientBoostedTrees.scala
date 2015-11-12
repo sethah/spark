@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.spark.ml.tree.impl
 
 import org.apache.spark.Logging
@@ -6,16 +23,14 @@ import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.mllib.impl.PeriodicRDDCheckpointer
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.ml.regression.{DecisionTreeRegressionModel, DecisionTreeRegressor}
-import org.apache.spark.mllib.tree.GradientBoostedTrees._
-import org.apache.spark.mllib.tree.DecisionTree
-import org.apache.spark.mllib.tree.configuration.Algo._
-import org.apache.spark.mllib.tree.configuration.BoostingStrategy
+import org.apache.spark.ml.tree.configuration.Algo._
+import org.apache.spark.ml.tree.configuration.BoostingStrategy
 import org.apache.spark.mllib.tree.impl.TimeTracker
-import org.apache.spark.mllib.tree.impurity.Variance
-import org.apache.spark.mllib.tree.loss.Loss
-import org.apache.spark.mllib.tree.model.{DecisionTreeModel, GradientBoostedTreesModel}
+import org.apache.spark.ml.tree.impurity.Variance
+import org.apache.spark.ml.tree.loss.Loss
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.ml.tree._
 
 private[ml] object GradientBoostedTrees extends Logging {
 
@@ -24,7 +39,7 @@ private[ml] object GradientBoostedTrees extends Logging {
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    * @return a gradient boosted trees model that can be used for prediction
    */
-  @Since("1.2.0")
+  @Since("1.7.0")
   def run(input: RDD[LabeledPoint],
            boostingStrategy: BoostingStrategy): (Array[DecisionTreeRegressionModel], Array[Double]) = {
     val algo = boostingStrategy.treeStrategy.algo
@@ -43,10 +58,11 @@ private[ml] object GradientBoostedTrees extends Logging {
   /**
    * Java-friendly API for [[org.apache.spark.mllib.tree.GradientBoostedTrees!#run]].
    */
-  @Since("1.2.0")
-  def run(input: JavaRDD[LabeledPoint]): GradientBoostedTreesModel = {
-    run(input.rdd)
-  }
+  // TODO
+//  @Since("1.7.0")
+//  def run(input: JavaRDD[LabeledPoint]): (Array[DecisionTreeRegressionModel], Array[Double]) = {
+//    run(input.rdd)
+//  }
 
   /**
    * Method to validate a gradient boosting model
@@ -58,7 +74,7 @@ private[ml] object GradientBoostedTrees extends Logging {
    *                        by using [[org.apache.spark.rdd.RDD.randomSplit()]]
    * @return a gradient boosted trees model that can be used for prediction
    */
-  @Since("1.4.0")
+  @Since("1.7.0")
   def runWithValidation(
       input: RDD[LabeledPoint],
       validationInput: RDD[LabeledPoint],
@@ -83,12 +99,13 @@ private[ml] object GradientBoostedTrees extends Logging {
   /**
    * Java-friendly API for [[org.apache.spark.mllib.tree.GradientBoostedTrees!#runWithValidation]].
    */
-  @Since("1.4.0")
-  def runWithValidation(
-                         input: JavaRDD[LabeledPoint],
-                         validationInput: JavaRDD[LabeledPoint]): GradientBoostedTreesModel = {
-    runWithValidation(input.rdd, validationInput.rdd)
-  }
+  // TODO
+//  @Since("1.7.0")
+//  def runWithValidation(
+//                         input: JavaRDD[LabeledPoint],
+//                         validationInput: JavaRDD[LabeledPoint]): GradientBoostedTreesModel = {
+//    runWithValidation(input.rdd, validationInput.rdd)
+//  }
 
   /**
    * Compute the initial predictions and errors for a dataset for the first
@@ -100,14 +117,15 @@ private[ml] object GradientBoostedTrees extends Logging {
    * @return a RDD with each element being a zip of the prediction and error
    *         corresponding to every sample.
    */
-  @Since("1.4.0")
+  @Since("1.7.0")
   def computeInitialPredictionAndError(
       data: RDD[LabeledPoint],
       initTreeWeight: Double,
       initTree: DecisionTreeRegressionModel,
       loss: Loss): RDD[(Double, Double)] = {
     data.map { lp =>
-      val pred = initTreeWeight * initTree.rootNode.predictImpl(lp.features).prediction
+      val leafNode = initTree.rootNode.predictImpl(lp.features)
+      val pred = initTreeWeight * leafNode.prediction
       val error = loss.computeError(pred, lp.label)
       (pred, error)
     }
@@ -124,7 +142,7 @@ private[ml] object GradientBoostedTrees extends Logging {
    * @return a RDD with each element being a zip of the prediction and error
    *         corresponding to each sample.
    */
-  @Since("1.4.0")
+  @Since("1.7.0")
   def updatePredictionError(
       data: RDD[LabeledPoint],
       predictionAndError: RDD[(Double, Double)],
@@ -134,7 +152,8 @@ private[ml] object GradientBoostedTrees extends Logging {
 
     val newPredError = data.zip(predictionAndError).mapPartitions { iter =>
       iter.map { case (lp, (pred, error)) =>
-        val newPred = pred + tree.rootNode.predictImpl(lp.features).prediction * treeWeight
+        val leafNode = tree.rootNode.predictImpl(lp.features)
+        val newPred = pred + leafNode.prediction * treeWeight
         val newError = loss.computeError(newPred, lp.label)
         (newPred, newError)
       }
@@ -155,7 +174,6 @@ private[ml] object GradientBoostedTrees extends Logging {
       validationInput: RDD[LabeledPoint],
       boostingStrategy: BoostingStrategy,
       validate: Boolean): (Array[DecisionTreeRegressionModel], Array[Double]) = {
-    println("NEW BOOSTING METHOD!")
     val timer = new TimeTracker()
     timer.start("total")
     timer.start("init")
@@ -197,10 +215,6 @@ private[ml] object GradientBoostedTrees extends Logging {
 
     // Initialize tree
     timer.start("building tree 0")
-    // TODO: pass categorical info
-    // TODO: pass strategy
-    // TODO: flip between regressor or classifier? No because right now, we only
-    //       support binary classification and that uses a DTRegressor anyway...
     val firstTree = new DecisionTreeRegressor()
     val firstTreeModel = firstTree.trainOld(input, treeStrategy)
     val firstTreeWeight = 1.0
@@ -235,13 +249,15 @@ private[ml] object GradientBoostedTrees extends Logging {
       logDebug("###################################################")
       val dt = new DecisionTreeRegressor()
       val model = dt.trainOld(data, treeStrategy)
+      val refinedModel = loss.refineTree(model, input, predError)
       timer.stop(s"building tree $m")
       // Update partial model
-      baseLearners(m) = model
+      baseLearners(m) = refinedModel
       // Note: The setting of baseLearnerWeights is incorrect for losses other than SquaredError.
       //       Technically, the weight should be optimized for the particular loss.
       //       However, the behavior should be reasonable, though not optimal.
-      baseLearnerWeights(m) = learningRate
+//      baseLearnerWeights(m) = learningRate
+      baseLearnerWeights(m) = 1.0
 
       predError = updatePredictionError(
         input, predError, baseLearnerWeights(m), baseLearners(m), loss)

@@ -22,6 +22,7 @@ import com.github.fommil.netlib.BLAS.{getInstance => blas}
 import org.apache.spark.Logging
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.ml.tree.impl.GradientBoostedTrees
+import org.apache.spark.ml.tree.impurity.Gini
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.regression.DecisionTreeRegressionModel
@@ -31,7 +32,10 @@ import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{GradientBoostedTrees => OldGBT}
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
+import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.mllib.tree.loss.{LogLoss => OldLogLoss, Loss => OldLoss}
+import org.apache.spark.ml.tree.loss.{LogLoss, Loss}
+import org.apache.spark.ml.tree.configuration.{Strategy, BoostingStrategy}
 import org.apache.spark.mllib.tree.model.{GradientBoostedTreesModel => OldGBTModel}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, DataFrame}
@@ -140,7 +144,11 @@ final class GBTClassifier(override val uid: String)
       s"GBTClassifier only supports binary classification but was given numClasses = $numClasses")
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Classification)
+//    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Classification)
+    // TODO: default is a hack for now
+    val treeStrategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 1,
+  numClasses = 2)
+    val boostingStrategy = new BoostingStrategy(treeStrategy, LogLoss, getMaxIter, getStepSize)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy)
     // TODO: uid not implemented properly
     val uid = Identifiable.randomUID("gbtr")

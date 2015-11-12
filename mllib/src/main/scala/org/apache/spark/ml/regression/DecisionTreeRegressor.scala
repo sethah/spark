@@ -26,11 +26,11 @@ import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, Strategy => OldStrategy}
+import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
+import org.apache.spark.ml.tree.impurity.Variance
 import org.apache.spark.mllib.tree.model.{DecisionTreeModel => OldDecisionTreeModel}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
-
-import org.apache.spark.mllib.tree.configuration.Strategy
 
 /**
  * :: Experimental ::
@@ -68,17 +68,27 @@ final class DecisionTreeRegressor(override val uid: String)
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-    val strategy = getOldStrategy(categoricalFeatures)
+
+    val regressionImpurity = getImpurity match {
+      case "variance" => Variance
+      case _ =>
+        // Should never happen because of check in setter method.
+        throw new RuntimeException(
+          s"TreeRegressorParams was given unrecognized impurity: $getImpurity")
+    }
+    val strategy = new Strategy(Algo.Regression, regressionImpurity, maxDepth = getMaxDepth, numClasses = 0,
+      maxBins = getMaxBins, minInstancesPerNode = getMinInstancesPerNode,
+      minInfoGain = getMinInfoGain, maxMemoryInMB = getMaxMemoryInMB, subsamplingRate = 1.0,
+      useNodeIdCache = getCacheNodeIds, checkpointInterval = getCheckpointInterval)
     val trees = RandomForest.run(oldDataset, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = 0L, parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
   }
 
-  // added so we can train from an rdd and not dataframe
-  // alternatively we could just convert the rdd to a dataframe
+  /** (private[ml]) Train a decision tree on an RDD */
   private[ml] def trainOld(data: RDD[LabeledPoint],
-      oldStrategy: Strategy): DecisionTreeRegressionModel = {
-    val trees = RandomForest.run(data, oldStrategy, numTrees = 1, featureSubsetStrategy = "all",
+      strategy: Strategy): DecisionTreeRegressionModel = {
+    val trees = RandomForest.run(data, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = 0L, parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
   }
@@ -122,7 +132,6 @@ final class DecisionTreeRegressionModel private[ml] (
   private[ml] def this(rootNode: Node, numFeatures: Int) =
     this(Identifiable.randomUID("dtr"), rootNode, numFeatures)
 
-  // TODO: add this change to DT classifier too?
   override protected def predict(features: Vector): Double = {
     rootNode.predictImpl(features).prediction
   }

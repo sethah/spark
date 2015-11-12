@@ -21,6 +21,8 @@ import com.github.fommil.netlib.BLAS.{getInstance => blas}
 
 import org.apache.spark.Logging
 import org.apache.spark.annotation.Experimental
+import org.apache.spark.ml.tree.configuration.{BoostingStrategy, Algo, Strategy}
+import org.apache.spark.ml.tree.loss.SquaredError
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.tree.{DecisionTreeModel, GBTParams, TreeEnsembleModel, TreeRegressorParams}
@@ -30,6 +32,7 @@ import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{GradientBoostedTrees => OldGBT}
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
+import org.apache.spark.ml.tree.impurity.Variance
 import org.apache.spark.mllib.tree.loss.{AbsoluteError => OldAbsoluteError, Loss => OldLoss, SquaredError => OldSquaredError}
 import org.apache.spark.mllib.tree.model.{GradientBoostedTreesModel => OldGBTModel}
 import org.apache.spark.rdd.RDD
@@ -130,7 +133,12 @@ final class GBTRegressor(override val uid: String)
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Regression)
+//    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Regression)
+    // TODO: default is a hack for now
+//    val treeStrategy = Strategy.defaultStrategy(Algo.Regression)
+    val treeStrategy = new Strategy(algo = Algo.Regression, impurity = Variance, maxDepth = 1,
+      numClasses = 0)
+    val boostingStrategy = new BoostingStrategy(treeStrategy, SquaredError, getMaxIter, getStepSize)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy)
     // TODO: uid not implemented properly
     val uid = Identifiable.randomUID("gbtr")

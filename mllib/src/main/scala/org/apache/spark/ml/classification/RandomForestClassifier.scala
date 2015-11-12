@@ -18,6 +18,7 @@
 package org.apache.spark.ml.classification
 
 import org.apache.spark.annotation.Experimental
+import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree.{DecisionTreeModel, RandomForestParams, TreeClassifierParams, TreeEnsembleModel}
@@ -90,8 +91,10 @@ final class RandomForestClassifier(override val uid: String)
       // TODO: Automatically index labels: SPARK-7126
     }
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-    val strategy =
-      super.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, getOldImpurity)
+//    val strategy =
+//      super.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, getOldImpurity)
+    // TODO: don't use default
+    val strategy = Strategy.defaultStrategy(Algo.Regression)
     val trees =
       RandomForest.run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed)
         .map(_.asInstanceOf[DecisionTreeClassificationModel])
