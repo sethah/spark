@@ -87,8 +87,13 @@ final class DecisionTreeRegressor(override val uid: String)
 
   /** (private[ml]) Train a decision tree on an RDD */
   private[ml] def trainOld(data: RDD[LabeledPoint],
+<<<<<<< Updated upstream
       strategy: Strategy): DecisionTreeRegressionModel = {
     val trees = RandomForest.run(data, strategy, numTrees = 1, featureSubsetStrategy = "all",
+=======
+      oldStrategy: OldStrategy): DecisionTreeRegressionModel = {
+    val trees = RandomForest.run(data, oldStrategy, numTrees = 1, featureSubsetStrategy = "all",
+>>>>>>> Stashed changes
       seed = 0L, parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
   }
