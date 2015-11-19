@@ -20,6 +20,7 @@ package org.apache.spark.ml.regression
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.impl.TreeTests
 import org.apache.spark.ml.util.MLTestingUtils
+import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{DecisionTree => OldDecisionTree,
   DecisionTreeSuite => OldDecisionTreeSuite}
@@ -71,6 +72,26 @@ class DecisionTreeRegressorSuite extends SparkFunSuite with MLlibTestSparkContex
       .setMaxDepth(2)
       .setMaxBins(8).fit(df)
     MLTestingUtils.checkCopy(model)
+  }
+
+  test("Feature importance with toy data") {
+    val dt = new DecisionTreeRegressor()
+      .setImpurity("variance")
+      .setMaxDepth(3)
+      .setSeed(123)
+
+    // In this data, feature 1 is very important.
+    val data: RDD[LabeledPoint] = TreeTests.featureImportanceData(sc)
+    val categoricalFeatures = Map.empty[Int, Int]
+    val df: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, 0)
+
+    val model = dt.fit(df)
+
+    // copied model must have the same parent.
+    MLTestingUtils.checkCopy(model)
+    val importances = model.featureImportances
+    val mostImportantFeature = importances.argmax
+    assert(mostImportantFeature === 1)
   }
 
   /////////////////////////////////////////////////////////////////////////////

@@ -1119,6 +1119,7 @@ private[ml] object RandomForest extends Logging {
         }
       }
     }
+    println(totalImportances)
     // Normalize importances
     normalizeMapValues(totalImportances)
     // Construct vector
@@ -1135,6 +1136,10 @@ private[ml] object RandomForest extends Logging {
     }
     val (indices, values) = totalImportances.iterator.toSeq.sortBy(_._1).unzip
     Vectors.sparse(d, indices.toArray, values.toArray)
+  }
+
+  private[ml] def featureImportances(tree: DecisionTreeModel, numFeatures: Int): Vector = {
+    featureImportances(Array(tree), numFeatures)
   }
 
   /**
