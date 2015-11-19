@@ -23,19 +23,12 @@ import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.mllib.impl.PeriodicRDDCheckpointer
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.ml.regression.{DecisionTreeRegressionModel, DecisionTreeRegressor}
-<<<<<<< Updated upstream
 import org.apache.spark.ml.tree.configuration.Algo._
 import org.apache.spark.ml.tree.configuration.BoostingStrategy
 import org.apache.spark.mllib.tree.impl.TimeTracker
 import org.apache.spark.ml.tree.impurity.Variance
 import org.apache.spark.ml.tree.loss.Loss
-=======
-import org.apache.spark.mllib.tree.configuration.Algo._
-import org.apache.spark.mllib.tree.configuration.BoostingStrategy
-import org.apache.spark.mllib.tree.impl.TimeTracker
-import org.apache.spark.mllib.tree.impurity.Variance
-import org.apache.spark.mllib.tree.loss.Loss
->>>>>>> Stashed changes
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.ml.tree._
@@ -66,10 +59,6 @@ private[ml] object GradientBoostedTrees extends Logging {
   /**
    * Java-friendly API for [[org.apache.spark.mllib.tree.GradientBoostedTrees!#run]].
    */
-<<<<<<< Updated upstream
-  // TODO
-=======
->>>>>>> Stashed changes
 //  @Since("1.7.0")
 //  def run(input: JavaRDD[LabeledPoint]): (Array[DecisionTreeRegressionModel], Array[Double]) = {
 //    run(input.rdd)
@@ -110,10 +99,6 @@ private[ml] object GradientBoostedTrees extends Logging {
   /**
    * Java-friendly API for [[org.apache.spark.mllib.tree.GradientBoostedTrees!#runWithValidation]].
    */
-<<<<<<< Updated upstream
-  // TODO
-=======
->>>>>>> Stashed changes
 //  @Since("1.7.0")
 //  def runWithValidation(
 //                         input: JavaRDD[LabeledPoint],
@@ -191,7 +176,6 @@ private[ml] object GradientBoostedTrees extends Logging {
     val timer = new TimeTracker()
     timer.start("total")
     timer.start("init")
-zzzzzz
     boostingStrategy.assertValid()
 
     // Initialize gradient boosting parameters
