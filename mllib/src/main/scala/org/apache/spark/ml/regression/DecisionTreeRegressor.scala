@@ -68,18 +68,7 @@ final class DecisionTreeRegressor(override val uid: String)
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-
-    val regressionImpurity = getImpurity match {
-      case "variance" => Variance
-      case _ =>
-        // Should never happen because of check in setter method.
-        throw new RuntimeException(
-          s"TreeRegressorParams was given unrecognized impurity: $getImpurity")
-    }
-    val strategy = new Strategy(Algo.Regression, regressionImpurity, maxDepth = getMaxDepth, numClasses = 0,
-      maxBins = getMaxBins, minInstancesPerNode = getMinInstancesPerNode,
-      minInfoGain = getMinInfoGain, maxMemoryInMB = getMaxMemoryInMB, subsamplingRate = 1.0,
-      useNodeIdCache = getCacheNodeIds, checkpointInterval = getCheckpointInterval)
+    val strategy = makeStrategy(categoricalFeatures)
     val trees = RandomForest.run(oldDataset, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = 0L, parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
@@ -91,6 +80,12 @@ final class DecisionTreeRegressor(override val uid: String)
     val trees = RandomForest.run(data, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = 0L, parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
+  }
+
+  /** (private[ml]) Create a Strategy instance to use with the old API. */
+  private[ml] def makeStrategy(categoricalFeatures: Map[Int, Int]): Strategy = {
+    super.makeStrategy(categoricalFeatures, numClasses = 0, Algo.Regression, getNewImpurity,
+      subsamplingRate = 1.0)
   }
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */

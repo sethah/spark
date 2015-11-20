@@ -34,7 +34,7 @@ import org.apache.spark.mllib.tree.{GradientBoostedTrees => OldGBT}
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.mllib.tree.loss.{LogLoss => OldLogLoss, Loss => OldLoss}
-import org.apache.spark.ml.tree.loss.{LogLoss, Loss}
+import org.apache.spark.ml.tree.loss.{AbsoluteError, SquaredError, LogLoss, Loss}
 import org.apache.spark.ml.tree.configuration.{Strategy, BoostingStrategy}
 import org.apache.spark.mllib.tree.model.{GradientBoostedTreesModel => OldGBTModel}
 import org.apache.spark.rdd.RDD
@@ -121,6 +121,16 @@ final class GBTClassifier(override val uid: String)
   def getLossType: String = $(lossType).toLowerCase
 
   /** (private[ml]) Convert new loss to old loss. */
+  override private[ml] def getNewLossType: Loss = {
+    getLossType match {
+      case "logistic" => LogLoss
+      case _ =>
+        // Should never happen because of check in setter method.
+        throw new RuntimeException(s"GBTClassifier was given bad loss type: $getLossType")
+    }
+  }
+
+  /** (private[ml]) Convert new loss to old loss. */
   override private[ml] def getOldLossType: OldLoss = {
     getLossType match {
       case "logistic" => OldLogLoss
@@ -144,14 +154,10 @@ final class GBTClassifier(override val uid: String)
       s"GBTClassifier only supports binary classification but was given numClasses = $numClasses")
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-//    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Classification)
-    // TODO: default is a hack for now
-    val treeStrategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 1,
-  numClasses = 2)
-    val boostingStrategy = new BoostingStrategy(treeStrategy, LogLoss, getMaxIter, getStepSize)
+    val treeStrategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = getMaxDepth,
+      numClasses = numClasses)
+    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy)
-    // TODO: uid not implemented properly
-    val uid = Identifiable.randomUID("gbtr")
     new GBTClassificationModel(uid, baseLearners, learnerWeights, numFeatures)
   }
 

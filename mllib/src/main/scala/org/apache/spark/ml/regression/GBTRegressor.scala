@@ -22,7 +22,7 @@ import com.github.fommil.netlib.BLAS.{getInstance => blas}
 import org.apache.spark.Logging
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.ml.tree.configuration.{BoostingStrategy, Algo, Strategy}
-import org.apache.spark.ml.tree.loss.SquaredError
+import org.apache.spark.ml.tree.loss.{AbsoluteError, SquaredError, Loss}
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.tree.{DecisionTreeModel, GBTParams, TreeEnsembleModel, TreeRegressorParams}
@@ -118,7 +118,19 @@ final class GBTRegressor(override val uid: String)
   def getLossType: String = $(lossType).toLowerCase
 
   /** (private[ml]) Convert new loss to old loss. */
-  override private[ml] def getOldLossType: OldLoss = {
+  // TODO: define as abstract method?
+  private[ml] def getNewLossType: Loss = {
+    getLossType match {
+      case "squared" => SquaredError
+      case "absolute" => AbsoluteError
+      case _ =>
+        // Should never happen because of check in setter method.
+        throw new RuntimeException(s"GBTRegressorParams was given bad loss type: $getLossType")
+    }
+  }
+
+  /** (private[ml]) Convert new loss to old loss. */
+  private[ml] def getOldLossType: OldLoss = {
     getLossType match {
       case "squared" => OldSquaredError
       case "absolute" => OldAbsoluteError
@@ -133,15 +145,10 @@ final class GBTRegressor(override val uid: String)
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-//    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Regression)
-    // TODO: default is a hack for now
-//    val treeStrategy = Strategy.defaultStrategy(Algo.Regression)
-    val treeStrategy = new Strategy(algo = Algo.Regression, impurity = Variance, maxDepth = 1,
+    val treeStrategy = new Strategy(algo = Algo.Regression, impurity = Variance, maxDepth = getMaxDepth,
       numClasses = 0)
-    val boostingStrategy = new BoostingStrategy(treeStrategy, SquaredError, getMaxIter, getStepSize)
+    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy)
-    // TODO: uid not implemented properly
-    val uid = Identifiable.randomUID("gbtr")
     new GBTRegressionModel(uid, baseLearners, learnerWeights, numFeatures)
   }
 

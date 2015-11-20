@@ -18,6 +18,7 @@
 package org.apache.spark.ml.regression
 
 import org.apache.spark.annotation.Experimental
+import org.apache.spark.ml.tree.impurity.Variance
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree.{DecisionTreeModel, RandomForestParams, TreeEnsembleModel, TreeRegressorParams}
@@ -84,10 +85,8 @@ final class RandomForestRegressor(override val uid: String)
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-//    val strategy =
-//      super.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, getOldImpurity)
-    // TODO: don't use default
-    val strategy = Strategy.defaultStrategy(Algo.Regression)
+    val strategy =
+      super.makeStrategy(categoricalFeatures, 0, Algo.Regression, getNewImpurity)
     val trees =
       RandomForest.run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed)
         .map(_.asInstanceOf[DecisionTreeRegressionModel])
