@@ -42,7 +42,7 @@ private[ml] object GradientBoostedTrees extends Logging {
    */
   @Since("1.7.0")
   def run(input: RDD[LabeledPoint],
-           boostingStrategy: BoostingStrategy): (Array[DecisionTreeRegressionModel], Array[Double]) = {
+      boostingStrategy: BoostingStrategy): (Array[DecisionTreeRegressionModel], Array[Double]) = {
     val algo = boostingStrategy.treeStrategy.algo
     algo match {
       case Regression =>
@@ -59,10 +59,11 @@ private[ml] object GradientBoostedTrees extends Logging {
   /**
    * Java-friendly API for [[org.apache.spark.mllib.tree.GradientBoostedTrees!#run]].
    */
-//  @Since("1.7.0")
-//  def run(input: JavaRDD[LabeledPoint]): (Array[DecisionTreeRegressionModel], Array[Double]) = {
-//    run(input.rdd)
-//  }
+  @Since("1.7.0")
+  def run(input: JavaRDD[LabeledPoint],
+      boostingStrategy: BoostingStrategy): (Array[DecisionTreeRegressionModel], Array[Double]) = {
+    run(input.rdd, boostingStrategy)
+  }
 
   /**
    * Method to validate a gradient boosting model
@@ -99,12 +100,13 @@ private[ml] object GradientBoostedTrees extends Logging {
   /**
    * Java-friendly API for [[org.apache.spark.mllib.tree.GradientBoostedTrees!#runWithValidation]].
    */
-//  @Since("1.7.0")
-//  def runWithValidation(
-//                         input: JavaRDD[LabeledPoint],
-//                         validationInput: JavaRDD[LabeledPoint]): GradientBoostedTreesModel = {
-//    runWithValidation(input.rdd, validationInput.rdd)
-//  }
+  @Since("1.7.0")
+  def runWithValidation(
+      input: JavaRDD[LabeledPoint],
+      validationInput: JavaRDD[LabeledPoint],
+      boostingStrategy: BoostingStrategy): (Array[DecisionTreeRegressionModel], Array[Double]) = {
+    runWithValidation(input.rdd, validationInput.rdd, boostingStrategy)
+  }
 
   /**
    * Compute the initial predictions and errors for a dataset for the first
@@ -247,15 +249,13 @@ private[ml] object GradientBoostedTrees extends Logging {
       logDebug("###################################################")
       val dt = new DecisionTreeRegressor()
       val model = dt.trainOld(data, treeStrategy)
-      val refinedModel = loss.refineTree(model, input, predError)
       timer.stop(s"building tree $m")
       // Update partial model
-      baseLearners(m) = refinedModel
+      baseLearners(m) = model
       // Note: The setting of baseLearnerWeights is incorrect for losses other than SquaredError.
       //       Technically, the weight should be optimized for the particular loss.
       //       However, the behavior should be reasonable, though not optimal.
-//      baseLearnerWeights(m) = learningRate
-      baseLearnerWeights(m) = 1.0
+      baseLearnerWeights(m) = learningRate
 
       predError = updatePredictionError(
         input, predError, baseLearnerWeights(m), baseLearners(m), loss)

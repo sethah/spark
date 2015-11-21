@@ -469,6 +469,7 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
   }
 
   /** (private[ml]) Create a BoostingStrategy instance to use with the old API. */
+  // NOTE: this is useful for tests comparing the new and old API
   private[ml] def getOldBoostingStrategy(
       categoricalFeatures: Map[Int, Int],
       oldAlgo: OldAlgo.Algo): OldBoostingStrategy = {

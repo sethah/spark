@@ -75,22 +75,7 @@ final class DecisionTreeClassifier(override val uid: String)
         // TODO: Automatically index labels: SPARK-7126
     }
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-//    val strategy = getOldStrategy(categoricalFeatures, numClasses)
-    // TODO: pass custom strategy arguments
-//    val strategy = Strategy.defaultStrategy(Algo.Classification)
     val strategy = makeStrategy(categoricalFeatures, numClasses)
-//    val classificationImpurity = getImpurity match {
-//      case "entropy" => Entropy
-//      case "gini" => Gini
-//      case _ =>
-//        // Should never happen because of check in setter method.
-//        throw new RuntimeException(
-//          s"TreeClassifierParams was given unrecognized impurity: $impurity.")
-//    }
-//    val strategy = new Strategy(Algo.Classification, classificationImpurity, maxDepth = getMaxDepth, numClasses = 0,
-//      maxBins = getMaxBins, minInstancesPerNode = getMinInstancesPerNode,
-//      minInfoGain = getMinInfoGain, maxMemoryInMB = getMaxMemoryInMB, subsamplingRate = 1.0,
-//      useNodeIdCache = getCacheNodeIds, checkpointInterval = getCheckpointInterval)
     val trees = RandomForest.run(oldDataset, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = 0L, parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeClassificationModel]

@@ -65,32 +65,4 @@ trait Loss extends Serializable {
    */
   // TODO: changed scope of this method
   private[spark] def computeError(prediction: Double, label: Double): Double
-
-  private[ml] def refinePredictions(predsAndLabels: RDD[(Int, (Double, Double))]): Map[Int, Double]
-
-  private[ml] def refineTree(
-      tree: DecisionTreeRegressionModel,
-      input: RDD[LabeledPoint],
-      predError: RDD[(Double, Double)]): DecisionTreeRegressionModel = {
-
-    val predsAndLabels = input.zip(predError).map { case (lp, (pred, _)) =>
-      val leafNode = tree.rootNode.predictImpl(lp.features)
-      (leafNode.id, (pred, lp.label))
-    }
-
-    val refinedPreds = refinePredictions(predsAndLabels)
-    def changeTerminalNodePredictions(topNode: Node, refinedPreds: Map[Int, Double]): Node = {
-      topNode match {
-        case node: LeafNode =>
-          new LeafNode(node.id, refinedPreds(node.id), node.impurity, node.impurityStats)
-        case node: InternalNode =>
-          val leftChild = changeTerminalNodePredictions(node.leftChild, refinedPreds)
-          val rightChild = changeTerminalNodePredictions(node.rightChild, refinedPreds)
-          new InternalNode(node.id, node.prediction, node.impurity, node.gain,
-            leftChild, rightChild, node.split, node.impurityStats)
-      }
-    }
-    val newTree = changeTerminalNodePredictions(tree.rootNode, refinedPreds)
-    new DecisionTreeRegressionModel(tree.uid, newTree, tree.numFeatures)
-  }
 }

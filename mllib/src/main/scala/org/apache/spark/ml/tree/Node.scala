@@ -39,8 +39,6 @@ sealed abstract class Node extends Serializable {
   /** Impurity measure at this node (for training data) */
   def impurity: Double
 
-  def id: Int
-
   /**
    * Statistics aggregated from training data at this node, used to compute prediction, impurity,
    * and probabilities.
@@ -91,7 +89,7 @@ private[ml] object Node {
     if (oldNode.isLeaf) {
       // TODO: Once the implementation has been moved to this API, then include sufficient
       //       statistics here.
-      new LeafNode(oldNode.id, prediction = oldNode.predict.predict,
+      new LeafNode(prediction = oldNode.predict.predict,
         impurity = oldNode.impurity, impurityStats = null)
     } else {
       val gain = if (oldNode.stats.nonEmpty) {
@@ -99,7 +97,7 @@ private[ml] object Node {
       } else {
         0.0
       }
-      new InternalNode(oldNode.id, prediction = oldNode.predict.predict, impurity = oldNode.impurity,
+      new InternalNode(prediction = oldNode.predict.predict, impurity = oldNode.impurity,
         gain = gain, leftChild = fromOld(oldNode.leftNode.get, categoricalFeatures),
         rightChild = fromOld(oldNode.rightNode.get, categoricalFeatures),
         split = Split.fromOld(oldNode.split.get, categoricalFeatures), impurityStats = null)
@@ -115,7 +113,6 @@ private[ml] object Node {
  */
 @DeveloperApi
 final class LeafNode private[ml] (
-    override val id: Int,
     override val prediction: Double,
     override val impurity: Double,
     override private[ml] val impurityStats: ImpurityCalculator) extends Node {
@@ -155,7 +152,6 @@ final class LeafNode private[ml] (
  */
 @DeveloperApi
 final class InternalNode private[ml] (
-    override val id: Int,
     override val prediction: Double,
     override val impurity: Double,
     val gain: Double,
@@ -269,15 +265,15 @@ private[tree] class LearningNode(
     if (leftChild.nonEmpty) {
       assert(rightChild.nonEmpty && split.nonEmpty && stats != null,
         "Unknown error during Decision Tree learning.  Could not convert LearningNode to Node.")
-      new InternalNode(id, stats.impurityCalculator.predict, stats.impurity, stats.gain,
+      new InternalNode(stats.impurityCalculator.predict, stats.impurity, stats.gain,
         leftChild.get.toNode, rightChild.get.toNode, split.get, stats.impurityCalculator)
     } else {
       if (stats.valid) {
-        new LeafNode(id, stats.impurityCalculator.predict, stats.impurity,
+        new LeafNode(stats.impurityCalculator.predict, stats.impurity,
           stats.impurityCalculator)
       } else {
         // Here we want to keep same behavior with the old mllib.DecisionTreeModel
-        new LeafNode(id, stats.impurityCalculator.predict, -1.0, stats.impurityCalculator)
+        new LeafNode(stats.impurityCalculator.predict, -1.0, stats.impurityCalculator)
       }
 
     }
@@ -322,7 +318,7 @@ private[tree] class LearningNode(
 
 }
 
-private[tree] object LearningNode {
+private[ml] object LearningNode {
 
   /** Create a node with some of its fields set. */
   def apply(

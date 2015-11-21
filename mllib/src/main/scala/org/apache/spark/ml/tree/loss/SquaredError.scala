@@ -52,24 +52,4 @@ object SquaredError extends Loss {
     val err = label - prediction
     err * err
   }
-
-  override def refinePredictions(predsAndLabels: RDD[(Int, (Double, Double))]): Map[Int, Double] = {
-    val diff = predsAndLabels.map { case (nodeID, (pred, y)) =>
-      (nodeID, -gradient(pred, y))
-    }
-//    diff.take(5).foreach(println)
-//    println("***")
-//    predsAndLabels.take(5).foreach(println)
-
-    val combiner: (Double => (Double, Int)) = (value: Double) => (value, 1)
-    val mergeValue = (acc: (Double, Int), newValue: Double) => (acc._1 + newValue, acc._2 + 1)
-    val mergeCombiner = (acc1: (Double, Int), acc2: (Double, Int)) => (acc1._1 + acc2._1, acc1._2 + acc2._2)
-    diff.combineByKey(combiner, mergeValue, mergeCombiner)
-      .map { case (id, (sum, count)) => (id, sum / count) }.collect().toMap
-//    val counts = diff.countByKey().toArray
-//    val sum = diff.reduceByKey((a, b) => a + b).collect()
-//
-//    counts.zip(sum).map { case ((id, n), (_, sum)) => (id, sum / n.toDouble)}.toMap
-
-  }
 }

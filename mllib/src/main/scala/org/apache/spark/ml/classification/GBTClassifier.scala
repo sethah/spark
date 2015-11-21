@@ -154,9 +154,7 @@ final class GBTClassifier(override val uid: String)
       s"GBTClassifier only supports binary classification but was given numClasses = $numClasses")
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val treeStrategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = getMaxDepth,
-      numClasses = numClasses)
-    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
+    val boostingStrategy = super.makeBoostingStrategy(categoricalFeatures, Algo.Classification)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy)
     new GBTClassificationModel(uid, baseLearners, learnerWeights, numFeatures)
   }

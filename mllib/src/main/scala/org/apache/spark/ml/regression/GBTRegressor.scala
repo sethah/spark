@@ -145,9 +145,7 @@ final class GBTRegressor(override val uid: String)
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val treeStrategy = new Strategy(algo = Algo.Regression, impurity = Variance, maxDepth = getMaxDepth,
-      numClasses = 0)
-    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
+    val boostingStrategy = super.makeBoostingStrategy(categoricalFeatures, Algo.Regression)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy)
     new GBTRegressionModel(uid, baseLearners, learnerWeights, numFeatures)
   }

@@ -55,25 +55,4 @@ object LogLoss extends Loss {
     // The following is equivalent to 2.0 * log(1 + exp(-margin)) but more numerically stable.
     2.0 * MLUtils.log1pExp(-margin)
   }
-
-  override def refinePredictions(predsAndLabels: RDD[(Int, (Double, Double))]): Map[Int, Double] = {
-    val diff = predsAndLabels.map { case (nodeID, (pred, y)) =>
-      (nodeID, -gradient(pred, y))
-    }
-
-    predsAndLabels.map { case (nodeID, (pred, y)) =>
-      (nodeID, -gradient(pred, y), pred, y)
-    }.take(10).foreach(println)
-
-//    predsAndLabels.take(5).foreach(println)
-    def denom(x: Double): Double = {
-      math.abs(x) * (2.0 - math.abs(x) / 2.0)
-    }
-
-    val combiner: (Double => (Double, Double)) = (value: Double) => (value, denom(value))
-    val mergeValue = (acc: (Double, Double), newValue: Double) => (acc._1 + newValue, acc._2 + denom(newValue))
-    val mergeCombiner = (acc1: (Double, Double), acc2: (Double, Double)) => (acc1._1 + acc2._1, acc1._2 + acc2._2)
-    diff.combineByKey(combiner, mergeValue, mergeCombiner)
-      .map { case (id, (num, den)) => (id, num / den) }.collect().toMap
-  }
 }

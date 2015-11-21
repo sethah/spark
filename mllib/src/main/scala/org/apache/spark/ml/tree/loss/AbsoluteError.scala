@@ -52,15 +52,4 @@ object AbsoluteError extends Loss {
     val err = label - prediction
     math.abs(err)
   }
-
-  override def refinePredictions(predsAndLabels: RDD[(Int, (Double, Double))]): Map[Int, Double] = {
-    val diff = predsAndLabels.map { case (nodeID, (pred, y)) =>
-      (nodeID, pred - y)
-    }
-    val counts = diff.reduceByKey((a, b) => a + 1)
-    val sum = diff.reduceByKey((a, b) => a + b)
-
-    counts.zip(sum).map { case ((id, n), (_, sum)) => (id, sum / n.toDouble)}.collect().toMap
-
-  }
 }
