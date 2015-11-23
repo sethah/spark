@@ -172,6 +172,8 @@ private[ml] trait DecisionTreeParams extends PredictorParams with HasCheckpointI
   }
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
+  // NOTE: This is only really used in testing to compare apis. We could make a method
+  //       to convert a new strategy back to an old one.
   private[ml] def getOldStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
@@ -481,6 +483,6 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
   /** Get old Gradient Boosting Loss type */
   private[ml] def getOldLossType: OldLoss
 
-  /** Get old Gradient Boosting Loss type */
+  /** Get new Gradient Boosting Loss type */
   private[ml] def getNewLossType: Loss
 }

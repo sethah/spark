@@ -98,6 +98,7 @@ final class DecisionTreeClassifier(override val uid: String)
   }
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
+  // TODO: this can be moved now to treeParams (need to change constructor to accept algo)
   private[ml] def getOldStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int): OldStrategy = {
