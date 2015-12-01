@@ -19,14 +19,13 @@ package org.apache.spark.ml.classification
 
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
 import org.apache.spark.ml.tree.{DecisionTreeModel, DecisionTreeParams, Node, TreeClassifierParams}
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, Strategy => OldStrategy}
-import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
-import org.apache.spark.ml.tree.impurity.{Gini, Entropy}
 import org.apache.spark.mllib.tree.model.{DecisionTreeModel => OldDecisionTreeModel}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
@@ -89,11 +88,11 @@ final class DecisionTreeClassifier(override val uid: String)
     trees.head.asInstanceOf[DecisionTreeClassificationModel]
   }
 
-  /** (private[ml]) Create a Strategy instance to use with the old API. */
+  /** (private[ml]) Create a Strategy instance. */
   private[ml] def makeStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int): Strategy = {
-    super.makeStrategy(categoricalFeatures, numClasses, Algo.Classification, getNewImpurity,
+    super.makeStrategy(categoricalFeatures, numClasses, Algo.Classification, convertImpurity,
       subsamplingRate = 1.0)
   }
 

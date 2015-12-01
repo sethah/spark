@@ -121,7 +121,7 @@ final class GBTClassifier(override val uid: String)
   def getLossType: String = $(lossType).toLowerCase
 
   /** (private[ml]) Convert new loss to old loss. */
-  override private[ml] def getNewLossType: Loss = {
+  override private[ml] def convertLossType: Loss = {
     getLossType match {
       case "logistic" => LogLoss
       case _ =>

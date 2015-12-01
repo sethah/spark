@@ -84,7 +84,7 @@ final class DecisionTreeRegressor(override val uid: String)
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
   private[ml] def makeStrategy(categoricalFeatures: Map[Int, Int]): Strategy = {
-    super.makeStrategy(categoricalFeatures, numClasses = 0, Algo.Regression, getNewImpurity,
+    super.makeStrategy(categoricalFeatures, numClasses = 0, Algo.Regression, convertImpurity,
       subsamplingRate = 1.0)
   }
 

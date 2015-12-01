@@ -22,10 +22,10 @@ import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.tree.configuration.{Algo, BoostingStrategy, Strategy}
 import org.apache.spark.ml.tree.impurity.{Entropy, Gini, Impurity, Variance}
+import org.apache.spark.ml.tree.loss.Loss
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, BoostingStrategy => OldBoostingStrategy, Strategy => OldStrategy}
 import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini, Impurity => OldImpurity, Variance => OldVariance}
 import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
-import org.apache.spark.ml.tree.loss.Loss
 
 /**
  * Parameters for Decision Tree-based algorithms.
@@ -149,7 +149,7 @@ private[ml] trait DecisionTreeParams extends PredictorParams with HasCheckpointI
    */
   def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
 
-  /** (private[ml]) Create a Strategy instance to use with the old API. */
+  /** (private[ml]) Create a Strategy instance from params. */
   private[ml] def makeStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
@@ -220,9 +220,8 @@ private[ml] trait TreeClassifierParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** Convert new impurity to old impurity. */
-  // TODO: rename
-  private[ml] def getNewImpurity: Impurity = {
+  /** Convert impurity string to impurity. */
+  private[ml] def convertImpurity: Impurity = {
     getImpurity match {
       case "entropy" => Entropy
       case "gini" => Gini
@@ -275,9 +274,8 @@ private[ml] trait TreeRegressorParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** Convert new impurity to old impurity. */
-  // TODO: rename
-  private[ml] def getNewImpurity: Impurity = {
+  /** Convert impurity string to impurity. */
+  private[ml] def convertImpurity: Impurity = {
     getImpurity match {
       case "variance" => Variance
       case _ =>
@@ -467,7 +465,7 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
       algo: Algo.Algo): BoostingStrategy = {
     val strategy = super.makeStrategy(categoricalFeatures, numClasses = 2, algo, Variance)
     // NOTE: The old API does not support "seed" so we ignore it.
-    new BoostingStrategy(strategy, getNewLossType, getMaxIter, getStepSize)
+    new BoostingStrategy(strategy, convertLossType, getMaxIter, getStepSize)
   }
 
   /** (private[ml]) Create a BoostingStrategy instance to use with the old API. */
@@ -484,5 +482,5 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
   private[ml] def getOldLossType: OldLoss
 
   /** Get new Gradient Boosting Loss type */
-  private[ml] def getNewLossType: Loss
+  private[ml] def convertLossType: Loss
 }

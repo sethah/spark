@@ -86,7 +86,7 @@ final class RandomForestRegressor(override val uid: String)
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val strategy =
-      super.makeStrategy(categoricalFeatures, 0, Algo.Regression, getNewImpurity)
+      super.makeStrategy(categoricalFeatures, 0, Algo.Regression, convertImpurity)
     val trees =
       RandomForest.run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed)
         .map(_.asInstanceOf[DecisionTreeRegressionModel])

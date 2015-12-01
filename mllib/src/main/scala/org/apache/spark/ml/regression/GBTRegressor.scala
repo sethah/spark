@@ -118,8 +118,7 @@ final class GBTRegressor(override val uid: String)
   def getLossType: String = $(lossType).toLowerCase
 
   /** (private[ml]) Convert new loss to old loss. */
-  // TODO: define as abstract method?
-  private[ml] def getNewLossType: Loss = {
+  override private[ml] def convertLossType: Loss = {
     getLossType match {
       case "squared" => SquaredError
       case "absolute" => AbsoluteError
