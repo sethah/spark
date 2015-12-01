@@ -98,7 +98,7 @@ private[ml] object GradientBoostedTrees extends Logging {
   }
 
   /**
-   * Java-friendly API for [[org.apache.spark.mllib.tree.GradientBoostedTrees!#runWithValidation]].
+   * Java-friendly API for [[org.apache.spark.ml.tree.impl.GradientBoostedTrees!#runWithValidation]].
    */
   @Since("1.7.0")
   def runWithValidation(

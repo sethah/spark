@@ -28,12 +28,12 @@ import scala.collection.JavaConverters._
 /**
  * Stores all the configuration options for tree construction
  * @param algo  Learning goal.  Supported:
- *              [[org.apache.spark.mllib.tree.configuration.Algo.Classification]],
- *              [[org.apache.spark.mllib.tree.configuration.Algo.Regression]]
+ *              [[org.apache.spark.ml.tree.configuration.Algo.Classification]],
+ *              [[org.apache.spark.ml.tree.configuration.Algo.Regression]]
  * @param impurity Criterion used for information gain calculation.
- *                 Supported for Classification: [[org.apache.spark.mllib.tree.impurity.Gini]],
- *                  [[org.apache.spark.mllib.tree.impurity.Entropy]].
- *                 Supported for Regression: [[org.apache.spark.mllib.tree.impurity.Variance]].
+ *                 Supported for Classification: [[org.apache.spark.ml.tree.impurity.Gini]],
+ *                  [[org.apache.spark.ml.tree.impurity.Entropy]].
+ *                 Supported for Regression: [[org.apache.spark.ml.tree.impurity.Variance]].
  * @param maxDepth Maximum depth of the tree.
  *                 E.g., depth 0 means 1 leaf node; depth 1 means 1 internal node + 2 leaf nodes.
  * @param numClasses Number of classes for classification.
@@ -43,7 +43,7 @@ import scala.collection.JavaConverters._
  *                for choosing how to split on features at each node.
  *                More bins give higher granularity.
  * @param quantileCalculationStrategy Algorithm for calculating quantiles.  Supported:
- *                             [[org.apache.spark.mllib.tree.configuration.QuantileStrategy.Sort]]
+ *                             [[org.apache.spark.ml.tree.configuration.QuantileStrategy.Sort]]
  * @param categoricalFeaturesInfo A map storing information about the categorical variables and the
  *                                number of discrete values they take. For example, an entry (n ->
  *                                k) implies the feature n is categorical with k categories 0,
@@ -134,8 +134,7 @@ class Strategy @Since("1.3.0") (
    * Check validity of parameters.
    * Throws exception if invalid.
    */
-  // TODO: changed scope
-  private[spark] def assertValid(): Unit = {
+  private[ml] def assertValid(): Unit = {
     algo match {
       case Classification =>
         require(numClasses >= 2,
@@ -181,7 +180,9 @@ class Strategy @Since("1.3.0") (
 object Strategy {
 
   /**
-   * Construct a default set of parameters for [[org.apache.spark.mllib.tree.DecisionTree]]
+   * Construct a default set of parameters for
+   * [[org.apache.spark.ml.classification.DecisionTreeClassifier]] and
+   * [[org.apache.spark.ml.regression.DecisionTreeRegressor]]
    * @param algo  "Classification" or "Regression"
    */
   @Since("1.2.0")
@@ -190,7 +191,9 @@ object Strategy {
   }
 
   /**
-   * Construct a default set of parameters for [[org.apache.spark.mllib.tree.DecisionTree]]
+   * Construct a default set of parameters for
+   * [[org.apache.spark.ml.classification.DecisionTreeClassifier]] and
+   * [[org.apache.spark.ml.regression.DecisionTreeRegressor]]
    * @param algo Algo.Classification or Algo.Regression
    */
   @Since("1.3.0")

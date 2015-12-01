@@ -61,5 +61,5 @@ trait Loss extends Serializable {
    * @param label True label.
    * @return Measure of model error on datapoint.
    */
-  private[spark] def computeError(prediction: Double, label: Double): Double
+  private[mllib] def computeError(prediction: Double, label: Double): Double
 }

@@ -43,7 +43,7 @@ import scala.beans.BeanProperty
  *                      of validation error is compared to absolute tolerance which is
  *                      validationTol * 0.01.
  *                      Ignored when
- *                      [[org.apache.spark.mllib.tree.GradientBoostedTrees.run()]] is used.
+ *                      [[org.apache.spark.ml.tree.impl.GradientBoostedTrees.run()]] is used.
  */
 @Since("1.2.0")
 case class BoostingStrategy @Since("1.4.0") (
@@ -93,8 +93,8 @@ object BoostingStrategy {
   /**
    * Returns default configuration for the boosting algorithm
    * @param algo Learning goal.  Supported:
-   *             [[org.apache.spark.mllib.tree.configuration.Algo.Classification]],
-   *             [[org.apache.spark.mllib.tree.configuration.Algo.Regression]]
+   *             [[org.apache.spark.ml.tree.configuration.Algo.Classification]],
+   *             [[org.apache.spark.ml.tree.configuration.Algo.Regression]]
    * @return Configuration for boosting algorithm
    */
   @Since("1.3.0")
