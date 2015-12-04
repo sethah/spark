@@ -62,9 +62,9 @@ class DecisionTree @Since("1.0.0") (private val strategy: Strategy)
     // Note: random seed will not be used since numTrees = 1.
     val newTreeModels = NewRandomForest.run(input, strategy, numTrees = 1, featureSubsetStrategy = "all", seed = 0)
     val tree = newTreeModels.head
-    strategy.algo match {
-      case Classification => tree.asInstanceOf[DecisionTreeClassificationModel].toOld
-      case Regression => tree.asInstanceOf[DecisionTreeRegressionModel].toOld
+    tree match {
+      case t: DecisionTreeClassificationModel => t.toOld
+      case t: DecisionTreeRegressionModel => t.toOld
     }
   }
 }

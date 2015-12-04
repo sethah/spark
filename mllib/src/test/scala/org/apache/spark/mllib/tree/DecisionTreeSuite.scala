@@ -54,12 +54,12 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
     val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
     assert(!metadata.isUnordered(featureIndex = 0))
     assert(!metadata.isUnordered(featureIndex = 1))
-    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
-    assert(splits.length === 2)
-    assert(bins.length === 2)
-    // no bins or splits pre-computed for ordered categorical features
-    assert(splits(0).length === 0)
-    assert(bins(0).length === 0)
+//    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
+//    assert(splits.length === 2)
+//    assert(bins.length === 2)
+//    // no bins or splits pre-computed for ordered categorical features
+//    assert(splits(0).length === 0)
+//    assert(bins(0).length === 0)
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
     println(rootNode.numDescendants)
@@ -133,11 +133,11 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(!metadata.isUnordered(featureIndex = 0))
     assert(!metadata.isUnordered(featureIndex = 1))
 
-    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
-    assert(splits.length === 2)
-    assert(splits(0).length === 99)
-    assert(bins.length === 2)
-    assert(bins(0).length === 100)
+//    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
+//    assert(splits.length === 2)
+//    assert(splits(0).length === 99)
+//    assert(bins.length === 2)
+//    assert(bins(0).length === 100)
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
 
@@ -165,11 +165,11 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(!metadata.isUnordered(featureIndex = 0))
     assert(!metadata.isUnordered(featureIndex = 1))
 
-    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
-    assert(splits.length === 2)
-    assert(splits(0).length === 99)
-    assert(bins.length === 2)
-    assert(bins(0).length === 100)
+//    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
+//    assert(splits.length === 2)
+//    assert(splits(0).length === 99)
+//    assert(bins.length === 2)
+//    assert(bins(0).length === 100)
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
 
@@ -197,11 +197,11 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(!metadata.isUnordered(featureIndex = 0))
     assert(!metadata.isUnordered(featureIndex = 1))
 
-    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
-    assert(splits.length === 2)
-    assert(splits(0).length === 99)
-    assert(bins.length === 2)
-    assert(bins(0).length === 100)
+//    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
+//    assert(splits.length === 2)
+//    assert(splits(0).length === 99)
+//    assert(bins.length === 2)
+//    assert(bins(0).length === 100)
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
 
@@ -229,11 +229,11 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(!metadata.isUnordered(featureIndex = 0))
     assert(!metadata.isUnordered(featureIndex = 1))
 
-    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
-    assert(splits.length === 2)
-    assert(splits(0).length === 99)
-    assert(bins.length === 2)
-    assert(bins(0).length === 100)
+//    val (splits, bins) = DecisionTree.findSplitsBins(rdd, metadata)
+//    assert(splits.length === 2)
+//    assert(splits(0).length === 99)
+//    assert(bins.length === 2)
+//    assert(bins(0).length === 100)
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
 //    val stats = rootNode.stats.get

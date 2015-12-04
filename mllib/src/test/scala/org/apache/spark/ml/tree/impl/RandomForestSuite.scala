@@ -18,12 +18,12 @@
 package org.apache.spark.ml.tree.impl
 
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.ml.classification.DecisionTreeClassificationModel
+import org.apache.spark.ml.classification.{RandomForestClassifier, DecisionTreeClassificationModel}
 import org.apache.spark.ml.impl.TreeTests
 import org.apache.spark.ml.tree._
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.tree.DecisionTree
+import org.apache.spark.mllib.tree.{DecisionTreeSuite, RandomForest, EnsembleTestHelper, DecisionTree}
 import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.configuration.{QuantileStrategy, Strategy}
 import org.apache.spark.mllib.tree.impl.{BaggedPoint, DecisionTreeMetadata}
@@ -399,6 +399,84 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
 //          assert(children1(i).predict.predict === children2(i).predict.predict)
 //        }
 //      }
+
+  /////////////////////////////////////////////////////////////////////////////
+  // Tests specific to random forest
+  /////////////////////////////////////////////////////////////////////////////
+
+    def binaryClassificationTestWithContinuousFeaturesAndSubsampledFeatures(strategy: Strategy) {
+      val numFeatures = 50
+      val arr = EnsembleTestHelper.generateOrderedLabeledPoints(numFeatures, 1000)
+      val rdd = sc.parallelize(arr)
+
+      // Select feature subset for top nodes.  Return true if OK.
+      def checkFeatureSubsetStrategy(
+          numTrees: Int,
+          featureSubsetStrategy: String,
+          numFeaturesPerNode: Int): Unit = {
+        val seeds = Array(123, 5354, 230, 349867, 23987)
+        val maxMemoryUsage: Long = 128 * 1024L * 1024L
+        val metadata =
+          DecisionTreeMetadata.buildMetadata(rdd, strategy, numTrees, featureSubsetStrategy)
+        seeds.foreach { seed =>
+          val failString = s"Failed on test with:" +
+            s"numTrees=$numTrees, featureSubsetStrategy=$featureSubsetStrategy," +
+            s" numFeaturesPerNode=$numFeaturesPerNode, seed=$seed"
+          val nodeQueue = new mutable.Queue[(Int, LearningNode)]()
+          val topNodes: Array[LearningNode] = new Array[LearningNode](numTrees)
+          Range(0, numTrees).foreach { treeIndex =>
+            topNodes(treeIndex) = LearningNode.emptyNode(nodeIndex = 1)
+            nodeQueue.enqueue((treeIndex, topNodes(treeIndex)))
+          }
+          val rng = new scala.util.Random(seed = seed)
+          val (nodesForGroup: Map[Int, Array[LearningNode]],
+              treeToNodeToIndexInfo: Map[Int, Map[Int, RandomForest.NodeIndexInfo]]) =
+            RandomForest.selectNodesToSplit(nodeQueue, maxMemoryUsage, metadata, rng)
+
+          assert(nodesForGroup.size === numTrees, failString)
+          assert(nodesForGroup.values.forall(_.size == 1), failString) // 1 node per tree
+
+          if (numFeaturesPerNode == numFeatures) {
+            // featureSubset values should all be None
+            assert(treeToNodeToIndexInfo.values.forall(_.values.forall(_.featureSubset.isEmpty)),
+              failString)
+          } else {
+            // Check number of features.
+            assert(treeToNodeToIndexInfo.values.forall(_.values.forall(
+              _.featureSubset.get.size === numFeaturesPerNode)), failString)
+          }
+        }
+      }
+
+      checkFeatureSubsetStrategy(numTrees = 1, "auto", numFeatures)
+      checkFeatureSubsetStrategy(numTrees = 1, "all", numFeatures)
+      checkFeatureSubsetStrategy(numTrees = 1, "sqrt", math.sqrt(numFeatures).ceil.toInt)
+      checkFeatureSubsetStrategy(numTrees = 1, "log2",
+        (math.log(numFeatures) / math.log(2)).ceil.toInt)
+      checkFeatureSubsetStrategy(numTrees = 1, "onethird", (numFeatures / 3.0).ceil.toInt)
+
+      checkFeatureSubsetStrategy(numTrees = 2, "all", numFeatures)
+      checkFeatureSubsetStrategy(numTrees = 2, "auto", math.sqrt(numFeatures).ceil.toInt)
+      checkFeatureSubsetStrategy(numTrees = 2, "sqrt", math.sqrt(numFeatures).ceil.toInt)
+      checkFeatureSubsetStrategy(numTrees = 2, "log2",
+        (math.log(numFeatures) / math.log(2)).ceil.toInt)
+      checkFeatureSubsetStrategy(numTrees = 2, "onethird", (numFeatures / 3.0).ceil.toInt)
+    }
+
+    test("Binary classification with continuous features: subsampling features") {
+      val categoricalFeaturesInfo = Map.empty[Int, Int]
+      val strategy = new Strategy(algo = Classification, impurity = Gini, maxDepth = 2,
+        numClasses = 2, categoricalFeaturesInfo = categoricalFeaturesInfo)
+      binaryClassificationTestWithContinuousFeaturesAndSubsampledFeatures(strategy)
+    }
+
+    test("Binary classification with continuous features and node Id cache: subsampling features") {
+      val categoricalFeaturesInfo = Map.empty[Int, Int]
+      val strategy = new Strategy(algo = Classification, impurity = Gini, maxDepth = 2,
+        numClasses = 2, categoricalFeaturesInfo = categoricalFeaturesInfo,
+        useNodeIdCache = true)
+      binaryClassificationTestWithContinuousFeaturesAndSubsampledFeatures(strategy)
+    }
 
   test("computeFeatureImportance, featureImportances") {
     /* Build tree for testing, with this structure:

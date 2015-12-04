@@ -98,11 +98,11 @@ object DecisionTreeRunner {
         .text(s"number of trees (1 = decision tree, 2+ = random forest)," +
           s" default: ${defaultParams.numTrees}")
         .action((x, c) => c.copy(numTrees = x))
-//      opt[String]("featureSubsetStrategy")
-//        .text(s"feature subset sampling strategy" +
-//          s" (${RandomForest.supportedFeatureSubsetStrategies.mkString(", ")}), " +
-//          s"default: ${defaultParams.featureSubsetStrategy}")
-//        .action((x, c) => c.copy(featureSubsetStrategy = x))
+      opt[String]("featureSubsetStrategy")
+        .text(s"feature subset sampling strategy" +
+          s" (${RandomForest.supportedFeatureSubsetStrategies.mkString(", ")}), " +
+          s"default: ${defaultParams.featureSubsetStrategy}")
+        .action((x, c) => c.copy(featureSubsetStrategy = x))
       opt[Double]("fracTest")
         .text(s"fraction of data to hold out for testing.  If given option testInput, " +
           s"this option is ignored. default: ${defaultParams.fracTest}")
