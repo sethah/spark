@@ -126,7 +126,7 @@ final class CategoricalSplit private[ml] (
     } else {
       setComplement(categories)
     }
-    OldSplit(featureIndex, threshold = 0.0, OldFeatureType.Categorical, oldCats.toList)
+    OldSplit(featureIndex, threshold = Double.MinValue, OldFeatureType.Categorical, oldCats.toList)
   }
 
   /** Get sorted categories which split to the left */

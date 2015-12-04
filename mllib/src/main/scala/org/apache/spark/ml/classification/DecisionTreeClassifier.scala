@@ -152,7 +152,7 @@ final class DecisionTreeClassificationModel private[ml] (
   }
 
   /** (private[ml]) Convert to a model in the old API */
-  private[ml] def toOld: OldDecisionTreeModel = {
+  private[spark] def toOld: OldDecisionTreeModel = {
     new OldDecisionTreeModel(rootNode.toOld(1), OldAlgo.Classification)
   }
 }

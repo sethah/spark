@@ -39,7 +39,7 @@ import org.apache.spark.util.collection.OpenHashMap
 import org.apache.spark.util.random.{SamplingUtils, XORShiftRandom}
 
 
-private[ml] object RandomForest extends Logging {
+private[spark] object RandomForest extends Logging {
 
   /**
    * Train a random forest.
@@ -816,6 +816,7 @@ private[ml] object RandomForest extends Logging {
    * @param input Training data: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]]
    * @param metadata Learning and dataset metadata
    * @param seed random seed
+   * TODO: this return is not correct
    * @return A tuple of (splits, bins).
    *         Splits is an Array of [[org.apache.spark.mllib.tree.model.Split]]
    *          of size (numFeatures, numSplits).
