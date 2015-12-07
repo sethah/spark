@@ -18,23 +18,22 @@
 package org.apache.spark.ml.tree.impl
 
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.ml.classification.{RandomForestClassifier, DecisionTreeClassificationModel}
+import org.apache.spark.ml.classification.DecisionTreeClassificationModel
 import org.apache.spark.ml.impl.TreeTests
-import org.apache.spark.ml.tree._
+import org.apache.spark.ml.tree.{CategoricalSplit, ContinuousSplit}
+import org.apache.spark.ml.tree.DecisionTreeModel
+import org.apache.spark.ml.tree.{LeafNode, LearningNode, Node}
 import org.apache.spark.ml.tree.impl.RandomForest.NodeIndexInfo
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.tree.{DecisionTreeSuite, RandomForest, EnsembleTestHelper, DecisionTree}
+import org.apache.spark.mllib.tree.EnsembleTestHelper
 import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.configuration.{QuantileStrategy, Strategy}
 import org.apache.spark.mllib.tree.impl.{BaggedPoint, DecisionTreeMetadata}
-import org.apache.spark.mllib.tree.impurity.{Gini, GiniCalculator}
+import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, GiniCalculator}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.mllib.util.TestingUtils._
 import org.apache.spark.util.collection.OpenHashMap
-import org.apache.spark.mllib.tree.configuration.FeatureType._
-import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Variance}
-import org.apache.spark.mllib.tree.model.ImpurityStats
 
 import scala.collection.mutable
 

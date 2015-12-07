@@ -25,21 +25,17 @@ import scala.collection.JavaConverters._
 import org.apache.spark.Logging
 import org.apache.spark.annotation.Since
 import org.apache.spark.api.java.JavaRDD
-import org.apache.spark.ml.tree.impl.{RandomForest => NewRandomForest}
 import org.apache.spark.ml.classification.DecisionTreeClassificationModel
 import org.apache.spark.ml.regression.DecisionTreeRegressionModel
+import org.apache.spark.ml.tree.impl.{RandomForest => NewRandomForest}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.Strategy
 import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
-import org.apache.spark.mllib.tree.impl.{BaggedPoint, DecisionTreeMetadata, NodeIdCache,
-  TimeTracker, TreePoint}
 import org.apache.spark.mllib.tree.impurity.Impurities
 import org.apache.spark.mllib.tree.model._
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.Utils
-import org.apache.spark.util.random.SamplingUtils
 
 @Since("1.2.0")
 object RandomForest extends Serializable with Logging {
@@ -225,6 +221,8 @@ object RandomForest extends Serializable with Logging {
    * List of supported feature subset sampling strategies.
    */
   @Since("1.2.0")
+  // TODO: this now needs to reference the supported subset strategies
+  // TODO: for spark.ml - we may need to make RandomForestParams private[spark]
   val supportedFeatureSubsetStrategies: Array[String] =
     Array("auto", "all", "sqrt", "log2", "onethird")
 }

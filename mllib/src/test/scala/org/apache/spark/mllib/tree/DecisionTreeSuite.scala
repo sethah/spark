@@ -62,7 +62,6 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    assert(bins(0).length === 0)
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
-    println(rootNode.numDescendants)
     val split = rootNode.split.get
     assert(split.categories === List(1.0))
     assert(split.featureType === Categorical)
@@ -141,19 +140,6 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
 
-//    val stats = rootNode.stats.get
-    // SNOTE: these assertions don't make a ton of sense. In this case, the top node should be
-    //        the only node, and hence, a leaf node. This is because all the labels are the same,
-    //        so the tree is already optimal. Leaf nodes should have no concept of gain, or
-    //        left/right anything since they have no children. We really should just check that
-    //        the impurity is zero (perfect) and that the rootnode is a leaf node.
-    // In this case the node tries to split itself and then finds that there is no gain from
-    // splitting. Still, the node itself is a leaf but it has Some(stats) because the algo tried
-    // to split it. In the new way, it is converted back from a leaf node and cannot have any stats.
-    // So there should be no way to check it.
-//    assert(stats.gain === Double.MinValue)
-//    assert(stats.leftImpurity === -1.0)
-//    assert(stats.rightImpurity === -1.0)
     assert(rootNode.predict.predict === 0)
     assert(rootNode.isLeaf)
     assert(rootNode.impurity === 0)
@@ -177,15 +163,6 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
 
-//    val stats = rootNode.stats.get
-    // SNOTE: these assertions don't make a ton of sense. In this case, the top node should be
-    //        the only node, and hence, a leaf node. This is because all the labels are the same,
-    //        so the tree is already optimal. Leaf nodes should have no concept of gain, or
-    //        left/right anything since they have no children. We really should just check that
-    //        the impurity is zero (perfect) and that the rootnode is a leaf node.
-//    assert(stats.gain === 0)
-//    assert(stats.leftImpurity === 0)
-//    assert(stats.rightImpurity === 0)
     assert(rootNode.predict.predict === 1)
     assert(rootNode.isLeaf)
     assert(rootNode.impurity === 0)
@@ -209,15 +186,6 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
 
-//    val stats = rootNode.stats.get
-    // SNOTE: these assertions don't make a ton of sense. In this case, the top node should be
-    //        the only node, and hence, a leaf node. This is because all the labels are the same,
-    //        so the tree is already optimal. Leaf nodes should have no concept of gain, or
-    //        left/right anything since they have no children. We really should just check that
-    //        the impurity is zero (perfect) and that the rootnode is a leaf node.
-//    assert(stats.gain === 0)
-//    assert(stats.leftImpurity === 0)
-//    assert(stats.rightImpurity === 0)
     assert(rootNode.predict.predict === 0)
     assert(rootNode.isLeaf)
     assert(rootNode.impurity === 0)
@@ -240,15 +208,7 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    assert(bins(0).length === 100)
 
     val rootNode = DecisionTree.train(rdd, strategy).topNode
-//    val stats = rootNode.stats.get
-    // SNOTE: these assertions don't make a ton of sense. In this case, the top node should be
-    //        the only node, and hence, a leaf node. This is because all the labels are the same,
-    //        so the tree is already optimal. Leaf nodes should have no concept of gain, or
-    //        left/right anything since they have no children. We really should just check that
-    //        the impurity is zero (perfect) and that the rootnode is a leaf node.
-//    assert(stats.gain === 0)
-//    assert(stats.leftImpurity === 0)
-//    assert(stats.rightImpurity === 0)
+
     assert(rootNode.predict.predict === 1)
     assert(rootNode.isLeaf)
     assert(rootNode.impurity === 0)
@@ -432,8 +392,6 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
 
     // test when no valid split can be found
     val rootNode = model.topNode
-    println(rootNode.numDescendants)
-    println(rootNode.isLeaf)
 
     val gain = rootNode.stats.get
     assert(gain == InformationGainStats.invalidInformationGainStats)

@@ -18,7 +18,6 @@
 package org.apache.spark.ml.tree
 
 import org.apache.spark.mllib.linalg.{Vectors, Vector}
-import org.apache.spark.mllib.tree.model.{DecisionTreeModel => OldTreeModel}
 
 /**
  * Abstraction for Decision Tree models.
@@ -60,8 +59,6 @@ private[ml] trait DecisionTreeModel {
    * @return  Max feature index used in a split, or -1 if there are no splits (single leaf node).
    */
   private[ml] def maxSplitFeatureIndex(): Int = rootNode.maxSplitFeatureIndex()
-
-//  private[spark] def toOld: OldTreeModel
 }
 
 /**
