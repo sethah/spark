@@ -816,12 +816,8 @@ private[spark] object RandomForest extends Logging {
    * @param input Training data: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]]
    * @param metadata Learning and dataset metadata
    * @param seed random seed
-   * TODO: this return is not correct
-   * @return A tuple of (splits, bins).
-   *         Splits is an Array of [[org.apache.spark.mllib.tree.model.Split]]
+   * @return An Array of [[org.apache.spark.mllib.tree.model.Split]]
    *          of size (numFeatures, numSplits).
-   *         Bins is an Array of [[org.apache.spark.mllib.tree.model.Bin]]
-   *          of size (numFeatures, numBins).
    */
   protected[tree] def findSplits(
       input: RDD[LabeledPoint],

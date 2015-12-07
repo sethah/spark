@@ -147,9 +147,13 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
     //        so the tree is already optimal. Leaf nodes should have no concept of gain, or
     //        left/right anything since they have no children. We really should just check that
     //        the impurity is zero (perfect) and that the rootnode is a leaf node.
-//    assert(stats.gain === 0)
-//    assert(stats.leftImpurity === 0)
-//    assert(stats.rightImpurity === 0)
+    // In this case the node tries to split itself and then finds that there is no gain from
+    // splitting. Still, the node itself is a leaf but it has Some(stats) because the algo tried
+    // to split it. In the new way, it is converted back from a leaf node and cannot have any stats.
+    // So there should be no way to check it.
+//    assert(stats.gain === Double.MinValue)
+//    assert(stats.leftImpurity === -1.0)
+//    assert(stats.rightImpurity === -1.0)
     assert(rootNode.predict.predict === 0)
     assert(rootNode.isLeaf)
     assert(rootNode.impurity === 0)

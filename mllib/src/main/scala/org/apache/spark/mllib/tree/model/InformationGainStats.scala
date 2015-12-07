@@ -128,6 +128,8 @@ private[spark] object ImpurityStats {
       impurityCalculator, null, null, false)
   }
 
+  def isInvalidStats(stats: ImpurityStats): Boolean = stats.gain == Double.MinValue
+
   /**
    * Return an [[org.apache.spark.mllib.tree.model.ImpurityStats]] object
    * that only 'impurity' and 'impurityCalculator' are defined.

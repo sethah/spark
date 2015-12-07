@@ -41,59 +41,6 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.Utils
 import org.apache.spark.util.random.SamplingUtils
 
-///**
-// * A class that implements a [[http://en.wikipedia.org/wiki/Random_forest  Random Forest]]
-// * learning algorithm for classification and regression.
-// * It supports both continuous and categorical features.
-// *
-// * The settings for featureSubsetStrategy are based on the following references:
-// *  - log2: tested in Breiman (2001)
-// *  - sqrt: recommended by Breiman manual for random forests
-// *  - The defaults of sqrt (classification) and onethird (regression) match the R randomForest
-// *    package.
-// * @see [[http://www.stat.berkeley.edu/~breiman/randomforest2001.pdf  Breiman (2001)]]
-// * @see [[http://www.stat.berkeley.edu/~breiman/Using_random_forests_V3.1.pdf  Breiman manual for
-// *     random forests]]
-// *
-// * @param strategy The configuration parameters for the random forest algorithm which specify
-// *                 the type of algorithm (classification, regression, etc.), feature type
-// *                 (continuous, categorical), depth of the tree, quantile calculation strategy,
-// *                 etc.
-// * @param numTrees If 1, then no bootstrapping is used.  If > 1, then bootstrapping is done.
-// * @param featureSubsetStrategy Number of features to consider for splits at each node.
-// *                              Supported: "auto", "all", "sqrt", "log2", "onethird".
-// *                              If "auto" is set, this parameter is set based on numTrees:
-// *                                if numTrees == 1, set to "all";
-// *                                if numTrees > 1 (forest) set to "sqrt" for classification and
-// *                                  to "onethird" for regression.
-// * @param seed Random seed for bootstrapping and choosing feature subsets.
-// */
-//private class RandomForest (
-//    private val strategy: Strategy,
-//    private val numTrees: Int,
-//    featureSubsetStrategy: String,
-//    private val seed: Int)
-//  extends Serializable with Logging {
-//
-//  strategy.assertValid()
-//  require(numTrees > 0, s"RandomForest requires numTrees > 0, but was given numTrees = $numTrees.")
-//  require(RandomForest.supportedFeatureSubsetStrategies.contains(featureSubsetStrategy),
-//    s"RandomForest given invalid featureSubsetStrategy: $featureSubsetStrategy." +
-//    s" Supported values: ${RandomForest.supportedFeatureSubsetStrategies.mkString(", ")}.")
-//
-//  /**
-//   * Method to train a decision tree model over an RDD
-//   * @param input Training data: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]]
-//   * @return a random forest model that can be used for prediction
-//   */
-//  def run(input: RDD[LabeledPoint]): RandomForestModel = {
-//    val newTreeModels = NewRandomForest.run(input, strategy, numTrees, featureSubsetStrategy, seed)
-//    val oldTreeModels = newTreeModels.map(_.asInstanceOf[DecisionTreeClassificationModel].toOld)
-//    new RandomForestModel(strategy.algo, oldTreeModels)
-//  }
-//
-//}
-
 @Since("1.2.0")
 object RandomForest extends Serializable with Logging {
 

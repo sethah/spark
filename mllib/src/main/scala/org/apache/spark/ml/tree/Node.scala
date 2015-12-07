@@ -142,6 +142,7 @@ final class LeafNode private[ml] (
     } else {
       None
     }
+
     new OldNode(id, new OldPredict(prediction, prob = impurityStats.prob(prediction)),
       impurity, isLeaf = true, None, None, None, informationGainStats)
   }

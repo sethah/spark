@@ -21,6 +21,7 @@ import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.classification.{RandomForestClassifier, DecisionTreeClassificationModel}
 import org.apache.spark.ml.impl.TreeTests
 import org.apache.spark.ml.tree._
+import org.apache.spark.ml.tree.impl.RandomForest.NodeIndexInfo
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{DecisionTreeSuite, RandomForest, EnsembleTestHelper, DecisionTree}
@@ -33,6 +34,7 @@ import org.apache.spark.mllib.util.TestingUtils._
 import org.apache.spark.util.collection.OpenHashMap
 import org.apache.spark.mllib.tree.configuration.FeatureType._
 import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Variance}
+import org.apache.spark.mllib.tree.model.ImpurityStats
 
 import scala.collection.mutable
 
@@ -327,78 +329,78 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
         assert(topNode.rightChild.get.stats.impurity === 0.0)
       }
 
-//      test("Second level node building with vs. without groups") {
-//        // TODO: should this be in the DT suite in mllib?
-//        val arr = RandomForestSuite.generateOrderedLabeledPoints()
-//        assert(arr.length === 1000)
-//        val rdd = sc.parallelize(arr)
-//        val strategy = new Strategy(Classification, Entropy, 3, 2, 100)
-//        val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
-//        val splits = RandomForest.findSplits(rdd, metadata, seed = 0L)
-//        assert(splits.length === 2)
-//        assert(splits(0).length === 99)
-//
-//        // Train a 1-node model
-//        val strategyOneNode = new Strategy(Classification, Entropy, maxDepth = 1,
-//          numClasses = 2, maxBins = 100)
-//        val modelOneNode = RandomForest.run(rdd, strategyOneNode, numTrees = 1, featureSubsetStrategy = "all", seed = 0L)
-//        println(modelOneNode.head.toDebugString)
-//        val rootNode1 = RandomForestSuite.deepCopy(modelOneNode.head.rootNode)
-//        val rootNode2 = RandomForestSuite.deepCopy(modelOneNode.head.rootNode)
-////        val rootNode1 = modelOneNode.head.rootNode.deepCopy()
-////        val rootNode2 = modelOneNode.topNode.deepCopy()
-//        assert(rootNode1.isInstanceOf[InternalNode])
-//        // TODO: convert to InternalNode
-////        assert(rootNode1.rightNode.nonEmpty)
-////
-//        val treeInput = TreePoint.convertToTreeRDD(rdd, splits, metadata)
-//        val baggedInput = BaggedPoint.convertToBaggedRDD(treeInput, 1.0, 1, false)
-//
-//        // Single group second level tree construction.
-//        val nodesForGroup = Map((0, Array(rootNode1.asInstanceOf[InternalNode].leftChild, rootNode1.asInstanceOf[InternalNode].rightChild)))
-//        val treeToNodeToIndexInfo = Map((0, Map(
-//          (rootNode1.asInstanceOf[InternalNode].get.id, new RandomForest.NodeIndexInfo(0, None)),
-//          (rootNode1.asInstanceOf[InternalNode].get.id, new RandomForest.NodeIndexInfo(1, None)))))
-//        val nodeQueue = new mutable.Queue[(Int, Node)]()
-//        DecisionTree.findBestSplits(baggedInput, metadata, Array(rootNode1),
-//          nodesForGroup, treeToNodeToIndexInfo, splits, bins, nodeQueue)
-//        val children1 = new Array[Node](2)
-//        children1(0) = rootNode1.leftNode.get
-//        children1(1) = rootNode1.rightNode.get
-//
-//        // Train one second-level node at a time.
-//        val nodesForGroupA = Map((0, Array(rootNode2.leftNode.get)))
-//        val treeToNodeToIndexInfoA = Map((0, Map(
-//          (rootNode2.leftNode.get.id, new RandomForest.NodeIndexInfo(0, None)))))
-//        nodeQueue.clear()
-//        DecisionTree.findBestSplits(baggedInput, metadata, Array(rootNode2),
-//          nodesForGroupA, treeToNodeToIndexInfoA, splits, bins, nodeQueue)
-//        val nodesForGroupB = Map((0, Array(rootNode2.rightNode.get)))
-//        val treeToNodeToIndexInfoB = Map((0, Map(
-//          (rootNode2.rightNode.get.id, new RandomForest.NodeIndexInfo(0, None)))))
-//        nodeQueue.clear()
-//        DecisionTree.findBestSplits(baggedInput, metadata, Array(rootNode2),
-//          nodesForGroupB, treeToNodeToIndexInfoB, splits, bins, nodeQueue)
-//        val children2 = new Array[Node](2)
-//        children2(0) = rootNode2.leftNode.get
-//        children2(1) = rootNode2.rightNode.get
-//
-//        // Verify whether the splits obtained using single group and multiple group level
-//        // construction strategies are the same.
-//        for (i <- 0 until 2) {
-//          assert(children1(i).stats.nonEmpty && children1(i).stats.get.gain > 0)
-//          assert(children2(i).stats.nonEmpty && children2(i).stats.get.gain > 0)
-//          assert(children1(i).split === children2(i).split)
-//          assert(children1(i).stats.nonEmpty && children2(i).stats.nonEmpty)
-//          val stats1 = children1(i).stats.get
-//          val stats2 = children2(i).stats.get
-//          assert(stats1.gain === stats2.gain)
-//          assert(stats1.impurity === stats2.impurity)
-//          assert(stats1.leftImpurity === stats2.leftImpurity)
-//          assert(stats1.rightImpurity === stats2.rightImpurity)
-//          assert(children1(i).predict.predict === children2(i).predict.predict)
-//        }
-//      }
+      test("Second level node building with vs. without groups") {
+        val arr = RandomForestSuite.generateOrderedLabeledPoints()
+        assert(arr.length === 1000)
+        val rdd = sc.parallelize(arr)
+        val strategy = new Strategy(Classification, Entropy, 3, 2, 100)
+        val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
+        val splits = RandomForest.findSplits(rdd, metadata, seed = 0L)
+        assert(splits.length === 2)
+        assert(splits(0).length === 99)
+
+        val treeInput = TreePoint.convertToTreeRDD(rdd, splits, metadata)
+        val baggedInput = BaggedPoint.convertToBaggedRDD(treeInput, 1.0, 1, false)
+
+        // Train a 1-node model
+        val strategyOneNode = new Strategy(Classification, Entropy, maxDepth = 1,
+          numClasses = 2, maxBins = 100)
+        val topNode = LearningNode.emptyNode(nodeIndex = 1)
+        val topNodes = Array(topNode)
+        val nodesForGroup1 = Map((0, topNodes))
+        val treeToNodeToIndexInfo1 = Map((0, Map((topNodes(0).id, new NodeIndexInfo(0, None)))))
+        val nodeQueue1 = new mutable.Queue[(Int, LearningNode)]()
+        RandomForest.findBestSplits(baggedInput, metadata, topNodes, nodesForGroup1,
+          treeToNodeToIndexInfo1, splits, nodeQueue1)
+        val rootNode1 = RandomForestSuite.deepCopyLearningTree(topNode)
+        val rootNode2 = RandomForestSuite.deepCopyLearningTree(topNode)
+        assert(rootNode1.leftChild.nonEmpty)
+        assert(rootNode1.rightChild.nonEmpty)
+
+        // Single group second level tree construction.
+        val nodesForGroup = Map((0, Array(rootNode1.leftChild.get, rootNode1.rightChild.get)))
+        val treeToNodeToIndexInfo = Map((0, Map(
+          (rootNode1.leftChild.get.id, new RandomForest.NodeIndexInfo(0, None)),
+          (rootNode1.rightChild.get.id, new RandomForest.NodeIndexInfo(1, None)))))
+        val nodeQueue = new mutable.Queue[(Int, LearningNode)]()
+        RandomForest.findBestSplits(baggedInput, metadata, Array(rootNode1),
+          nodesForGroup, treeToNodeToIndexInfo, splits, nodeQueue)
+        val children1 = new Array[LearningNode](2)
+        children1(0) = rootNode1.leftChild.get
+        children1(1) = rootNode1.rightChild.get
+
+        // Train one second-level node at a time.
+        val nodesForGroupA = Map((0, Array(rootNode2.leftChild.get)))
+        val treeToNodeToIndexInfoA = Map((0, Map(
+          (rootNode2.leftChild.get.id, new RandomForest.NodeIndexInfo(0, None)))))
+        nodeQueue.clear()
+        RandomForest.findBestSplits(baggedInput, metadata, Array(rootNode2),
+          nodesForGroupA, treeToNodeToIndexInfoA, splits, nodeQueue)
+        val nodesForGroupB = Map((0, Array(rootNode2.rightChild.get)))
+        val treeToNodeToIndexInfoB = Map((0, Map(
+          (rootNode2.rightChild.get.id, new RandomForest.NodeIndexInfo(0, None)))))
+        nodeQueue.clear()
+        RandomForest.findBestSplits(baggedInput, metadata, Array(rootNode2),
+          nodesForGroupB, treeToNodeToIndexInfoB, splits, nodeQueue)
+        val children2 = new Array[LearningNode](2)
+        children2(0) = rootNode2.leftChild.get
+        children2(1) = rootNode2.rightChild.get
+
+        // Verify whether the splits obtained using single group and multiple group level
+        // construction strategies are the same.
+        for (i <- 0 until 2) {
+          assert(children1(i).stats.gain > 0)
+          assert(children2(i).stats.gain > 0)
+          assert(children1(i).split === children2(i).split)
+          val stats1 = children1(i).stats
+          val stats2 = children2(i).stats
+          assert(stats1.gain === stats2.gain)
+          assert(stats1.impurity === stats2.impurity)
+          assert(stats1.leftImpurity === stats2.leftImpurity)
+          assert(stats1.rightImpurity === stats2.rightImpurity)
+          assert(children1(i).stats.impurityCalculator.predict === children2(i).stats.impurityCalculator.predict)
+        }
+      }
 
   /////////////////////////////////////////////////////////////////////////////
   // Tests specific to random forest
@@ -606,28 +608,14 @@ private object RandomForestSuite {
   /**
    * Returns a deep copy of the subtree rooted at this node.
    */
-  def deepCopy(node: Node): Node = {
-    node match {
-      case leafNode: LeafNode =>
-        new LeafNode(leafNode.prediction, leafNode.impurity, leafNode.impurityStats)
-      case internalNode: InternalNode =>
-        new InternalNode(internalNode.prediction, internalNode.impurity, internalNode.gain,
-          deepCopy(internalNode.leftChild), deepCopy(internalNode.rightChild),
-          internalNode.split, internalNode.impurityStats)
+  def deepCopyLearningTree(node: LearningNode): LearningNode = {
+    if (node.leftChild.isEmpty) {
+      assert(node.rightChild.isEmpty)
+      new LearningNode(node.id, None, None, None, true, node.stats)
+    } else {
+      assert(node.rightChild.nonEmpty)
+      new LearningNode(node.id, Some(deepCopyLearningTree(node.leftChild.get)),
+        Some(deepCopyLearningTree(node.rightChild.get)), node.split, false, node.stats)
     }
-    node
-
-
-//    val leftNodeCopy = if (node.leftChild.isEmpty) {
-//      None
-//    } else {
-//      node.leftChild.deepCopy()
-//    }
-//    val rightNodeCopy = if (rightNode.isEmpty) {
-//      None
-//    } else {
-//      Some(rightNode.get.deepCopy())
-//    }
-//    new Node(id, predict, impurity, isLeaf, split, leftNodeCopy, rightNodeCopy, stats)
   }
 }
