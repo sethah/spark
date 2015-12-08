@@ -605,7 +605,7 @@ private object RandomForestSuite {
   }
 
   /**
-   * Returns a deep copy of the subtree rooted at this node.
+   * Returns a deep copy of the subtree rooted at this learning node.
    */
   def deepCopyLearningTree(node: LearningNode): LearningNode = {
     if (node.leftChild.isEmpty) {

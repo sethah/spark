@@ -27,7 +27,7 @@ import org.apache.spark.annotation.Since
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.ml.classification.DecisionTreeClassificationModel
 import org.apache.spark.ml.regression.DecisionTreeRegressionModel
-import org.apache.spark.ml.tree.impl.{RandomForest => NewRandomForest}
+import org.apache.spark.ml.tree.impl.{RandomForest => MLRandomForest}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.Strategy
 import org.apache.spark.mllib.tree.configuration.Algo._
@@ -64,9 +64,9 @@ object RandomForest extends Serializable with Logging {
       seed: Int): RandomForestModel = {
     require(strategy.algo == Classification,
       s"RandomForest.trainClassifier given Strategy with invalid algo: ${strategy.algo}")
-    val newTreeModels = NewRandomForest.run(input, strategy, numTrees, featureSubsetStrategy, seed)
-    val oldTreeModels = newTreeModels.map(_.asInstanceOf[DecisionTreeClassificationModel].toOld)
-    new RandomForestModel(strategy.algo, oldTreeModels)
+    val mlTreeModels = MLRandomForest.run(input, strategy, numTrees, featureSubsetStrategy, seed)
+    val mllibTreeModels = mlTreeModels.map(_.asInstanceOf[DecisionTreeClassificationModel].toOld)
+    new RandomForestModel(strategy.algo, mllibTreeModels)
   }
 
   /**
@@ -154,9 +154,9 @@ object RandomForest extends Serializable with Logging {
       seed: Int): RandomForestModel = {
     require(strategy.algo == Regression,
       s"RandomForest.trainRegressor given Strategy with invalid algo: ${strategy.algo}")
-    val newTreeModels = NewRandomForest.run(input, strategy, numTrees, featureSubsetStrategy, seed)
-    val oldTreeModels = newTreeModels.map(_.asInstanceOf[DecisionTreeRegressionModel].toOld)
-    new RandomForestModel(strategy.algo, oldTreeModels)
+    val mlTreeModels = MLRandomForest.run(input, strategy, numTrees, featureSubsetStrategy, seed)
+    val mllibTreeModels = mlTreeModels.map(_.asInstanceOf[DecisionTreeRegressionModel].toOld)
+    new RandomForestModel(strategy.algo, mllibTreeModels)
   }
 
   /**
