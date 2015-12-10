@@ -126,8 +126,6 @@ final class CategoricalSplit private[ml] (
     } else {
       setComplement(categories)
     }
-    // SNOTE: threshold was changed from 0.0 to Double.MinValue for categorical split
-    //        I think this is the correct behavior and previous behavior was an oversight
     OldSplit(featureIndex, threshold = Double.MinValue, OldFeatureType.Categorical, oldCats.toList)
   }
 

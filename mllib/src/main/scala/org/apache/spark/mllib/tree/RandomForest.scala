@@ -17,9 +17,6 @@
 
 package org.apache.spark.mllib.tree
 
-import java.io.IOException
-
-import scala.collection.mutable
 import scala.collection.JavaConverters._
 
 import org.apache.spark.Logging

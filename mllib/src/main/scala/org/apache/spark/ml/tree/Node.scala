@@ -129,22 +129,19 @@ final class LeafNode private[ml] (
     prefix + s"Predict: $prediction\n"
   }
 
-  private def isInvalidStats: Boolean = impurity < 0
-
   override private[tree] def subtreeDepth: Int = 0
 
   override private[ml] def toOld(id: Int): OldNode = {
-    // SNOTE: need this because the old API expects invalid info gain stats instead of
-    //        None when a node violates minInstances constraint or something similar
-    // TODO: make sure the impurity is not less than zero under other circumstances?
-    val informationGainStats = if (isInvalidStats) {
+    // NOTE: need this because the old API expects invalid info gain stats instead of
+    //       None when a node violates minInstances constraint or something similar
+    val stats = if (impurity < 0) {
       Some(OldInformationGainStats.invalidInformationGainStats)
     } else {
       None
     }
 
     new OldNode(id, new OldPredict(prediction, prob = impurityStats.prob(prediction)),
-      impurity, isLeaf = true, None, None, None, informationGainStats)
+      impurity, isLeaf = true, None, None, None, stats)
   }
 
   override private[ml] def maxSplitFeatureIndex(): Int = -1
