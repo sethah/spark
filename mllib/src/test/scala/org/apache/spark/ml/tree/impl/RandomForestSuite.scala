@@ -37,7 +37,6 @@ import org.apache.spark.util.collection.OpenHashMap
 
 import scala.collection.mutable
 
-
 /**
  * Test suite for [[RandomForest]].
  */
@@ -48,6 +47,86 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     /////////////////////////////////////////////////////////////////////////////
     // Tests examining individual elements of training
     /////////////////////////////////////////////////////////////////////////////
+
+    test("Test findSplits for binary classification stump with ordered categorical features") {
+      val arr = RandomForestSuite.generateCategoricalDataPoints()
+      assert(arr.length === 1000)
+      val rdd = sc.parallelize(arr)
+      val strategy = new Strategy(
+        Classification,
+        Gini,
+        numClasses = 2,
+        maxDepth = 2,
+        maxBins = 100,
+        categoricalFeaturesInfo = Map(0 -> 3, 1-> 3))
+      val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
+      assert(!metadata.isUnordered(featureIndex = 0))
+      assert(!metadata.isUnordered(featureIndex = 1))
+      val splits = RandomForest.findSplits(rdd, metadata, seed = 0L)
+      assert(splits.length === 2)
+      // no bins or splits pre-computed for ordered categorical features
+      assert(splits(0).length === 0)
+    }
+
+    test("Test findSplits for binary classification stump with fixed label 0 for Gini") {
+      val arr = RandomForestSuite.generateOrderedLabeledPointsWithLabel0()
+      assert(arr.length === 1000)
+      val rdd = sc.parallelize(arr)
+      val strategy = new Strategy(Classification, Gini, maxDepth = 3,
+        numClasses = 2, maxBins = 100)
+      val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
+      assert(!metadata.isUnordered(featureIndex = 0))
+      assert(!metadata.isUnordered(featureIndex = 1))
+
+      val splits = RandomForest.findSplits(rdd, metadata, seed = 0L)
+      assert(splits.length === 2)
+      assert(splits(0).length === 99)
+    }
+
+    test("Test findSplits for binary classification stump with fixed label 1 for Gini") {
+      val arr = RandomForestSuite.generateOrderedLabeledPointsWithLabel1()
+      assert(arr.length === 1000)
+      val rdd = sc.parallelize(arr)
+      val strategy = new Strategy(Classification, Gini, maxDepth = 3,
+        numClasses = 2, maxBins = 100)
+      val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
+      assert(!metadata.isUnordered(featureIndex = 0))
+      assert(!metadata.isUnordered(featureIndex = 1))
+
+      val splits = RandomForest.findSplits(rdd, metadata, seed = 0L)
+      assert(splits.length === 2)
+      assert(splits(0).length === 99)
+    }
+
+    test("Test findSplits for binary classification stump with fixed label 0 for Entropy") {
+      val arr = RandomForestSuite.generateOrderedLabeledPointsWithLabel0()
+      assert(arr.length === 1000)
+      val rdd = sc.parallelize(arr)
+      val strategy = new Strategy(Classification, Entropy, maxDepth = 3,
+        numClasses = 2, maxBins = 100)
+      val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
+      assert(!metadata.isUnordered(featureIndex = 0))
+      assert(!metadata.isUnordered(featureIndex = 1))
+
+      val splits = RandomForest.findSplits(rdd, metadata, seed = 0L)
+      assert(splits.length === 2)
+      assert(splits(0).length === 99)
+    }
+
+    test("Test findSplits for binary classification stump with fixed label 1 for Entropy") {
+      val arr = RandomForestSuite.generateOrderedLabeledPointsWithLabel1()
+      assert(arr.length === 1000)
+      val rdd = sc.parallelize(arr)
+      val strategy = new Strategy(Classification, Entropy, maxDepth = 3,
+        numClasses = 2, maxBins = 100)
+      val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
+      assert(!metadata.isUnordered(featureIndex = 0))
+      assert(!metadata.isUnordered(featureIndex = 1))
+
+      val splits = RandomForest.findSplits(rdd, metadata, seed = 0L)
+      assert(splits.length === 2)
+      assert(splits(0).length === 99)
+    }
 
     test("Binary classification with continuous features: split and bin calculation") {
       val arr = RandomForestSuite.generateOrderedLabeledPointsWithLabel1()
@@ -583,6 +662,15 @@ private object RandomForestSuite {
       } else {
         arr(i) = new LabeledPoint(1.0, Vectors.dense(2.0, 2.0))
       }
+    }
+    arr
+  }
+
+  def generateOrderedLabeledPointsWithLabel0(): Array[LabeledPoint] = {
+    val arr = new Array[LabeledPoint](1000)
+    for (i <- 0 until 1000) {
+      val lp = new LabeledPoint(0.0, Vectors.dense(i.toDouble, 1000.0 - i))
+      arr(i) = lp
     }
     arr
   }

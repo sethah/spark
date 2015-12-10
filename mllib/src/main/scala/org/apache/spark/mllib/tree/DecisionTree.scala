@@ -17,15 +17,14 @@
 
 package org.apache.spark.mllib.tree
 
-import org.apache.spark.ml.classification.DecisionTreeClassificationModel
-import org.apache.spark.ml.regression.DecisionTreeRegressionModel
-import org.apache.spark.ml.tree.impl.{RandomForest => MLRandomForest}
-
 import scala.collection.JavaConverters._
 
 import org.apache.spark.Logging
 import org.apache.spark.annotation.Since
 import org.apache.spark.api.java.JavaRDD
+import org.apache.spark.ml.classification.DecisionTreeClassificationModel
+import org.apache.spark.ml.regression.DecisionTreeRegressionModel
+import org.apache.spark.ml.tree.impl.{RandomForest => MLRandomForest}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.Strategy
 import org.apache.spark.mllib.tree.configuration.Algo._
