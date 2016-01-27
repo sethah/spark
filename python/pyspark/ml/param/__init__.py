@@ -20,6 +20,7 @@ import copy
 
 from pyspark import since
 from pyspark.ml.util import Identifiable
+import warnings
 
 
 __all__ = ['Param', 'Params']
@@ -157,8 +158,8 @@ class Params(Identifiable):
         Tests whether this instance contains a param with a given
         (string) name.
         """
-        param = self._resolveParam(paramName)
-        return param in self.params
+        param = getattr(self, paramName, None)
+        return param is not None and isinstance(param, Param)
 
     @since("1.4.0")
     def getOrDefault(self, param):
@@ -207,7 +208,8 @@ class Params(Identifiable):
         if extra is None:
             extra = dict()
         that = copy.copy(self)
-        that._paramMap = self.extractParamMap(extra)
+        extra = {p.name: value for p, value in extra.iteritems() if self.hasParam(p.name)}
+        that._set(**extra)
         return that
 
     def _shouldOwn(self, param):
@@ -248,7 +250,14 @@ class Params(Identifiable):
         Sets user-supplied params.
         """
         for param, value in kwargs.items():
-            p = getattr(self, param)
+            p = getattr(self, param, None)
+            if p is None:
+                msg = "%s does not accept a %s parameter. " \
+                      "It will be ignored." % (self.__class__.__name__, param)
+                print msg
+                warnings.warn("%s does not accept a %s parameter. " \
+                              "It will be ignored." % (self.__class__.__name__, param))
+                continue
             if p.expectedType is None or type(value) == p.expectedType or value is None:
                 self._paramMap[getattr(self, param)] = value
             else:

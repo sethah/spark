@@ -617,7 +617,7 @@ class NaiveBayes(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol, H
             "org.apache.spark.ml.classification.NaiveBayes", self.uid)
         #: param for the smoothing parameter.
         self.smoothing = Param(self, "smoothing", "The smoothing parameter, should be >= 0, " +
-                               "default is 1.0")
+                               "default is 1.0", expectedType=float)
         #: param for the model type.
         self.modelType = Param(self, "modelType", "The model type which is a string " +
                                "(case-sensitive). Supported options: multinomial (default) " +
