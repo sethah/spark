@@ -58,7 +58,7 @@ class HasFake(Params):
 
     def __init__(self):
         super(HasFake, self).__init__()
-        self.fake = Param(self, "fake", "fake param")
+        self.fake = Param(self, "fake", "fake param", expectedType=int)
 
     def getFake(self):
         return self.getOrDefault(self.fake)
@@ -326,7 +326,7 @@ class HasInducedError(Params):
     def __init__(self):
         super(HasInducedError, self).__init__()
         self.inducedError = Param(self, "inducedError",
-                                  "Uniformly-distributed error added to feature")
+                                  "Uniformly-distributed error added to feature", expectedType=float)
 
     def getInducedError(self):
         return self.getOrDefault(self.inducedError)

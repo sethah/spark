@@ -115,12 +115,12 @@ class CrossValidator(Estimator, HasSeed):
     .. versionadded:: 1.4.0
     """
 
-    estimator = Param(Params._dummy(), "estimator", "estimator to be cross-validated")
-    estimatorParamMaps = Param(Params._dummy(), "estimatorParamMaps", "estimator param maps")
+    estimator = Param(Params._dummy(), "estimator", "estimator to be cross-validated", expectedType=None)
+    estimatorParamMaps = Param(Params._dummy(), "estimatorParamMaps", "estimator param maps", expectedType=list)
     evaluator = Param(
         Params._dummy(), "evaluator",
-        "evaluator used to select hyper-parameters that maximize the cross-validated metric")
-    numFolds = Param(Params._dummy(), "numFolds", "number of folds for cross validation")
+        "evaluator used to select hyper-parameters that maximize the cross-validated metric", expectedType=None)
+    numFolds = Param(Params._dummy(), "numFolds", "number of folds for cross validation", expectedType=int)
 
     @keyword_only
     def __init__(self, estimator=None, estimatorParamMaps=None, evaluator=None, numFolds=3,

@@ -85,16 +85,16 @@ class ALS(JavaEstimator, HasCheckpointInterval, HasMaxIter, HasPredictionCol, Ha
     .. versionadded:: 1.4.0
     """
 
-    rank = Param(Params._dummy(), "rank", "rank of the factorization")
-    numUserBlocks = Param(Params._dummy(), "numUserBlocks", "number of user blocks")
-    numItemBlocks = Param(Params._dummy(), "numItemBlocks", "number of item blocks")
-    implicitPrefs = Param(Params._dummy(), "implicitPrefs", "whether to use implicit preference")
-    alpha = Param(Params._dummy(), "alpha", "alpha for implicit preference")
-    userCol = Param(Params._dummy(), "userCol", "column name for user ids")
-    itemCol = Param(Params._dummy(), "itemCol", "column name for item ids")
-    ratingCol = Param(Params._dummy(), "ratingCol", "column name for ratings")
+    rank = Param(Params._dummy(), "rank", "rank of the factorization", expectedType=int)
+    numUserBlocks = Param(Params._dummy(), "numUserBlocks", "number of user blocks", expectedType=int)
+    numItemBlocks = Param(Params._dummy(), "numItemBlocks", "number of item blocks", expectedType=int)
+    implicitPrefs = Param(Params._dummy(), "implicitPrefs", "whether to use implicit preference", expectedType=bool)
+    alpha = Param(Params._dummy(), "alpha", "alpha for implicit preference", expectedType=float)
+    userCol = Param(Params._dummy(), "userCol", "column name for user ids", expectedType=str)
+    itemCol = Param(Params._dummy(), "itemCol", "column name for item ids", expectedType=str)
+    ratingCol = Param(Params._dummy(), "ratingCol", "column name for ratings", expectedType=str)
     nonnegative = Param(Params._dummy(), "nonnegative",
-                        "whether to use nonnegative constraint for least squares")
+                        "whether to use nonnegative constraint for least squares", expectedType=bool)
 
     @keyword_only
     def __init__(self, rank=10, maxIter=10, regParam=0.1, numUserBlocks=10, numItemBlocks=10,

@@ -32,7 +32,7 @@ class Param(object):
     .. versionadded:: 1.3.0
     """
 
-    def __init__(self, parent, name, doc, expectedType=None):
+    def __init__(self, parent, name, doc, expectedType):
         if not isinstance(parent, Identifiable):
             raise TypeError("Parent must be an Identifiable but got type %s." % type(parent))
         self.parent = parent.uid

@@ -25,7 +25,7 @@ from pyspark.ml.param.shared import *
 from pyspark.ml.util import keyword_only
 from pyspark.ml.wrapper import JavaEstimator, JavaModel, JavaTransformer, _jvm
 from pyspark.mllib.common import inherit_doc
-from pyspark.mllib.linalg import _convert_to_vector
+from pyspark.mllib.linalg import _convert_to_vector, DenseVector
 
 __all__ = ['Binarizer', 'Bucketizer', 'CountVectorizer', 'CountVectorizerModel', 'DCT',
            'ElementwiseProduct', 'HashingTF', 'IDF', 'IDFModel', 'IndexToString', 'MinMaxScaler',
@@ -58,7 +58,8 @@ class Binarizer(JavaTransformer, HasInputCol, HasOutputCol):
     """
 
     threshold = Param(Params._dummy(), "threshold",
-                      "threshold in binary classification prediction, in range [0, 1]")
+                      "threshold in binary classification prediction, in range [0, 1]",
+                      expectedType=float)
 
     @keyword_only
     def __init__(self, threshold=0.0, inputCol=None, outputCol=None):
@@ -129,7 +130,7 @@ class Bucketizer(JavaTransformer, HasInputCol, HasOutputCol):
               "range [x,y) except the last bucket, which also includes y. The splits " +
               "should be strictly increasing. Values at -inf, inf must be explicitly " +
               "provided to cover all Double values; otherwise, values outside the splits " +
-              "specified will be treated as errors.")
+              "specified will be treated as errors.", expectedType=list)
 
     @keyword_only
     def __init__(self, splits=None, inputCol=None, outputCol=None):
@@ -199,15 +200,16 @@ class CountVectorizer(JavaEstimator, HasInputCol, HasOutputCol):
         " threshold are ignored. If this is an integer >= 1, then this specifies a count (of" +
         " times the term must appear in the document); if this is a double in [0,1), then this " +
         "specifies a fraction (out of the document's token count). Note that the parameter is " +
-        "only used in transform of CountVectorizerModel and does not affect fitting. Default 1.0")
+        "only used in transform of CountVectorizerModel and does not affect fitting. Default 1.0",
+        expectedType=float)
     minDF = Param(
         Params._dummy(), "minDF", "Specifies the minimum number of" +
         " different documents a term must appear in to be included in the vocabulary." +
         " If this is an integer >= 1, this specifies the number of documents the term must" +
         " appear in; if this is a double in [0,1), then this specifies the fraction of documents." +
-        " Default 1.0")
+        " Default 1.0", expectedType=float)
     vocabSize = Param(
-        Params._dummy(), "vocabSize", "max size of the vocabulary. Default 1 << 18.")
+        Params._dummy(), "vocabSize", "max size of the vocabulary. Default 1 << 18.", expectedType=int)
 
     @keyword_only
     def __init__(self, minTF=1.0, minDF=1.0, vocabSize=1 << 18, inputCol=None, outputCol=None):
@@ -326,7 +328,7 @@ class DCT(JavaTransformer, HasInputCol, HasOutputCol):
     """
 
     inverse = Param(Params._dummy(), "inverse", "Set transformer to perform inverse DCT, " +
-                    "default False.")
+                    "default False.", expectedType=bool)
 
     @keyword_only
     def __init__(self, inverse=False, inputCol=None, outputCol=None):
@@ -387,7 +389,7 @@ class ElementwiseProduct(JavaTransformer, HasInputCol, HasOutputCol):
     """
 
     scalingVec = Param(Params._dummy(), "scalingVec", "vector for hadamard product, " +
-                       "it must be MLlib Vector type.")
+                       "it must be MLlib Vector type.", expectedType=DenseVector)
 
     @keyword_only
     def __init__(self, scalingVec=None, inputCol=None, outputCol=None):
@@ -492,7 +494,8 @@ class IDF(JavaEstimator, HasInputCol, HasOutputCol):
     """
 
     minDocFreq = Param(Params._dummy(), "minDocFreq",
-                       "minimum of documents in which a term should appear for filtering")
+                       "minimum of documents in which a term should appear for filtering",
+                       expectedType=int)
 
     @keyword_only
     def __init__(self, minDocFreq=0, inputCol=None, outputCol=None):
@@ -580,8 +583,10 @@ class MinMaxScaler(JavaEstimator, HasInputCol, HasOutputCol):
     .. versionadded:: 1.6.0
     """
 
-    min = Param(Params._dummy(), "min", "Lower bound of the output feature range")
-    max = Param(Params._dummy(), "max", "Upper bound of the output feature range")
+    min = Param(Params._dummy(), "min", "Lower bound of the output feature range",
+                expectedType=float)
+    max = Param(Params._dummy(), "max", "Upper bound of the output feature range",
+                expectedType=float)
 
     @keyword_only
     def __init__(self, min=0.0, max=1.0, inputCol=None, outputCol=None):
@@ -699,7 +704,7 @@ class NGram(JavaTransformer, HasInputCol, HasOutputCol):
     .. versionadded:: 1.5.0
     """
 
-    n = Param(Params._dummy(), "n", "number of elements per n-gram (>=1)")
+    n = Param(Params._dummy(), "n", "number of elements per n-gram (>=1)", expectedType=int)
 
     @keyword_only
     def __init__(self, n=2, inputCol=None, outputCol=None):
@@ -760,7 +765,7 @@ class Normalizer(JavaTransformer, HasInputCol, HasOutputCol):
     .. versionadded:: 1.4.0
     """
 
-    p = Param(Params._dummy(), "p", "the p norm value.")
+    p = Param(Params._dummy(), "p", "the p norm value.", expectedType=float)
 
     @keyword_only
     def __init__(self, p=2.0, inputCol=None, outputCol=None):
@@ -837,7 +842,8 @@ class OneHotEncoder(JavaTransformer, HasInputCol, HasOutputCol):
     .. versionadded:: 1.4.0
     """
 
-    dropLast = Param(Params._dummy(), "dropLast", "whether to drop the last category")
+    dropLast = Param(Params._dummy(), "dropLast", "whether to drop the last category",
+                     expectedType=bool)
 
     @keyword_only
     def __init__(self, dropLast=True, inputCol=None, outputCol=None):
@@ -898,7 +904,8 @@ class PolynomialExpansion(JavaTransformer, HasInputCol, HasOutputCol):
     .. versionadded:: 1.4.0
     """
 
-    degree = Param(Params._dummy(), "degree", "the polynomial degree to expand (>= 1)")
+    degree = Param(Params._dummy(), "degree", "the polynomial degree to expand (>= 1)",
+                   expectedType=int)
 
     @keyword_only
     def __init__(self, degree=2, inputCol=None, outputCol=None):
@@ -968,7 +975,8 @@ class QuantileDiscretizer(JavaEstimator, HasInputCol, HasOutputCol):
     # a placeholder to make it appear in the generated doc
     numBuckets = Param(Params._dummy(), "numBuckets",
                        "Maximum number of buckets (quantiles, or " +
-                       "categories) into which data points are grouped. Must be >= 2. Default 2.")
+                       "categories) into which data points are grouped. Must be >= 2. Default 2.",
+                       expectedType=int)
 
     @keyword_only
     def __init__(self, numBuckets=2, inputCol=None, outputCol=None):
@@ -980,7 +988,8 @@ class QuantileDiscretizer(JavaEstimator, HasInputCol, HasOutputCol):
                                             self.uid)
         self.numBuckets = Param(self, "numBuckets",
                                 "Maximum number of buckets (quantiles, or " +
-                                "categories) into which data points are grouped. Must be >= 2.")
+                                "categories) into which data points are grouped. Must be >= 2.",
+                                expectedType=int)
         self._setDefault(numBuckets=2)
         kwargs = self.__init__._input_kwargs
         self.setParams(**kwargs)
@@ -1053,11 +1062,14 @@ class RegexTokenizer(JavaTransformer, HasInputCol, HasOutputCol):
     .. versionadded:: 1.4.0
     """
 
-    minTokenLength = Param(Params._dummy(), "minTokenLength", "minimum token length (>= 0)")
-    gaps = Param(Params._dummy(), "gaps", "whether regex splits on gaps (True) or matches tokens")
-    pattern = Param(Params._dummy(), "pattern", "regex pattern (Java dialect) used for tokenizing")
+    minTokenLength = Param(Params._dummy(), "minTokenLength", "minimum token length (>= 0)",
+                           expectedType=int)
+    gaps = Param(Params._dummy(), "gaps", "whether regex splits on gaps (True) or matches tokens",
+                 expectedType=bool)
+    pattern = Param(Params._dummy(), "pattern", "regex pattern (Java dialect) used for tokenizing",
+                    expectedType=str)
     toLowercase = Param(Params._dummy(), "toLowercase", "whether to convert all characters to " +
-                        "lowercase before tokenizing")
+                        "lowercase before tokenizing", expectedType=bool)
 
     @keyword_only
     def __init__(self, minTokenLength=1, gaps=True, pattern="\\s+", inputCol=None,
@@ -1163,7 +1175,7 @@ class SQLTransformer(JavaTransformer):
     .. versionadded:: 1.6.0
     """
 
-    statement = Param(Params._dummy(), "statement", "SQL statement")
+    statement = Param(Params._dummy(), "statement", "SQL statement", expectedType=str)
 
     @keyword_only
     def __init__(self, statement=None):
@@ -1223,8 +1235,8 @@ class StandardScaler(JavaEstimator, HasInputCol, HasOutputCol):
     .. versionadded:: 1.4.0
     """
 
-    withMean = Param(Params._dummy(), "withMean", "Center data with mean")
-    withStd = Param(Params._dummy(), "withStd", "Scale to unit standard deviation")
+    withMean = Param(Params._dummy(), "withMean", "Center data with mean", expectedType=bool)
+    withStd = Param(Params._dummy(), "withStd", "Scale to unit standard deviation", expectedType=bool)
 
     @keyword_only
     def __init__(self, withMean=False, withStd=True, inputCol=None, outputCol=None):
@@ -1391,7 +1403,8 @@ class IndexToString(JavaTransformer, HasInputCol, HasOutputCol):
 
     labels = Param(Params._dummy(), "labels",
                    "Optional array of labels specifying index-string mapping." +
-                   " If not provided or if empty, then metadata from inputCol is used instead.")
+                   " If not provided or if empty, then metadata from inputCol is used instead.",
+                   expectedType=list)
 
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, labels=None):
@@ -1440,9 +1453,10 @@ class StopWordsRemover(JavaTransformer, HasInputCol, HasOutputCol):
     .. versionadded:: 1.6.0
     """
 
-    stopWords = Param(Params._dummy(), "stopWords", "The words to be filtered out")
+    stopWords = Param(Params._dummy(), "stopWords", "The words to be filtered out",
+                      expectedType=str)
     caseSensitive = Param(Params._dummy(), "caseSensitive", "whether to do a case sensitive " +
-                          "comparison over the stop words")
+                          "comparison over the stop words", expectedType=bool)
 
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, stopWords=None,
@@ -1659,7 +1673,7 @@ class VectorIndexer(JavaEstimator, HasInputCol, HasOutputCol):
     maxCategories = Param(Params._dummy(), "maxCategories",
                           "Threshold for the number of values a categorical feature can take " +
                           "(>= 2). If a feature is found to have > maxCategories values, then " +
-                          "it is declared continuous.")
+                          "it is declared continuous.", expectedType=int)
 
     @keyword_only
     def __init__(self, maxCategories=20, inputCol=None, outputCol=None):
@@ -1757,11 +1771,11 @@ class VectorSlicer(JavaTransformer, HasInputCol, HasOutputCol):
     """
 
     indices = Param(Params._dummy(), "indices", "An array of indices to select features from " +
-                    "a vector column. There can be no overlap with names.")
+                    "a vector column. There can be no overlap with names.", expectedType=list)
     names = Param(Params._dummy(), "names", "An array of feature names to select features from " +
                   "a vector column. These names must be specified by ML " +
                   "org.apache.spark.ml.attribute.Attribute. There can be no overlap with " +
-                  "indices.")
+                  "indices.", expectedType=list)
 
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, indices=None, names=None):
@@ -1850,12 +1864,12 @@ class Word2Vec(JavaEstimator, HasStepSize, HasMaxIter, HasSeed, HasInputCol, Has
     """
 
     vectorSize = Param(Params._dummy(), "vectorSize",
-                       "the dimension of codes after transforming from words")
+                       "the dimension of codes after transforming from words", expectedType=int)
     numPartitions = Param(Params._dummy(), "numPartitions",
-                          "number of partitions for sentences of words")
+                          "number of partitions for sentences of words", expectedType=int)
     minCount = Param(Params._dummy(), "minCount",
                      "the minimum number of times a token must appear to be included in the " +
-                     "word2vec model's vocabulary")
+                     "word2vec model's vocabulary", expectedType=int)
 
     @keyword_only
     def __init__(self, vectorSize=100, minCount=5, numPartitions=1, stepSize=0.025, maxIter=1,
@@ -1984,7 +1998,7 @@ class PCA(JavaEstimator, HasInputCol, HasOutputCol):
     .. versionadded:: 1.5.0
     """
 
-    k = Param(Params._dummy(), "k", "the number of principal components")
+    k = Param(Params._dummy(), "k", "the number of principal components", expectedType=int)
 
     @keyword_only
     def __init__(self, k=None, inputCol=None, outputCol=None):
@@ -2092,7 +2106,7 @@ class RFormula(JavaEstimator, HasFeaturesCol, HasLabelCol):
     .. versionadded:: 1.5.0
     """
 
-    formula = Param(Params._dummy(), "formula", "R model formula")
+    formula = Param(Params._dummy(), "formula", "R model formula", expectedType=str)
 
     @keyword_only
     def __init__(self, formula=None, featuresCol="features", labelCol="label"):
@@ -2172,7 +2186,7 @@ class ChiSqSelector(JavaEstimator, HasFeaturesCol, HasOutputCol, HasLabelCol):
         Param(Params._dummy(), "numTopFeatures",
               "Number of features that selector will select, ordered by statistics value " +
               "descending. If the number of features is < numTopFeatures, then this will select " +
-              "all features.")
+              "all features.", expectedType=int)
 
     @keyword_only
     def __init__(self, numTopFeatures=50, featuresCol="features", outputCol=None, labelCol="label"):
@@ -2185,7 +2199,7 @@ class ChiSqSelector(JavaEstimator, HasFeaturesCol, HasOutputCol, HasLabelCol):
             Param(self, "numTopFeatures",
                   "Number of features that selector will select, ordered by statistics value " +
                   "descending. If the number of features is < numTopFeatures, then this will " +
-                  "select all features.")
+                  "select all features.", expectedType=int)
         kwargs = self.__init__._input_kwargs
         self.setParams(**kwargs)
 

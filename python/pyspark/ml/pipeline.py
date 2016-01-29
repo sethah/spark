@@ -149,7 +149,7 @@ class Pipeline(Estimator):
     .. versionadded:: 1.3.0
     """
 
-    stages = Param(Params._dummy(), "stages", "pipeline stages")
+    stages = Param(Params._dummy(), "stages", "pipeline stages", expectedType=list)
 
     @keyword_only
     def __init__(self, stages=None):
