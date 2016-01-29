@@ -116,7 +116,7 @@ class CrossValidator(Estimator, HasSeed):
     """
 
     estimator = Param(Params._dummy(), "estimator", "estimator to be cross-validated", expectedType=None)
-    estimatorParamMaps = Param(Params._dummy(), "estimatorParamMaps", "estimator param maps", expectedType=list)
+    estimatorParamMaps = Param(Params._dummy(), "estimatorParamMaps", "estimator param maps", expectedType=None)
     evaluator = Param(
         Params._dummy(), "evaluator",
         "evaluator used to select hyper-parameters that maximize the cross-validated metric", expectedType=None)

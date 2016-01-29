@@ -130,7 +130,7 @@ class Bucketizer(JavaTransformer, HasInputCol, HasOutputCol):
               "range [x,y) except the last bucket, which also includes y. The splits " +
               "should be strictly increasing. Values at -inf, inf must be explicitly " +
               "provided to cover all Double values; otherwise, values outside the splits " +
-              "specified will be treated as errors.", expectedType=list)
+              "specified will be treated as errors.", expectedType=None)
 
     @keyword_only
     def __init__(self, splits=None, inputCol=None, outputCol=None):
@@ -1404,7 +1404,7 @@ class IndexToString(JavaTransformer, HasInputCol, HasOutputCol):
     labels = Param(Params._dummy(), "labels",
                    "Optional array of labels specifying index-string mapping." +
                    " If not provided or if empty, then metadata from inputCol is used instead.",
-                   expectedType=list)
+                   expectedType=None)
 
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, labels=None):
@@ -1771,11 +1771,11 @@ class VectorSlicer(JavaTransformer, HasInputCol, HasOutputCol):
     """
 
     indices = Param(Params._dummy(), "indices", "An array of indices to select features from " +
-                    "a vector column. There can be no overlap with names.", expectedType=list)
+                    "a vector column. There can be no overlap with names.", expectedType=None)
     names = Param(Params._dummy(), "names", "An array of feature names to select features from " +
                   "a vector column. These names must be specified by ML " +
                   "org.apache.spark.ml.attribute.Attribute. There can be no overlap with " +
-                  "indices.", expectedType=list)
+                  "indices.", expectedType=None)
 
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, indices=None, names=None):

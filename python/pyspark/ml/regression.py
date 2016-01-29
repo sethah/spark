@@ -693,7 +693,7 @@ class AFTSurvivalRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredi
     quantileProbabilities = \
         Param(Params._dummy(), "quantileProbabilities",
               "quantile probabilities array. Values of the quantile probabilities array " +
-              "should be in the range (0, 1) and the array should be non-empty.", expectedType=list)
+              "should be in the range (0, 1) and the array should be non-empty.", expectedType=None)
     quantilesCol = Param(Params._dummy(), "quantilesCol",
                          "quantiles column name. This column will output quantiles of " +
                          "corresponding quantileProbabilities if it is set.", expectedType=str)

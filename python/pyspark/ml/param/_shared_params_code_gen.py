@@ -150,19 +150,19 @@ if __name__ == "__main__":
 
     decisionTreeParams = [
         ("maxDepth", "Maximum depth of the tree. (>= 0) E.g., depth 0 means 1 leaf node; " +
-         "depth 1 means 1 internal node + 2 leaf nodes."),
+         "depth 1 means 1 internal node + 2 leaf nodes.", None, int),
         ("maxBins", "Max number of bins for" +
          " discretizing continuous features.  Must be >=2 and >= number of categories for any" +
-         " categorical feature."),
+         " categorical feature.", None, int),
         ("minInstancesPerNode", "Minimum number of instances each child must have after split. " +
          "If a split causes the left or right child to have fewer than minInstancesPerNode, the " +
-         "split will be discarded as invalid. Should be >= 1."),
-        ("minInfoGain", "Minimum information gain for a split to be considered at a tree node."),
-        ("maxMemoryInMB", "Maximum memory in MB allocated to histogram aggregation."),
+         "split will be discarded as invalid. Should be >= 1.", None, int),
+        ("minInfoGain", "Minimum information gain for a split to be considered at a tree node.", None, float),
+        ("maxMemoryInMB", "Maximum memory in MB allocated to histogram aggregation.", None, int),
         ("cacheNodeIds", "If false, the algorithm will pass trees to executors to match " +
          "instances with nodes. If true, the algorithm will cache node IDs for each instance. " +
          "Caching can speed up training of deeper trees. Users can set how often should the " +
-         "cache be checkpointed or disable it by setting checkpointInterval.")]
+         "cache be checkpointed or disable it by setting checkpointInterval.", None, bool)]
 
     decisionTreeCode = '''class DecisionTreeParams(Params):
     """
@@ -175,9 +175,13 @@ if __name__ == "__main__":
         super(DecisionTreeParams, self).__init__()'''
     dtParamMethods = ""
     dummyPlaceholders = ""
-    paramTemplate = """$name = Param($owner, "$name", "$doc")"""
-    for name, doc in decisionTreeParams:
-        variable = paramTemplate.replace("$name", name).replace("$doc", doc)
+    paramTemplate = """$name = Param($owner, "$name", "$doc", $expectedType)"""
+    for name, doc, defaultValueStr, expectedType in decisionTreeParams:
+        expectedTypeName = str(expectedType)
+        if expectedType is not None:
+            expectedTypeName = expectedType.__name__
+        variable = paramTemplate.replace("$name", name).replace("$doc", doc)\
+            .replace("$expectedType", expectedTypeName)
         dummyPlaceholders += variable.replace("$owner", "Params._dummy()") + "\n    "
         dtParamMethods += _gen_param_code(name, doc, None) + "\n"
     code.append(decisionTreeCode.replace("$dummyPlaceHolders", dummyPlaceholders) + "\n" +
