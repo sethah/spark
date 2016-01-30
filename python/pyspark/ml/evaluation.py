@@ -125,8 +125,7 @@ class BinaryClassificationEvaluator(JavaEvaluator, HasLabelCol, HasRawPrediction
     """
 
     metricName = Param(Params._dummy(), "metricName",
-                       "metric name in evaluation (areaUnderROC|areaUnderPR)",
-                       expectedType=str)
+                       "metric name in evaluation (areaUnderROC|areaUnderPR)", str)
 
     @keyword_only
     def __init__(self, rawPredictionCol="rawPrediction", labelCol="label",
@@ -195,7 +194,7 @@ class RegressionEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol):
     # when we evaluate a metric that is needed to minimize (e.g., `"rmse"`, `"mse"`, `"mae"`),
     # we take and output the negative of this metric.
     metricName = Param(Params._dummy(), "metricName",
-                       "metric name in evaluation (mse|rmse|r2|mae)", expectedType=str)
+                       "metric name in evaluation (mse|rmse|r2|mae)", str)
 
     @keyword_only
     def __init__(self, predictionCol="prediction", labelCol="label",
@@ -261,7 +260,7 @@ class MulticlassClassificationEvaluator(JavaEvaluator, HasLabelCol, HasPredictio
     """
     metricName = Param(Params._dummy(), "metricName",
                        "metric name in evaluation "
-                       "(f1|precision|recall|weightedPrecision|weightedRecall)", expectedType=str)
+                       "(f1|precision|recall|weightedPrecision|weightedRecall)", str)
 
     @keyword_only
     def __init__(self, predictionCol="prediction", labelCol="label",
