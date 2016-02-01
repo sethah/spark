@@ -157,11 +157,8 @@ class Params(Identifiable):
         Tests whether this instance contains a param with a given
         (string) name.
         """
-        if isinstance(paramName, str):
-            p = getattr(self, paramName, None)
-            return p is not None and isinstance(p, Param)
-        else:
-            raise TypeError
+        param = self._resolveParam(paramName)
+        return param in self.params
 
     @since("1.4.0")
     def getOrDefault(self, param):
