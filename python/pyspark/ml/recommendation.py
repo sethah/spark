@@ -18,7 +18,6 @@
 from pyspark import since
 from pyspark.ml.util import keyword_only
 from pyspark.ml.wrapper import JavaEstimator, JavaModel
-from pyspark.ml.param import *
 from pyspark.ml.param.shared import *
 from pyspark.mllib.common import inherit_doc
 
