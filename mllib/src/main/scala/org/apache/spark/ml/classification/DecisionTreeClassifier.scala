@@ -154,7 +154,7 @@ final class DecisionTreeClassificationModel private[ml] (
   private[ml] def this(rootNode: Node, numFeatures: Int, numClasses: Int) =
     this(Identifiable.randomUID("dtc"), rootNode, numFeatures, numClasses)
 
-  override protected def predict(features: Vector): Double = {
+  override private[ml] def predict(features: Vector): Double = {
     rootNode.predictImpl(features).prediction
   }
 

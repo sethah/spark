@@ -441,7 +441,7 @@ class LinearRegressionModel private[ml] (
   }
 
 
-  override protected def predict(features: Vector): Double = {
+  override private[ml] def predict(features: Vector): Double = {
     dot(features, coefficients) + intercept
   }
 

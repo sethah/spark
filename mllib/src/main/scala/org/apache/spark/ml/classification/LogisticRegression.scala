@@ -260,8 +260,7 @@ class LogisticRegression @Since("1.2.0") (
     train(dataset, handlePersistence)
   }
 
-  protected[spark] def train(dataset: DataFrame, handlePersistence: Boolean):
-      LogisticRegressionModel = {
+  protected [spark] def train(dataset: DataFrame, handlePersistence: Boolean): LogisticRegressionModel = {
     val w = if ($(weightCol).isEmpty) lit(1.0) else col($(weightCol))
     val instances: RDD[Instance] =
       dataset.select(col($(labelCol)), w, col($(featuresCol))).rdd.map {
@@ -436,13 +435,13 @@ class LogisticRegression @Since("1.2.0") (
 
     val model = copyValues(new LogisticRegressionModel(uid, coefficients, intercept))
     val (summaryModel, probabilityColName) = model.findSummaryModelAndProbabilityCol()
-    val logRegSummary = new BinaryLogisticRegressionTrainingSummary(
-      summaryModel.transform(dataset),
-      probabilityColName,
-      $(labelCol),
-      $(featuresCol),
-      objectiveHistory)
-    model.setSummary(logRegSummary)
+//    val logRegSummary = new BinaryLogisticRegressionTrainingSummary(
+//      summaryModel.transform(dataset),
+//      probabilityColName,
+//      $(labelCol),
+//      $(featuresCol),
+//      objectiveHistory)
+    model//.setSummary(logRegSummary)
   }
 
   @Since("1.4.0")
@@ -555,7 +554,7 @@ class LogisticRegressionModel private[spark] (
    * Predict label for the given feature vector.
    * The behavior of this can be adjusted using [[thresholds]].
    */
-  override protected def predict(features: Vector): Double = {
+  override private[ml] def predict(features: Vector): Double = {
     // Note: We should use getThreshold instead of $(threshold) since getThreshold is overridden.
     if (score(features) > getThreshold) 1 else 0
   }
