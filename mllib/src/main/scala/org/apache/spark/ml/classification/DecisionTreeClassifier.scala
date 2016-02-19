@@ -158,7 +158,7 @@ final class DecisionTreeClassificationModel private[ml] (
     rootNode.predictImpl(features).prediction
   }
 
-  override protected def predictRaw(features: Vector): Vector = {
+  override private[ml] def predictRaw(features: Vector): Vector = {
     Vectors.dense(rootNode.predictImpl(features).impurityStats.stats.clone())
   }
 

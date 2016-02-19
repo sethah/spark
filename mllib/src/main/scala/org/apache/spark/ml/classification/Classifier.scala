@@ -147,7 +147,7 @@ abstract class ClassificationModel[FeaturesType, M <: ClassificationModel[Featur
    *          This raw prediction may be any real number, where a larger value indicates greater
    *          confidence for that label.
    */
-  protected def predictRaw(features: FeaturesType): Vector
+  private[ml] def predictRaw(features: FeaturesType): Vector
 
   /**
    * Given a vector of raw predictions, select the predicted label.

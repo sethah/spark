@@ -194,7 +194,7 @@ final class RandomForestClassificationModel private[ml] (
     dataset.withColumn($(predictionCol), predictUDF(col($(featuresCol))))
   }
 
-  override protected def predictRaw(features: Vector): Vector = {
+  override private[ml] def predictRaw(features: Vector): Vector = {
     // TODO: When we add a generic Bagging class, handle transform there: SPARK-7128
     // Classifies using majority votes.
     // Ignore the tree weights since all are 1.0 for now.

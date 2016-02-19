@@ -260,7 +260,8 @@ class LogisticRegression @Since("1.2.0") (
     train(dataset, handlePersistence)
   }
 
-  protected [spark] def train(dataset: DataFrame, handlePersistence: Boolean): LogisticRegressionModel = {
+  protected [spark] def train(dataset: DataFrame, handlePersistence: Boolean
+                             ): LogisticRegressionModel = {
     val w = if ($(weightCol).isEmpty) lit(1.0) else col($(weightCol))
     val instances: RDD[Instance] =
       dataset.select(col($(labelCol)), w, col($(featuresCol))).rdd.map {
@@ -575,7 +576,7 @@ class LogisticRegressionModel private[spark] (
     }
   }
 
-  override protected def predictRaw(features: Vector): Vector = {
+  override private[ml] def predictRaw(features: Vector): Vector = {
     val m = margin(features)
     Vectors.dense(-m, m)
   }
