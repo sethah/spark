@@ -70,33 +70,53 @@ abstract class AdditiveClassificationModel[
     M <: AdditiveClassificationModel[FeaturesType, M]]
   extends ProbabilisticClassificationModel[FeaturesType, M] with AdditiveClassifierParams[FeaturesType] {
 
-
 }
 
 /**
   * TODO
   */
 private[classification] trait AdditiveClassifierParams[FeaturesType]
-  extends ProbabilisticClassifierParams {
+  extends ProbabilisticClassifierParams with HasMaxIter {
 
   import AdditiveClassifierParams._
 
-  val baseEstimators: Param[Array[BaseClassifierType[FeaturesType]]] = new Param(
-    this, "baseEstimators", "")
-
-  def getBaseEstimators: Array[BaseClassifierType[FeaturesType]] = $(baseEstimators)
+  /** @group setParam */
+  def setMaxIter(value: Int): this.type = set(maxIter, value)
 
 }
 
 object AdditiveClassifierParams {
   // scalastyle:off structural.type
-  type BaseClassifierType[FeaturesType] = ProbabilisticClassifier[FeaturesType, BE, BM] forSome {
-    type BM <: ProbabilisticClassificationModel[FeaturesType, BM]
-    type BE <: ProbabilisticClassifier[FeaturesType, BE, BM]
-  }
+  type AdditiveClassifierBaseType[FeaturesType] = ProbabilisticClassifier[FeaturesType, BE, BM]
+      forSome {
+        type BM <: ProbabilisticClassificationModel[FeaturesType, BM]
+        type BE <: ProbabilisticClassifier[FeaturesType, BE, BM]
+      }
 
-  type BaseClassificationModelType[F] = ProbabilisticClassificationModel[F, BM] forSome {
+  type AdditiveClassificationModelBaseType[F] = ProbabilisticClassificationModel[F, BM] forSome {
     type BM <: ProbabilisticClassificationModel[F, BM]
   }
+  // scalastyle:on structural.type
+}
+
+private[classification] trait WeightBoostingClassifierParams[FeaturesType]
+  extends ProbabilisticClassifierParams with HasMaxIter {
+
+  import org.apache.spark.ml.classification.WeightBoostingClassifierParams._
+
+  val baseEstimators: Param[Array[WeightBoostingClassifierBaseType[FeaturesType]]] =
+    new Param(this, "baseEstimators", "")
+
+  def getBaseEstimators: Array[WeightBoostingClassifierBaseType[FeaturesType]] =
+    $(baseEstimators)
+
+}
+
+object WeightBoostingClassifierParams {
+  // scalastyle:off structural.type
+  type WeightBoostingClassifierBaseType[F] = AdditiveClassifierParams.AdditiveClassifierBaseType[F]
+
+  type WeightBoostingClassificationModelBaseType[F] =
+    AdditiveClassifierParams.AdditiveClassificationModelBaseType[F]
   // scalastyle:on structural.type
 }

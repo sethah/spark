@@ -121,7 +121,7 @@ private[spark] class VarianceCalculator(stats: Array[Double]) extends ImpurityCa
   /**
    * Number of data points accounted for in the sufficient statistics.
    */
-  def count: Long = stats(0).toLong
+  def count: Double = stats(0)
 
   /**
    * Prediction which should be made based on the sufficient statistics.

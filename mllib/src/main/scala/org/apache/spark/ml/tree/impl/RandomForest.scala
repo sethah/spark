@@ -44,7 +44,8 @@ private[ml] object RandomForest extends Logging {
 
   /**
    * Train a random forest.
-   * @param input Training data: RDD of [[org.apache.spark.ml.feature.Instance]]
+    *
+    * @param input Training data: RDD of [[org.apache.spark.ml.feature.Instance]]
    * @return an unweighted set of trees
    */
   def run(
@@ -75,6 +76,14 @@ private[ml] object RandomForest extends Logging {
     // of the input data.
     timer.start("findSplitsBins")
     val splits = findSplits(retaggedInput, metadata, seed)
+//    splits.foreach(x => printf(s"${x.length}, "))
+//    splits.foreach { splitsArray =>
+//      splitsArray.foreach {
+//        case s: ContinuousSplit =>
+//          println(s.featureIndex, s.threshold)
+//        case _ =>
+//      }
+//    }
     timer.stop("findSplitsBins")
     logDebug("numBins: feature: number of bins")
     logDebug(Range(0, metadata.numFeatures).map { featureIndex =>
@@ -592,7 +601,8 @@ private[ml] object RandomForest extends Logging {
 
   /**
    * Calculate the impurity statistics for a give (feature, split) based upon left/right aggregates.
-   * @param stats the recycle impurity statistics for this feature's all splits,
+    *
+    * @param stats the recycle impurity statistics for this feature's all splits,
    *              only 'impurity' and 'impurityCalculator' are valid between each iteration
    * @param leftImpurityCalculator left node aggregates for this (feature, split)
    * @param rightImpurityCalculator right node aggregate for this (feature, split)
@@ -626,6 +636,7 @@ private[ml] object RandomForest extends Logging {
     // then this split is invalid, return invalid information gain stats.
     if ((leftCount < metadata.minInstancesPerNode) ||
       (rightCount < metadata.minInstancesPerNode)) {
+//      println("INVALID SPLIT!!!!")
       return ImpurityStats.getInvalidImpurityStats(parentImpurityCalculator)
     }
 
@@ -636,10 +647,13 @@ private[ml] object RandomForest extends Logging {
     val rightWeight = rightCount / totalCount.toDouble
 
     val gain = impurity - leftWeight * leftImpurity - rightWeight * rightImpurity
+//    println("***", gain, leftWeight, leftImpurity, rightWeight, rightImpurity, impurity)
+//    println("---", leftCount, rightCount, totalCount)
 
     // if information gain doesn't satisfy minimum information gain,
     // then this split is invalid, return invalid information gain stats.
     if (gain < metadata.minInfoGain) {
+//      println("INVALID INFO GAIN!!:", gain)
       return ImpurityStats.getInvalidImpurityStats(parentImpurityCalculator)
     }
 
@@ -649,7 +663,8 @@ private[ml] object RandomForest extends Logging {
 
   /**
    * Find the best split for a node.
-   * @param binAggregates Bin statistics.
+    *
+    * @param binAggregates Bin statistics.
    * @return tuple for best split: (Split, information gain, prediction at node)
    */
   private[tree] def binsToBestSplit(
@@ -927,7 +942,8 @@ private[ml] object RandomForest extends Logging {
    * NOTE: Returned number of splits is set based on `featureSamples` and
    *       could be different from the specified `numSplits`.
    *       The `numSplits` attribute in the `DecisionTreeMetadata` class will be set accordingly.
-   * @param featureSamples feature values of each sample
+    *
+    * @param featureSamples feature values of each sample
    * @param metadata decision tree metadata
    *                 NOTE: `metadata.numbins` will be changed accordingly
    *                       if there are not enough splits to be found
@@ -1063,7 +1079,8 @@ private[ml] object RandomForest extends Logging {
 
   /**
    * Get the number of values to be stored for this node in the bin aggregates.
-   * @param featureSubset  Indices of features which may be split at this node.
+    *
+    * @param featureSubset  Indices of features which may be split at this node.
    *                       If None, then use all features.
    */
   private def aggregateSizeForNode(
@@ -1097,7 +1114,8 @@ private[ml] object RandomForest extends Logging {
    *
    * Note: This should not be used with Gradient-Boosted Trees.  It only makes sense for
    *       independently trained trees.
-   * @param trees  Unweighted forest of trees
+    *
+    * @param trees  Unweighted forest of trees
    * @param numFeatures  Number of features in model (even if not all are explicitly used by
    *                     the model).
    *                     If -1, then numFeatures is set based on the max feature index in all trees.
@@ -1140,7 +1158,8 @@ private[ml] object RandomForest extends Logging {
   /**
    * Recursive method for computing feature importances for one tree.
    * This walks down the tree, adding to the importance of 1 feature at each node.
-   * @param node  Current node in recursion
+    *
+    * @param node  Current node in recursion
    * @param importances  Aggregate feature importances, modified by this method
    */
   private[impl] def computeFeatureImportance(
@@ -1161,7 +1180,8 @@ private[ml] object RandomForest extends Logging {
   /**
    * Normalize the values of this map to sum to 1, in place.
    * If all values are 0, this method does nothing.
-   * @param map  Map with non-negative values.
+    *
+    * @param map  Map with non-negative values.
    */
   private[impl] def normalizeMapValues(map: OpenHashMap[Int, Double]): Unit = {
     val total = map.map(_._2).sum

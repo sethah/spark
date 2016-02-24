@@ -22,10 +22,14 @@ import org.apache.spark.ml.classification.DecisionTreeClassificationModel
 import org.apache.spark.ml.impl.TreeTests
 import org.apache.spark.ml.tree.{ContinuousSplit, DecisionTreeModel, LeafNode, Node}
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
+import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.impurity.GiniCalculator
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.mllib.util.TestingUtils._
 import org.apache.spark.util.collection.OpenHashMap
+import org.apache.spark.ml.classification.DecisionTreeClassifier
+import org.apache.spark.ml.feature.{StringIndexer, IndexToString, VectorIndexer}
+import org.apache.spark.sql.functions._
 
 /**
  * Test suite for [[RandomForest]].
@@ -85,6 +89,31 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     val expected = Vectors.dense((1.0 + feature0importance / tree2norm) / 2.0,
       (feature1importance / tree2norm) / 2.0)
     assert(importances ~== expected relTol 0.01)
+  }
+
+  test("info gain") {
+    val data = Array(LabeledPoint(1.0, Vectors.dense(1.0, 0.0)),
+      LabeledPoint(0.0, Vectors.dense(0.0, 0.0)),
+      LabeledPoint(0.0, Vectors.dense(0.0, 0.0)),
+      LabeledPoint(1.0, Vectors.dense(1.0, 0.0)),
+      LabeledPoint(0.0, Vectors.dense(0.0, 0.0)),
+      LabeledPoint(0.0, Vectors.dense(0.0, 0.0)))
+    val rdd = sc.parallelize(data)
+    val df = sqlContext.createDataFrame(rdd).withColumn("weight", lit(1.0 / 100.0))
+    val labelIndexer = new StringIndexer().setInputCol("label").setOutputCol("indexedLabel").fit(df)
+    val df2 = labelIndexer.transform(df)
+    val dt = new DecisionTreeClassifier().setLabelCol("indexedLabel").setWeightCol("weight").setMinInstancesPerNode(0).setMaxDepth(3)
+    val model = dt.fit(df2)
+    val preds = rdd.collect().map { lp => model.predict(lp.features)}
+    preds.foreach(println)
+
+    val df3 = sqlContext.createDataFrame(rdd).withColumn("weight", lit(1.0))
+    val labelIndexer2 = new StringIndexer().setInputCol("label").setOutputCol("indexedLabel").fit(df)
+    val df4 = labelIndexer2.transform(df3)
+    val dt2 = new DecisionTreeClassifier().setLabelCol("indexedLabel").setWeightCol("weight").setMinInstancesPerNode(0).setMaxDepth(3)
+    val model2 = dt2.fit(df4)
+    val preds2 = rdd.collect().map { lp => model2.predict(lp.features)}
+    preds2.foreach(println)
   }
 
   test("normalizeMapValues") {

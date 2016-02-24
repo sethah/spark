@@ -316,61 +316,62 @@ class DecisionTreeClassifierSuite extends SparkFunSuite with MLlibTestSparkConte
         fail(s"Root node should be an internal node, but got ${other.getClass.getName}: $other.")
     }
 
-  test("training with weighted data") {
-    val (dataset, weightedDataset) = {
-      val testData1 = TreeTests.generateNoisyData(5, 123)
-      val testData2 = TreeTests.generateNoisyData(5, 456)
+    test("training with weighted data") {
+      val (dataset, weightedDataset) = {
+        val testData1 = TreeTests.generateNoisyData(5, 123)
+        val testData2 = TreeTests.generateNoisyData(5, 456)
 
-      // Over-sample the 1st dataset twice.
-      val overSampledTestData1 = testData1.flatMap {
-        labeledPoint => Iterator(labeledPoint, labeledPoint)
-      }
+        // Over-sample the 1st dataset twice.
+        val overSampledTestData1 = testData1.flatMap {
+          labeledPoint => Iterator(labeledPoint, labeledPoint)
+        }
 
-      val rnd = new Random(8392)
-      val weightedTestData1 = testData1.flatMap {
-        case LabeledPoint(label: Double, features: Vector) => {
-          if (rnd.nextGaussian() > 0.0) {
-            Iterator(
-              Instance(label, 1.2, features),
-              Instance(label, 0.8, features),
-              Instance(0.0, 0.0, features))
-          } else {
-            Iterator(
-              Instance(label, 0.3, features),
-              Instance(1, 0.0, features),
-              Instance(label, 1.1, features),
-              Instance(label, 0.6, features))
+        val rnd = new Random(8392)
+        val weightedTestData1 = testData1.flatMap {
+          case LabeledPoint(label: Double, features: Vector) => {
+            if (rnd.nextGaussian() > 0.0) {
+              Iterator(
+                Instance(label, 1.2, features),
+                Instance(label, 0.8, features),
+                Instance(0.0, 0.0, features))
+            } else {
+              Iterator(
+                Instance(label, 0.3, features),
+                Instance(1, 0.0, features),
+                Instance(label, 1.1, features),
+                Instance(label, 0.6, features))
+            }
           }
         }
-      }
-      val weightedTestData2 = testData2.map {
-        p: LabeledPoint => Instance(p.label, 1, p.features)
+        val weightedTestData2 = testData2.map {
+          p: LabeledPoint => Instance(p.label, 1, p.features)
+        }
+
+        (sqlContext.createDataFrame(sc.parallelize(overSampledTestData1 ++ testData2, 2)),
+          sqlContext.createDataFrame(sc.parallelize(weightedTestData1 ++ weightedTestData2, 2)))
       }
 
-      (sqlContext.createDataFrame(sc.parallelize(overSampledTestData1 ++ testData2, 2)),
-        sqlContext.createDataFrame(sc.parallelize(weightedTestData1 ++ weightedTestData2, 2)))
+      val labelIndexer = new StringIndexer()
+        .setInputCol("label")
+        .setOutputCol("indexedLabel")
+        .fit(dataset)
+
+      val featureIndexer = new VectorIndexer()
+        .setInputCol("features")
+        .setOutputCol("indexedFeatures")
+        .setMaxCategories(4)
+        .fit(dataset)
+
+      val dt = new DecisionTreeClassifier()
+        .setLabelCol("indexedLabel")
+        .setFeaturesCol("indexedFeatures")
+
+      val model1 = dt.fit(featureIndexer.transform(labelIndexer.transform(dataset)))
+      val model2 = dt.fit(featureIndexer.transform(labelIndexer.transform(weightedDataset)),
+        dt.weightCol -> "weight")
+
+      TreeTests.checkEqual(model1, model2)
     }
-
-    val labelIndexer = new StringIndexer()
-      .setInputCol("label")
-      .setOutputCol("indexedLabel")
-      .fit(dataset)
-
-    val featureIndexer = new VectorIndexer()
-      .setInputCol("features")
-      .setOutputCol("indexedFeatures")
-      .setMaxCategories(4)
-      .fit(dataset)
-
-    val dt = new DecisionTreeClassifier()
-      .setLabelCol("indexedLabel")
-      .setFeaturesCol("indexedFeatures")
-
-    val model1 = dt.fit(featureIndexer.transform(labelIndexer.transform(dataset)))
-    val model2 = dt.fit(featureIndexer.transform(labelIndexer.transform(weightedDataset)),
-      dt.weightCol->"weight")
-
-    TreeTests.checkEqual(model1, model2)
   }
 
   /////////////////////////////////////////////////////////////////////////////

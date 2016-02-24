@@ -137,7 +137,7 @@ private[spark] class EntropyCalculator(stats: Array[Double]) extends ImpurityCal
   /**
    * Number of data points accounted for in the sufficient statistics.
    */
-  def count: Long = stats.sum.toLong
+  def count: Double = stats.sum
 
   /**
    * Prediction which should be made based on the sufficient statistics.

@@ -67,7 +67,7 @@ private[ml] trait DecisionTreeParams extends PredictorParams
   final val minInstancesPerNode: IntParam = new IntParam(this, "minInstancesPerNode", "Minimum" +
     " number of instances each child must have after split.  If a split causes the left or right" +
     " child to have fewer than minInstancesPerNode, the split will be discarded as invalid." +
-    " Should be >= 1.", ParamValidators.gtEq(1))
+    " Should be >= 1.", ParamValidators.gtEq(0))
 
   /**
    * Minimum information gain for a split to be considered at a tree node.

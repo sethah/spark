@@ -146,7 +146,7 @@ private[spark] abstract class ImpurityCalculator(val stats: Array[Double]) exten
   /**
    * Number of data points accounted for in the sufficient statistics.
    */
-  def count: Long
+  def count: Double
 
   /**
    * Prediction which should be made based on the sufficient statistics.
