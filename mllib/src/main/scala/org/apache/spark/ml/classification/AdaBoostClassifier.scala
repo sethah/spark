@@ -32,9 +32,6 @@ import org.apache.spark.ml.param._
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.mllib.linalg.{BLAS, Vector, DenseVector}
-import org.apache.spark.ml.classification.AdditiveClassifierParams._
-//import org.apache.spark.ml.classification.WeightBoostingClassifierParams
-//import org.apache.spark.ml.classification.WeightBoostingClassifierParams
 import scala.language.existentials
 import org.apache.spark.ml.attribute._
 import org.apache.spark.ml.feature.StringIndexer
@@ -56,6 +53,7 @@ final class AdaBoostClassifier (override val uid: String)
 
   @Since("2.0.0")
   override def setMaxIter(value: Int): this.type = super.setMaxIter(value)
+  setDefault(maxIter -> 10)
 
   @Since("2.0.0")
   def setBaseEstimators(value: Array[WeightBoostingClassifierBaseType[Vector]]): this.type = set(baseEstimators, value)
@@ -75,6 +73,7 @@ final class AdaBoostClassifier (override val uid: String)
         " specified. See StringIndexer.")
       // TODO: Automatically index labels: SPARK-7126
     }
+    println("NUM CLASSES", numClasses)
     val w = if ($(weightCol).isEmpty) lit(1.0) else col($(weightCol))
     val instances: RDD[Instance] = dataset.select(
       col($(labelCol)), w, col($(featuresCol))).map {
@@ -127,7 +126,6 @@ final class AdaBoostClassifier (override val uid: String)
     if (predicted == label) trueValue else falseValue
   }
 
-
   override def copy(extra: ParamMap): AdaBoostClassifier = defaultCopy(extra)
 
 }
@@ -177,6 +175,8 @@ final class AdaBoostClassificationModel private[ml](
     _models.zip(_weights).foreach { case (model, weight) =>
       predictions(model.predict(features).toInt) += weight
     }
+    predictions.foreach(p => printf(s"$p,"))
+    println()
     predictions.zipWithIndex.maxBy(x => x._1)._2
   }
 
