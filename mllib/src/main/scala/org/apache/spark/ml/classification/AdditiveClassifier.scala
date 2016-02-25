@@ -17,17 +17,11 @@
 
 package org.apache.spark.ml.classification
 
-import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.ml.param.shared.{HasThresholds, HasProbabilityCol}
-import org.apache.spark.ml.util.SchemaUtils
-import org.apache.spark.mllib.linalg.{Vectors, VectorUDT, Vector}
-import org.apache.spark.sql.DataFrame
 import scala.language.existentials
-import org.apache.spark.sql.functions._
-import org.apache.spark.ml.param.shared._
-import org.apache.spark.ml.param.{Param, ParamMap, Params}
-import org.apache.spark.sql.types.{DataType, StructType}
 
+import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.ml.param.{Param, ParamMap}
+import org.apache.spark.ml.param.shared._
 
 
 /**
@@ -41,7 +35,19 @@ abstract class AdditiveClassifier[
     M <: AdditiveClassificationModel[FeaturesType, M]]
   extends ProbabilisticClassifier[FeaturesType, E, M] with AdditiveClassifierParams[FeaturesType] {
 
+}
 
+/**
+  * :: DeveloperApi ::
+  *
+  * TODO
+  */
+@DeveloperApi
+abstract class AdditiveClassificationModel[
+FeaturesType,
+M <: AdditiveClassificationModel[FeaturesType, M]]
+  extends ProbabilisticClassificationModel[FeaturesType, M]
+    with AdditiveClassifierParams[FeaturesType] {
 
 }
 
@@ -54,9 +60,11 @@ abstract class WeightBoostingClassifier[
     FeaturesType,
     E <: AdditiveClassifier[FeaturesType, E, M],
     M <: AdditiveClassificationModel[FeaturesType, M]]
-  extends AdditiveClassifier[FeaturesType, E, M] with AdditiveClassifierParams[FeaturesType] {
+  extends AdditiveClassifier[FeaturesType, E, M] with WeightBoostingParams[FeaturesType] {
 
-
+  protected def makeLearner: BaseEstimatorType[FeaturesType] = {
+    getBaseEstimators.head.copy(ParamMap.empty)
+  }
 }
 
 /**
@@ -65,10 +73,14 @@ abstract class WeightBoostingClassifier[
   * TODO
   */
 @DeveloperApi
-abstract class AdditiveClassificationModel[
-    FeaturesType,
-    M <: AdditiveClassificationModel[FeaturesType, M]]
-  extends ProbabilisticClassificationModel[FeaturesType, M] with AdditiveClassifierParams[FeaturesType] {
+abstract class WeightBoostingClassificationModel[
+FeaturesType,
+M <: AdditiveClassificationModel[FeaturesType, M]]
+  extends AdditiveClassificationModel[FeaturesType, M] with WeightBoostingParams[FeaturesType] {
+
+  def models: Array[BaseTransformerType[FeaturesType]]
+
+  def modelWeights: Array[Double]
 
 }
 
@@ -78,48 +90,38 @@ abstract class AdditiveClassificationModel[
 private[classification] trait AdditiveClassifierParams[FeaturesType]
   extends ProbabilisticClassifierParams with HasMaxIter {
 
-  import AdditiveClassifierParams._
-
   /** @group setParam */
   def setMaxIter(value: Int): this.type = set(maxIter, value)
 
 }
 
-object AdditiveClassifierParams {
-  // scalastyle:off structural.type
-  type AdditiveClassifierBaseType[FeaturesType] = ProbabilisticClassifier[FeaturesType, BE, BM]
-      forSome {
-        type BM <: ProbabilisticClassificationModel[FeaturesType, BM]
-        type BE <: ProbabilisticClassifier[FeaturesType, BE, BM]
-      }
+private[classification] trait WeightBoostingParams[FeaturesType]
+  extends ProbabilisticClassifierParams with HasMaxIter with HasSeed {
 
-  type AdditiveClassificationModelBaseType[F] = ProbabilisticClassificationModel[F, BM] forSome {
+  /** @group setParam */
+  def setSeed(value: Long): this.type = set(seed, value)
+
+  // scalastyle:off structural.type
+  type BaseEstimatorType[F] = ProbabilisticClassifier[F, BE, BM] forSome {
+    type BM <: ProbabilisticClassificationModel[F, BM]
+    type BE <: ProbabilisticClassifier[F, BE, BM]
+  }
+
+  type BaseTransformerType[F] = ProbabilisticClassificationModel[F, BM] forSome {
     type BM <: ProbabilisticClassificationModel[F, BM]
   }
   // scalastyle:on structural.type
-}
 
 private[classification] trait WeightBoostingClassifierParams[FeaturesType]
   extends ProbabilisticClassifierParams with HasMaxIter with HasStepSize {
 
-  import org.apache.spark.ml.classification.WeightBoostingClassifierParams._
-
-  val baseEstimators: Param[Array[WeightBoostingClassifierBaseType[FeaturesType]]] =
+  val baseEstimators: Param[Array[BaseEstimatorType[FeaturesType]]] =
     new Param(this, "baseEstimators", "")
 
-  def getBaseEstimators: Array[WeightBoostingClassifierBaseType[FeaturesType]] =
+  def getBaseEstimators: Array[BaseEstimatorType[FeaturesType]] =
     $(baseEstimators)
 
   def setStepSize(value: Double): this.type = set(stepSize, value)
   setDefault(stepSize -> 1.0  )
 
-}
-
-object WeightBoostingClassifierParams {
-  // scalastyle:off structural.type
-  type WeightBoostingClassifierBaseType[F] = AdditiveClassifierParams.AdditiveClassifierBaseType[F]
-
-  type WeightBoostingClassificationModelBaseType[F] =
-    AdditiveClassifierParams.AdditiveClassificationModelBaseType[F]
-  // scalastyle:on structural.type
 }

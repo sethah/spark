@@ -17,30 +17,33 @@
 
 package org.apache.spark.ml.classification
 
-import org.apache.spark.Logging
-import org.apache.spark.annotation.Since
-import org.apache.spark.ml.classification.WeightBoostingClassifierParams.{WeightBoostingClassifierBaseType, WeightBoostingClassificationModelBaseType}
-import org.apache.spark.ml.param.ParamMap
-import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
-import org.apache.spark.ml.{PredictorParams, PredictionModel, Predictor}
-import org.apache.spark.mllib.util.MLUtils
-import org.apache.spark.sql.{DataFrame, Row}
-import org.apache.spark.ml.feature.Instance
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions._
-import org.apache.spark.ml.param._
-import org.apache.spark.ml.PredictorParams
-import org.apache.spark.ml.param.shared._
-import org.apache.spark.mllib.linalg.{BLAS, Vector, DenseVector}
 import scala.language.existentials
+
+import org.apache.spark.annotation.Since
+import org.apache.spark.Logging
 import org.apache.spark.ml.attribute._
-import org.apache.spark.ml.feature.StringIndexer
+import org.apache.spark.ml.feature.Instance
+import org.apache.spark.ml.param.{Param, ParamMap}
+import org.apache.spark.ml.param.shared._
+import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
+import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.{DataFrame, Row}
+import org.apache.spark.sql.functions._
+
 
 private[classification] trait AdaBoostClassifierParams
-  extends WeightBoostingClassifierParams[Vector] with HasTol with HasWeightCol with Logging {
+  extends WeightBoostingParams[Vector] with HasWeightCol with Logging {
 
+  final val algo: Param[String] = new Param[String](this, "algo", "")
+
+  def getAlgo: String = $(algo)
 }
 
+/**
+* :: Experimental ::
+* AdaBoost Classification.
+*/
 final class AdaBoostClassifier (override val uid: String)
   extends WeightBoostingClassifier[Vector, AdaBoostClassifier, AdaBoostClassificationModel]
   with AdaBoostClassifierParams {
@@ -54,17 +57,20 @@ final class AdaBoostClassifier (override val uid: String)
   @Since("2.0.0")
   override def setStepSize(value: Double): this.type = super.setStepSize(value)
 
+  override def setSeed(value: Long): this.type = super.setSeed(value)
+
   @Since("2.0.0")
   override def setMaxIter(value: Int): this.type = super.setMaxIter(value)
   setDefault(maxIter -> 10)
 
   @Since("2.0.0")
-  def setBaseEstimators(value: Array[WeightBoostingClassifierBaseType[Vector]]): this.type = set(baseEstimators, value)
-  setDefault(baseEstimators -> Array(new DecisionTreeClassifier().setWeightCol("weight").setMaxDepth(1).setMinInstancesPerNode(0)))
+  def setBaseEstimators(value: Array[BaseEstimatorType[Vector]]): this.type =
+    set(baseEstimators, value)
+  setDefault(baseEstimators -> Array(
+      new DecisionTreeClassifier().setWeightCol("weight").setMaxDepth(1).setMinInstancesPerNode(0)))
 
-  protected def makeLearner: WeightBoostingClassifierBaseType[Vector] = {
-    getBaseEstimators.head.copy(ParamMap.empty)
-  }
+  @Since("2.0.0")
+  def setAlgo(value: String): this.type = set(algo, value)
 
   override protected def train(dataset: DataFrame): AdaBoostClassificationModel = {
     import dataset.sqlContext.implicits._
@@ -85,11 +91,12 @@ final class AdaBoostClassifier (override val uid: String)
 
     val numIterations = getMaxIter
     val learningRate = getStepSize
-    val models = new Array[WeightBoostingClassificationModelBaseType[Vector]](numIterations)
-    val alphas = new Array[Double](numIterations)
+    val models = new Array[BaseTransformerType[Vector]](numIterations)
+    val estimatorWeights = new Array[Double](numIterations)
     var weightedInput = instances
     var m = 0
-    while (m < numIterations) {
+    var earlyStop = false
+    while (m < numIterations && !earlyStop) {
       val learner = makeLearner
       val dfWeighted = weightedInput.toDF()
       val labelMeta = NominalAttribute.defaultAttr.withName("label")
@@ -102,26 +109,35 @@ final class AdaBoostClassifier (override val uid: String)
         indicator(predicted, label, 0.0, weight)
       }.sum()
       val totalWeight = weightedInput.map(_.weight).sum()
-      val err = weightedError / totalWeight
-      val alpha = if (err < 0.00001) 0.0 else math.log((1 - err) / err) + math.log(numClasses - 1)
+      val estimatorError = weightedError / totalWeight
 
-      models(m) = model
-      alphas(m) = alpha
-
-      weightedInput = weightedInput.map { case Instance(label, weight, features) =>
-        val predicted = model.predict(features)
-        val e = indicator(predicted, label, 0.0, alpha)
-        Instance(label, weight * math.exp(e), features)
+      if (estimatorError <= 1.0 - (1.0 / numClasses)) {
+        throw new Exception("Error is worse than random guessing, model cannot be fit")
       }
-      val totalAfterReweighting = weightedInput.map(_.weight).sum()
-      weightedInput = weightedInput.map( instance =>
-        Instance(instance.label, instance.weight / totalAfterReweighting, instance.features)
-      )
+      val estimatorWeight = if (estimatorError <= 0.0) {
+        1.0
+      } else {
+        math.log((1 - estimatorError) / estimatorError) + math.log(numClasses - 1)
+      }
 
+      earlyStop = (estimatorError <= 0.0) || (m == numIterations - 1)
+      models(m) = model
+      estimatorWeights(m) = estimatorWeight
+
+      if (!earlyStop) {
+        weightedInput = weightedInput.map { case Instance(label, weight, features) =>
+          val predicted = model.predict(features)
+          val e = indicator(predicted, label, 0.0, estimatorWeight)
+          Instance(label, weight * math.exp(e), features)
+        }
+        val totalAfterReweighting = weightedInput.map(_.weight).sum()
+        weightedInput = weightedInput.map( instance =>
+          Instance(instance.label, instance.weight / totalAfterReweighting, instance.features)
+        )
+      }
       m += 1
-
     }
-    copyValues(new AdaBoostClassificationModel(uid, models, alphas, numClasses))
+    copyValues(new AdaBoostClassificationModel(uid, models, estimatorWeights, numClasses))
   }
 
   private[this] def indicator(predicted: Double, label: Double,
@@ -130,30 +146,37 @@ final class AdaBoostClassifier (override val uid: String)
   }
 
   override def copy(extra: ParamMap): AdaBoostClassifier = defaultCopy(extra)
-
 }
 
+/**
+* :: Experimental ::
+* Model produced by [[AdaBoostClassifier]].
+*/
 final class AdaBoostClassificationModel private[ml](
    override val uid: String,
-   val _models: Array[WeightBoostingClassificationModelBaseType[Vector]],
-   val _weights: Array[Double],
+   val _models: Array[_ <: ProbabilisticClassificationModel[Vector, _]],
+   val _modelWeights: Array[Double],
    val numClasses: Int
-   ) extends AdditiveClassificationModel[Vector, AdaBoostClassificationModel] with Serializable {
+   ) extends WeightBoostingClassificationModel[Vector, AdaBoostClassificationModel]
+  with AdaBoostClassifierParams with Serializable {
+
+  @Since("1.4.0")
+  def models: Array[BaseTransformerType[Vector]] =
+    _models.asInstanceOf[Array[BaseTransformerType[Vector]]]
+
+  @Since("1.4.0")
+  def modelWeights: Array[Double] = _modelWeights
 
   override private[ml] def predictRaw(features: Vector): Vector = {
-    val weightSum = _weights.sum
+    val weightSum = _modelWeights.sum
     val prediction = new Array[Double](numClasses)
     for (m <- 0 until _models.length) {
-      val rawPrediction = _models(m).predictRaw(features).toArray
-      val rawSum = rawPrediction.sum
-//      rawPrediction.foreach(x => printf(s"${x.toString},"))
-//      println()
-      val weight = _weights(m)
+      val rawPrediction = _models(m).predictProbability(features).toArray
+      val weight = _modelWeights(m)
       for  (k <- 0 until numClasses) {
-        prediction(k) += rawPrediction(k) / rawSum * weight / weightSum
+        prediction(k) += rawPrediction(k) * weight / weightSum
       }
     }
-//    println("-----")
     new DenseVector(prediction)
   }
 
@@ -165,22 +188,12 @@ final class AdaBoostClassificationModel private[ml](
     predict(features)
   }
 
-  private[ml] def predict2(features: Vector): Double = {
-    val totalPrediction = _models.zip(_weights).foldLeft(0.0) { case (acc, (model, weight)) =>
-      val predicted = 2 * model.predict(features) - 1
-      acc + predicted * weight
-    }
-    if (totalPrediction >= 0.0) 1.0 else 0.0
-  }
-
   override private[ml] def predict(features: Vector): Double = {
-    val predictions = new Array[Double](numClasses)
-    _models.zip(_weights).foreach { case (model, weight) =>
-      predictions(model.predict(features).toInt) += weight
+    val predictions = Vectors.zeros(numClasses).asInstanceOf[DenseVector]
+    _models.zip(_modelWeights).foreach { case (model, weight) =>
+      predictions.values(model.predict(features).toInt) += weight
     }
-    predictions.foreach(p => printf(s"$p,"))
-    println()
-    predictions.zipWithIndex.maxBy(x => x._1)._2
+    predictions.argmax
   }
 
   /**
@@ -193,11 +206,11 @@ final class AdaBoostClassificationModel private[ml](
    * @return Estimated class conditional probabilities (modified input vector)
    */
   protected def raw2probabilityInPlace(rawPrediction: Vector): Vector = {
-    new DenseVector(Array(0))
+    rawPrediction
   }
 
   override def copy(extra: ParamMap): AdaBoostClassificationModel = {
-    copyValues(new AdaBoostClassificationModel(uid, _models, _weights, numClasses),
+    copyValues(new AdaBoostClassificationModel(uid, _models, _modelWeights, numClasses),
       extra).setParent(parent)
   }
 }
