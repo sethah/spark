@@ -28,7 +28,7 @@ import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, Row}
+import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 import org.apache.spark.sql.functions._
 
 
@@ -97,28 +97,8 @@ final class AdaBoostClassifier (override val uid: String)
     var m = 0
     var earlyStop = false
     while (m < numIterations && !earlyStop) {
-      val learner = makeLearner
-      val dfWeighted = weightedInput.toDF()
-      val labelMeta = NominalAttribute.defaultAttr.withName("label")
-        .withNumValues(numClasses).toMetadata()
-      val model = learner.fit(dfWeighted.select(dfWeighted("features"),
-        dfWeighted("label").as("label", labelMeta), dfWeighted("weight")))
-
-      val weightedError = weightedInput.map { case Instance(label, weight, features) =>
-        val predicted = model.predict(features)
-        indicator(predicted, label, 0.0, weight)
-      }.sum()
-      val totalWeight = weightedInput.map(_.weight).sum()
-      val estimatorError = weightedError / totalWeight
-
-      if (estimatorError <= 1.0 - (1.0 / numClasses)) {
-        throw new Exception("Error is worse than random guessing, model cannot be fit")
-      }
-      val estimatorWeight = if (estimatorError <= 0.0) {
-        1.0
-      } else {
-        math.log((1 - estimatorError) / estimatorError) + math.log(numClasses - 1)
-      }
+      val (model, estimatorWeight, estimatorError) =
+        boostDiscrete(dataset.sqlContext, weightedInput, numClasses)
 
       earlyStop = (estimatorError <= 0.0) || (m == numIterations - 1)
       models(m) = model
@@ -137,7 +117,35 @@ final class AdaBoostClassifier (override val uid: String)
       }
       m += 1
     }
-    copyValues(new AdaBoostClassificationModel(uid, models, estimatorWeights, numClasses))
+    copyValues(new AdaBoostClassificationModel(uid, models.view(0, m).toArray,
+      estimatorWeights.view(0, m).toArray, numClasses))
+  }
+
+  private def boostDiscrete(sqlContext: SQLContext, weightedInput: RDD[Instance], numClasses: Int):
+    (BaseTransformerType[Vector], Double, Double) = {
+    val learner = makeLearner()
+    val dfWeighted = sqlContext.createDataFrame(weightedInput)
+    val labelMeta = NominalAttribute.defaultAttr.withName("label")
+      .withNumValues(numClasses).toMetadata()
+    val model = learner.fit(dfWeighted.select(dfWeighted("features"),
+      dfWeighted("label").as("label", labelMeta), dfWeighted("weight")))
+
+    val weightedError = weightedInput.map { case Instance(label, weight, features) =>
+      val predicted = model.predict(features)
+      indicator(predicted, label, 0.0, weight)
+    }.sum()
+    val totalWeight = weightedInput.map(_.weight).sum()
+    val estimatorError = weightedError / totalWeight
+
+    if (estimatorError >= 1.0 - (1.0 / numClasses)) {
+      throw new RuntimeException("Error is worse than random guessing, model cannot be fit")
+    }
+    val estimatorWeight = if (estimatorError <= 0.0) {
+      1.0
+    } else {
+      math.log((1 - estimatorError) / estimatorError) + math.log(numClasses - 1)
+    }
+    (model, estimatorWeight, estimatorError)
   }
 
   private[this] def indicator(predicted: Double, label: Double,

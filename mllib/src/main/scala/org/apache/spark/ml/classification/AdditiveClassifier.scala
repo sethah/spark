@@ -62,7 +62,7 @@ abstract class WeightBoostingClassifier[
     M <: AdditiveClassificationModel[FeaturesType, M]]
   extends AdditiveClassifier[FeaturesType, E, M] with WeightBoostingParams[FeaturesType] {
 
-  protected def makeLearner: BaseEstimatorType[FeaturesType] = {
+  protected def makeLearner(): BaseEstimatorType[FeaturesType] = {
     getBaseEstimators.head.copy(ParamMap.empty)
   }
 }
@@ -96,10 +96,19 @@ private[classification] trait AdditiveClassifierParams[FeaturesType]
 }
 
 private[classification] trait WeightBoostingParams[FeaturesType]
-  extends ProbabilisticClassifierParams with HasMaxIter with HasSeed {
+  extends ProbabilisticClassifierParams with HasMaxIter with HasSeed with HasStepSize {
 
   /** @group setParam */
   def setSeed(value: Long): this.type = set(seed, value)
+
+  val baseEstimators: Param[Array[BaseEstimatorType[FeaturesType]]] =
+    new Param(this, "baseEstimators", "")
+
+  def getBaseEstimators: Array[BaseEstimatorType[FeaturesType]] =
+    $(baseEstimators)
+
+  def setStepSize(value: Double): this.type = set(stepSize, value)
+  setDefault(stepSize -> 1.0)
 
   // scalastyle:off structural.type
   type BaseEstimatorType[F] = ProbabilisticClassifier[F, BE, BM] forSome {
@@ -111,17 +120,4 @@ private[classification] trait WeightBoostingParams[FeaturesType]
     type BM <: ProbabilisticClassificationModel[F, BM]
   }
   // scalastyle:on structural.type
-
-private[classification] trait WeightBoostingClassifierParams[FeaturesType]
-  extends ProbabilisticClassifierParams with HasMaxIter with HasStepSize {
-
-  val baseEstimators: Param[Array[BaseEstimatorType[FeaturesType]]] =
-    new Param(this, "baseEstimators", "")
-
-  def getBaseEstimators: Array[BaseEstimatorType[FeaturesType]] =
-    $(baseEstimators)
-
-  def setStepSize(value: Double): this.type = set(stepSize, value)
-  setDefault(stepSize -> 1.0  )
-
 }

@@ -19,34 +19,57 @@ package org.apache.spark.ml.classification
 
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.attribute.NominalAttribute
-import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 
 class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
   test ("decision tree base estimator") {
     val numClasses = 2
-    val numIterations = 1
+    val numIterations = 5
     val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
     val df = sqlContext.createDataFrame(data)
-    val ada = new AdaBoostClassifier().setMaxIter(numIterations)
-        .setBaseEstimators(Array(new LogisticRegression()))
     val labelMeta = NominalAttribute.defaultAttr.withName("label")
       .withNumValues(numClasses).toMetadata()
-    val model = ada.fit(df.select(df("features"), df("label").as("label", labelMeta)))
-    model.transform(df).show()
-    model.models(0).transform(df).show()
-    model.modelWeights.foreach(println)
-    assert(model.models.length === numIterations)
-    AdaBoostClassifierSuite.validateClassifier(model, data, 1.0)
+    val dfWithMetadata = df.select(df("features"), df("label").as("label", labelMeta))
+    val ada = new AdaBoostClassifier().setMaxIter(numIterations)
+    val model = ada.fit(dfWithMetadata)
+
+    val baseEstimator = new DecisionTreeClassifier().setMinInstancesPerNode(0).setMaxDepth(1)
+    val baseModel = baseEstimator.fit(dfWithMetadata)
+    AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 
   test ("logistic regression base estimator") {
+    val numClasses = 2
+    val numIterations = 5
+    val data = AdaBoostClassifierSuite.generateLinearlySeparableLabeledPoints(3, 10)
+    val df = sqlContext.createDataFrame(data)
+    val ada = new AdaBoostClassifier().setMaxIter(numIterations)
+      .setBaseEstimators(Array(new LogisticRegression()))
+    val labelMeta = NominalAttribute.defaultAttr.withName("label")
+      .withNumValues(numClasses).toMetadata()
+    val model = ada.fit(df.select(df("features"), df("label").as("label", labelMeta)))
 
+    val baseEstimator = new LogisticRegression()
+    val baseModel = baseEstimator.fit(df.select(df("features"), df("label").as("label", labelMeta)))
+    AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 
   test ("naive bayes base estimator") {
+    val numClasses = 2
+    val numIterations = 5
+    val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
+    val df = sqlContext.createDataFrame(data)
+    val labelMeta = NominalAttribute.defaultAttr.withName("label")
+      .withNumValues(numClasses).toMetadata()
+    val dfWithMetadata = df.select(df("features"), df("label").as("label", labelMeta))
+    val ada = new AdaBoostClassifier().setMaxIter(numIterations)
+    val model = ada.fit(dfWithMetadata)
 
+    val baseEstimator = new NaiveBayes()
+    val baseModel = baseEstimator.fit(dfWithMetadata)
+    AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 }
 
@@ -85,6 +108,24 @@ object AdaBoostClassifierSuite {
     }
     arr
   }
+
+  def validateBoostedClassifier(boostedModel: AdaBoostClassificationModel,
+      baseModel: ProbabilisticClassificationModel[Vector, _],
+                                input: Seq[LabeledPoint]): Unit = {
+    val boostedPredictions = input.map(x => boostedModel.predict(x.features))
+    val basePredictions = input.map(x => baseModel.predict(x.features))
+    val boostedAccuracy = classifierAccuracy(boostedPredictions, input)
+    val baseAccuracy = classifierAccuracy(basePredictions, input)
+    assert(boostedAccuracy >= baseAccuracy)
+  }
+
+  private def classifierAccuracy(predictions: Seq[Double], input: Seq[LabeledPoint]): Double = {
+    val numOffPredictions = predictions.zip(input).count { case (prediction, expected) =>
+      prediction != expected.label
+    }
+    (input.length - numOffPredictions).toDouble / input.length
+  }
+
 
   def validateClassifier(
       model: AdaBoostClassificationModel,
