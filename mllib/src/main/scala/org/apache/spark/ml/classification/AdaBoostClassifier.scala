@@ -52,6 +52,9 @@ final class AdaBoostClassifier (override val uid: String)
   setDefault(weightCol -> "")
 
   @Since("2.0.0")
+  override def setStepSize(value: Double): this.type = super.setStepSize(value)
+
+  @Since("2.0.0")
   override def setMaxIter(value: Int): this.type = super.setMaxIter(value)
   setDefault(maxIter -> 10)
 
@@ -73,7 +76,6 @@ final class AdaBoostClassifier (override val uid: String)
         " specified. See StringIndexer.")
       // TODO: Automatically index labels: SPARK-7126
     }
-    println("NUM CLASSES", numClasses)
     val w = if ($(weightCol).isEmpty) lit(1.0) else col($(weightCol))
     val instances: RDD[Instance] = dataset.select(
       col($(labelCol)), w, col($(featuresCol))).map {
@@ -82,6 +84,7 @@ final class AdaBoostClassifier (override val uid: String)
       }
 
     val numIterations = getMaxIter
+    val learningRate = getStepSize
     val models = new Array[WeightBoostingClassificationModelBaseType[Vector]](numIterations)
     val alphas = new Array[Double](numIterations)
     var weightedInput = instances

@@ -100,7 +100,7 @@ object AdditiveClassifierParams {
 }
 
 private[classification] trait WeightBoostingClassifierParams[FeaturesType]
-  extends ProbabilisticClassifierParams with HasMaxIter {
+  extends ProbabilisticClassifierParams with HasMaxIter with HasStepSize {
 
   import org.apache.spark.ml.classification.WeightBoostingClassifierParams._
 
@@ -109,6 +109,9 @@ private[classification] trait WeightBoostingClassifierParams[FeaturesType]
 
   def getBaseEstimators: Array[WeightBoostingClassifierBaseType[FeaturesType]] =
     $(baseEstimators)
+
+  def setStepSize(value: Double): this.type = set(stepSize, value)
+  setDefault(stepSize -> 1.0  )
 
 }
 
