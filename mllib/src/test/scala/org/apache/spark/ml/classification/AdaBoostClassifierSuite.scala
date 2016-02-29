@@ -43,7 +43,7 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
   test ("logistic regression base estimator") {
     val numClasses = 2
     val numIterations = 5
-    val data = AdaBoostClassifierSuite.generateLinearlySeparableLabeledPoints(3, 10)
+    val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
     val df = sqlContext.createDataFrame(data)
     val ada = new AdaBoostClassifier().setMaxIter(numIterations)
       .setBaseEstimators(Array(new LogisticRegression()))
@@ -53,22 +53,6 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
 
     val baseEstimator = new LogisticRegression()
     val baseModel = baseEstimator.fit(df.select(df("features"), df("label").as("label", labelMeta)))
-    AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
-  }
-
-  test ("naive bayes base estimator") {
-    val numClasses = 2
-    val numIterations = 5
-    val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
-    val df = sqlContext.createDataFrame(data)
-    val labelMeta = NominalAttribute.defaultAttr.withName("label")
-      .withNumValues(numClasses).toMetadata()
-    val dfWithMetadata = df.select(df("features"), df("label").as("label", labelMeta))
-    val ada = new AdaBoostClassifier().setMaxIter(numIterations)
-    val model = ada.fit(dfWithMetadata)
-
-    val baseEstimator = new NaiveBayes()
-    val baseModel = baseEstimator.fit(dfWithMetadata)
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 }

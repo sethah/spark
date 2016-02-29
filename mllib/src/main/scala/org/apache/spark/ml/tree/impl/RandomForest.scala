@@ -1140,8 +1140,8 @@ private[ml] object RandomForest extends Logging {
   /**
    * Recursive method for computing feature importances for one tree.
    * This walks down the tree, adding to the importance of 1 feature at each node.
-    *
-    * @param node  Current node in recursion
+   *
+   * @param node  Current node in recursion
    * @param importances  Aggregate feature importances, modified by this method
    */
   private[impl] def computeFeatureImportance(

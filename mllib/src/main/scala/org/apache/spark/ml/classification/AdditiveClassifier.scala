@@ -62,6 +62,9 @@ abstract class WeightBoostingClassifier[
     M <: AdditiveClassificationModel[FeaturesType, M]]
   extends AdditiveClassifier[FeaturesType, E, M] with WeightBoostingParams[FeaturesType] {
 
+  /**
+   * Get a boosting base learner for a single boosting iteration.
+   */
   protected def makeLearner(): BaseEstimatorType[FeaturesType] = {
     getBaseEstimators.head.copy(ParamMap.empty)
   }
@@ -74,8 +77,8 @@ abstract class WeightBoostingClassifier[
   */
 @DeveloperApi
 abstract class WeightBoostingClassificationModel[
-FeaturesType,
-M <: AdditiveClassificationModel[FeaturesType, M]]
+    FeaturesType,
+    M <: AdditiveClassificationModel[FeaturesType, M]]
   extends AdditiveClassificationModel[FeaturesType, M] with WeightBoostingParams[FeaturesType] {
 
   def models: Array[BaseTransformerType[FeaturesType]]
@@ -85,8 +88,8 @@ M <: AdditiveClassificationModel[FeaturesType, M]]
 }
 
 /**
-  * TODO
-  */
+ * (private[classification])  Params for additive classification.
+ */
 private[classification] trait AdditiveClassifierParams[FeaturesType]
   extends ProbabilisticClassifierParams with HasMaxIter {
 
@@ -95,18 +98,35 @@ private[classification] trait AdditiveClassifierParams[FeaturesType]
 
 }
 
+/**
+ * (private[classification])  Params for weighted boosted classification.
+ */
 private[classification] trait WeightBoostingParams[FeaturesType]
-  extends ProbabilisticClassifierParams with HasMaxIter with HasSeed with HasStepSize {
+  extends ProbabilisticClassifierParams with HasMaxIter with HasSeed with HasStepSize
+    with HasWeightCol {
 
   /** @group setParam */
   def setSeed(value: Long): this.type = set(seed, value)
 
-  val baseEstimators: Param[Array[BaseEstimatorType[FeaturesType]]] =
-    new Param(this, "baseEstimators", "")
+  /** @group setParam */
+  def setWeightCol(value: String): this.type = set(weightCol, value)
+  setDefault(weightCol -> "")
 
+  /**
+   * The candidate base estimators to be chosen from at each boosting iteration.
+   * (default = Array(DecisionTreeClassifier).
+   * @group param
+   */
+  val baseEstimators: Param[Array[BaseEstimatorType[FeaturesType]]] =
+    new Param(this, "baseEstimators", "The set of candidate base learners to be chosen from at " +
+      "each boosting iteration.",
+      (ests: Array[BaseEstimatorType[FeaturesType]]) => ests.forall(_.hasParam("weightCol")))
+
+  /** @group getParam */
   def getBaseEstimators: Array[BaseEstimatorType[FeaturesType]] =
     $(baseEstimators)
 
+  /** @group setParam */
   def setStepSize(value: Double): this.type = set(stepSize, value)
   setDefault(stepSize -> 1.0)
 
