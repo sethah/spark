@@ -40,6 +40,22 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 
+  test ("SAMME") {
+    val numClasses = 2
+    val numIterations = 5
+    val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
+    val df = sqlContext.createDataFrame(data)
+    val labelMeta = NominalAttribute.defaultAttr.withName("label")
+      .withNumValues(numClasses).toMetadata()
+    val dfWithMetadata = df.select(df("features"), df("label").as("label", labelMeta))
+    val ada = new AdaBoostClassifier().setMaxIter(numIterations).setAlgo("SAMME")
+    val model = ada.fit(dfWithMetadata)
+
+    val baseEstimator = new DecisionTreeClassifier().setMinInstancesPerNode(0).setMaxDepth(1)
+    val baseModel = baseEstimator.fit(dfWithMetadata)
+    AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
+  }
+
   test ("logistic regression base estimator") {
     val numClasses = 2
     val numIterations = 5
@@ -54,6 +70,21 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     val baseEstimator = new LogisticRegression()
     val baseModel = baseEstimator.fit(df.select(df("features"), df("label").as("label", labelMeta)))
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
+  }
+
+  test ("early stopping") {
+    val numClasses = 2
+    val numIterations = 5
+    val data = AdaBoostClassifierSuite.generateLinearlySeparableLabeledPoints(3, 10)
+    val df = sqlContext.createDataFrame(data)
+    val ada = new AdaBoostClassifier().setMaxIter(numIterations)
+    val labelMeta = NominalAttribute.defaultAttr.withName("label")
+      .withNumValues(numClasses).toMetadata()
+    val model = ada.fit(df.select(df("features"), df("label").as("label", labelMeta)))
+    val baseEstimator = new LogisticRegression()
+    val baseModel = baseEstimator.fit(df.select(df("features"), df("label").as("label", labelMeta)))
+    AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
+    assert(model.models.length == 1)
   }
 }
 

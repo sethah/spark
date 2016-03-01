@@ -26,6 +26,7 @@ import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.param.{Param, ParamMap, ParamValidators}
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
+import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.mllib.linalg.{BLAS, DenseVector, SparseVector, Vector, Vectors}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
@@ -68,9 +69,6 @@ final class AdaBoostClassifier (override val uid: String)
   override def setStepSize(value: Double): this.type = super.setStepSize(value)
 
   @Since("2.0.0")
-  override def setSeed(value: Long): this.type = super.setSeed(value)
-
-  @Since("2.0.0")
   override def setMaxIter(value: Int): this.type = super.setMaxIter(value)
   setDefault(maxIter -> 10)
 
@@ -99,6 +97,8 @@ final class AdaBoostClassifier (override val uid: String)
         Instance(label, weight, features)
       }
 
+    var df: DataFrame = dataset.select(col($(labelCol)), w, col($(featuresCol)))
+
     val numIterations = getMaxIter
     val algorithm = getAlgo
     val models = new Array[BaseTransformerType[Vector]](numIterations)
@@ -108,8 +108,9 @@ final class AdaBoostClassifier (override val uid: String)
     var earlyStop = false
     while (m < numIterations && !earlyStop) {
       val (model, estimatorWeight, reweightFunction, stopBoosting) = algorithm match {
-        case "SAMME" => boostDiscrete(dataset.sqlContext, weightedInput, numClasses, m)
-        case "SAMME.R" => boostReal(dataset.sqlContext, weightedInput, numClasses, m)
+        case "SAMME" => boostDiscrete(dataset.sqlContext, df, weightedInput, numClasses, m)
+        case "SAMME.R" => boostReal(dataset.sqlContext, df, weightedInput, numClasses, m)
+        case other => throw new RuntimeException
       }
 
       earlyStop = (m == numIterations - 1) || stopBoosting
@@ -120,10 +121,9 @@ final class AdaBoostClassifier (override val uid: String)
 
       // skip reweighting if no more boosting iterations are left
       if (!earlyStop) {
-        weightedInput = weightedInput.map(reweightFunction)
-        val totalAfterReweighting = weightedInput.map(_.weight).sum()
-        weightedInput = weightedInput.map( instance =>
-          Instance(instance.label, instance.weight / totalAfterReweighting, instance.features)
+        val reweightUDF = udf(reweightFunction)
+        df = df.select(col($(labelCol)), col($(featuresCol)),
+          reweightUDF(col($(labelCol)), col($(weightCol)), col($(featuresCol))).as($(weightCol))
         )
       }
       m += 1
@@ -167,10 +167,11 @@ final class AdaBoostClassifier (override val uid: String)
    * @param boostIter The current boosting iteration index.
    */
   private def boostDiscrete(sqlContext: SQLContext,
+                            df: DataFrame,
       weightedInput: RDD[Instance],
       numClasses: Int,
       boostIter: Int):
-    (BaseTransformerType[Vector], Double, Instance => Instance, Boolean) = {
+    (BaseTransformerType[Vector], Double, (Double, Double, Vector) => Double, Boolean) = {
     val learner = makeLearner()
     val dfWeighted = sqlContext.createDataFrame(weightedInput)
     val labelMeta = NominalAttribute.defaultAttr.withName("label")
@@ -187,11 +188,12 @@ final class AdaBoostClassifier (override val uid: String)
     } else {
       getStepSize * math.log((1 - estimatorError) / estimatorError) + math.log(numClasses - 1)
     }
-    val reweightFunction: Instance => Instance = (instance: Instance) => {
-      val e = AdaBoostClassifier.indicator(model.predict(instance.features),
-        instance.label, 0.0, estimatorWeight)
-      val newWeight = instance.weight * math.exp(e)
-      Instance(instance.label, newWeight, instance.features)
+    val reweightFunction: (Double, Double, Vector) => Double =
+      (label: Double, weight: Double, features: Vector) => {
+      val e = AdaBoostClassifier.indicator(model.predict(features),
+        label, 0.0, estimatorWeight)
+      val newWeight = weight * math.exp(e)
+      newWeight
     }
     (model, estimatorWeight, reweightFunction, stopBoosting)
   }
@@ -211,30 +213,30 @@ final class AdaBoostClassifier (override val uid: String)
    * @param boostIter The current boosting iteration index.
    */
   private def boostReal(sqlContext: SQLContext,
+                        df: DataFrame,
       weightedInput: RDD[Instance],
       numClasses: Int,
       boostIter: Int):
-    (BaseTransformerType[Vector], Double, (Instance => Instance), Boolean) = {
+    (BaseTransformerType[Vector], Double, (Double, Double, Vector) => Double, Boolean) = {
     val learner = makeLearner()
     val dfWeighted = sqlContext.createDataFrame(weightedInput)
     val labelMeta = NominalAttribute.defaultAttr.withName("label")
       .withNumValues(numClasses).toMetadata()
-    val model = learner.fit(dfWeighted.select(dfWeighted("features"),
-      dfWeighted("label").as("label", labelMeta), dfWeighted("weight")))
+    val model = learner.fit(df)
 
     val estimatorError = getEstimatorError(model, weightedInput)
 
     val stopBoosting = shouldStopBoosting(estimatorError, boostIter, numClasses)
 
-    val reweightFunction: (Instance) => Instance = (instance: Instance) => {
-      val p = model.predictProbability(instance.features)
+    val reweightFunction: (Double, Double, Vector) => Double = (label: Double, weight: Double, features: Vector) => {
+      val p = model.predictProbability(features)
       val coded = Array.tabulate(numClasses) { i =>
-        if (i != instance.label) -1.0 / (numClasses - 1.0) else 1.0
+        if (i != label) -1.0 / (numClasses - 1.0) else 1.0
       }
       val estimatorWeight = -1.0 * getStepSize * (numClasses / (numClasses - 1.0)) *
         BLAS.dot(new DenseVector(coded), p)
       val newWeight = math.exp(estimatorWeight)
-      Instance(instance.label, newWeight, instance.features)
+      newWeight
     }
 
     (model, 1.0, reweightFunction, stopBoosting)
@@ -276,14 +278,20 @@ final class AdaBoostClassificationModel private[ml](
   def modelWeights: Array[Double] = _modelWeights
 
   /**
-   * SAMME probability function.
+   * Get the SAMME stage estimator from a base model.
    *
    * This is algorithm 4, step 2, part c from
    *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
    */
-  private def sammeProba(transformer: BaseTransformerType[Vector], features: Vector): Vector = {
+  private def sammeEstimator(transformer: BaseTransformerType[Vector], features: Vector): Vector = {
     val rawProba = transformer.predictProbability(features).toArray
-    val logProba = rawProba.map(math.log(_))
+    val logProba = rawProba.map(p =>
+      if (p < MLUtils.EPSILON) {
+        math.log(MLUtils.EPSILON)
+      } else {
+        math.log(p)
+      }
+    )
     val sumLogProba = logProba.sum
     val proba = logProba.map { x =>
       (numClasses - 1.0) * (x - (1.0 / numClasses) * sumLogProba)
@@ -331,7 +339,7 @@ final class AdaBoostClassificationModel private[ml](
   private def realPredict(features: Vector): Double = {
     val sumProba = Vectors.zeros(numClasses)
     models.foreach { model =>
-      BLAS.axpy(1.0, sammeProba(model, features), sumProba)
+      BLAS.axpy(1.0, sammeEstimator(model, features), sumProba)
     }
     sumProba.argmax
   }
@@ -359,7 +367,7 @@ final class AdaBoostClassificationModel private[ml](
   private def realPredictRaw(features: Vector): Vector = {
     val proba = Vectors.zeros(numClasses).asInstanceOf[DenseVector]
     models.foreach { model =>
-      BLAS.axpy(1.0 / _modelWeights.length.toDouble, sammeProba(model, features), proba)
+      BLAS.axpy(1.0 / _modelWeights.length.toDouble, sammeEstimator(model, features), proba)
     }
     var j = 0
     var probaSum = 0.0
