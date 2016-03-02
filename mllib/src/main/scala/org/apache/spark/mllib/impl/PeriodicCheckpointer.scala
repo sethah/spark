@@ -55,7 +55,7 @@ import org.apache.spark.storage.StorageLevel
  * @param sc  SparkContext for the Datasets given to this checkpointer
  * @tparam T  Dataset type, such as RDD[Double]
  */
-private[mllib] abstract class PeriodicCheckpointer[T](
+private[spark] abstract class PeriodicCheckpointer[T](
     val checkpointInterval: Int,
     val sc: SparkContext) extends Logging {
 

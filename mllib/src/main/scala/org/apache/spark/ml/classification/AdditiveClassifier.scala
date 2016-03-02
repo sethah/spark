@@ -116,7 +116,8 @@ abstract class WeightBoostingClassificationModel[
  * (private[classification])  Params for additive classification.
  */
 private[classification] trait AdditiveClassifierParams[FeaturesType]
-  extends ProbabilisticClassifierParams with HasMaxIter with HasStepSize {
+  extends ProbabilisticClassifierParams with HasMaxIter with HasStepSize
+    with HasCheckpointInterval {
 
   /** @group setParam */
   def setMaxIter(value: Int): this.type = set(maxIter, value)
@@ -124,6 +125,10 @@ private[classification] trait AdditiveClassifierParams[FeaturesType]
   /** @group setParam */
   def setStepSize(value: Double): this.type = set(stepSize, value)
   setDefault(stepSize -> 1.0)
+
+  /** @group setParam */
+  def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
+  setDefault(checkpointInterval -> 10)
 
   /**
    * The candidate base estimators to be chosen from at each boosting iteration.

@@ -19,12 +19,24 @@ package org.apache.spark.ml.classification
 
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.attribute.NominalAttribute
+import org.apache.spark.ml.param.ParamsSuite
+import org.apache.spark.ml.regression.DecisionTreeRegressionModel
+import org.apache.spark.ml.tree.LeafNode
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 
 class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
-  test ("decision tree base estimator") {
+
+  test("params") {
+    ParamsSuite.checkParams(new AdaBoostClassifier)
+    val model = new AdaBoostClassificationModel("gbtc",
+      Array(new DecisionTreeClassificationModel("dtr", new LeafNode(0.0, 0.0, null), 1, 2)),
+      Array(1.0), 1)
+    ParamsSuite.checkParams(model)
+  }
+
+  test("decision tree base estimator") {
     val numClasses = 2
     val numIterations = 5
     val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
@@ -40,7 +52,7 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 
-  test ("SAMME") {
+  test("SAMME") {
     val numClasses = 2
     val numIterations = 5
     val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
@@ -56,7 +68,7 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 
-  test ("logistic regression base estimator") {
+  test("logistic regression base estimator") {
     val numClasses = 2
     val numIterations = 5
     val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
@@ -72,7 +84,7 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 
-  test ("early stopping") {
+  test("early stopping") {
     val numClasses = 2
     val numIterations = 5
     val data = AdaBoostClassifierSuite.generateLinearlySeparableLabeledPoints(3, 10)
@@ -86,6 +98,7 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
     assert(model.models.length == 1)
   }
+
 }
 
 object AdaBoostClassifierSuite {

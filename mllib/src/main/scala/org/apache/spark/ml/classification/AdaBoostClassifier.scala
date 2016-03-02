@@ -17,6 +17,8 @@
 
 package org.apache.spark.ml.classification
 
+import org.apache.spark.mllib.impl.{PeriodicDataFrameCheckpointer, PeriodicCheckpointer}
+
 import scala.language.existentials
 
 import org.apache.spark.annotation.Since
@@ -69,6 +71,9 @@ final class AdaBoostClassifier (override val uid: String)
   override def setStepSize(value: Double): this.type = super.setStepSize(value)
 
   @Since("2.0.0")
+  override def setCheckpointInterval(value: Int): this.type = super.setCheckpointInterval(value)
+
+  @Since("2.0.0")
   override def setMaxIter(value: Int): this.type = super.setMaxIter(value)
   setDefault(maxIter -> 10)
 
@@ -90,30 +95,32 @@ final class AdaBoostClassifier (override val uid: String)
         " specified. See StringIndexer.")
       // TODO: Automatically index labels: SPARK-7126
     }
-    val w = if ($(weightCol).isEmpty) lit(1.0) else col($(weightCol))
-    val instances: RDD[Instance] = dataset.select(
-      col($(labelCol)), w, col($(featuresCol))).map {
-      case Row(label: Double, weight: Double, features: Vector) =>
-        Instance(label, weight, features)
-      }
 
-    var df: DataFrame = dataset.select(col($(labelCol)), w, col($(featuresCol)))
+
+    val w = if ($(weightCol).isEmpty) lit(1.0) else col($(weightCol))
+    if ($(weightCol).isEmpty) {
+      setWeightCol("weight")
+    }
+    val dataCheckPointer = new PeriodicDataFrameCheckpointer(10, dataset.rdd.sparkContext)
+    var df: DataFrame = dataset.select(col($(labelCol)), w.as("weight"), col($(featuresCol)))
+    dataCheckPointer.update(df)
 
     val numIterations = getMaxIter
     val algorithm = getAlgo
     val models = new Array[BaseTransformerType[Vector]](numIterations)
     val estimatorWeights = new Array[Double](numIterations)
-    var weightedInput = instances
     var m = 0
     var earlyStop = false
     while (m < numIterations && !earlyStop) {
       val (model, estimatorWeight, reweightFunction, stopBoosting) = algorithm match {
-        case "SAMME" => boostDiscrete(dataset.sqlContext, df, weightedInput, numClasses, m)
-        case "SAMME.R" => boostReal(dataset.sqlContext, df, weightedInput, numClasses, m)
+        case "SAMME" => boostDiscrete(df, numClasses, m)
+        case "SAMME.R" => boostReal(df, numClasses, m)
         case other => throw new RuntimeException
       }
 
       earlyStop = (m == numIterations - 1) || stopBoosting
+      // TODO: this does nothing. When error is worse than random we need to return
+      // TODO: estimatorWeight of zero.
       if (estimatorWeight > 0) {
         models(m) = model
         estimatorWeights(m) = estimatorWeight
@@ -123,8 +130,8 @@ final class AdaBoostClassifier (override val uid: String)
       if (!earlyStop) {
         val reweightUDF = udf(reweightFunction)
         df = df.select(col($(labelCol)), col($(featuresCol)),
-          reweightUDF(col($(labelCol)), col($(weightCol)), col($(featuresCol))).as($(weightCol))
-        )
+          reweightUDF(col($(labelCol)), col($(weightCol)), col($(featuresCol))).as($(weightCol)))
+        dataCheckPointer.update(df)
       }
       m += 1
     }
@@ -132,24 +139,41 @@ final class AdaBoostClassifier (override val uid: String)
       estimatorWeights.takeWhile(_!=null), numClasses))
   }
 
-  private def shouldStopBoosting(estimatorError: Double, iter: Int, numClasses: Int): Boolean = {
-    val isErrorWorseThanRandom = estimatorError >= 1.0 - (1.0 / numClasses)
-    val isClassificationPerfect = estimatorError <= 0.0
-    val isFirstIteration = iter == 0
-    if (isErrorWorseThanRandom && isFirstIteration) {
-      throw new RuntimeException("Error is worse than random guessing, model cannot be fit")
-    }
-    isErrorWorseThanRandom || isClassificationPerfect
-  }
+  /**
+   * Perform a single boosting iteration for the SAMME.R real AdaBoost algorithm
+   * for classification.
+   *
+   * @see [[http://en.wikipedia.org/wiki/AdaBoost AdaBoost]]
+   *
+   * The implementation is based upon:
+   *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
+   * @param dataset Input data to be boosted.
+   * @param numClasses The number of classes for the target variable.
+   * @param boostIter The current boosting iteration index.
+   */
+  private def boostReal(dataset: DataFrame, numClasses: Int, boostIter: Int):
+  (BaseTransformerType[Vector], Double, (Double, Double, Vector) => Double, Boolean) = {
+    val learner = makeLearner()
+    val model = learner.fit(dataset)
 
-  private def getEstimatorError(transformer: BaseTransformerType[Vector],
-      weightedInput: RDD[Instance]): Double = {
-    val weightedError = weightedInput.map { case Instance(label, weight, features) =>
-      val predicted = transformer.predict(features)
-      AdaBoostClassifier.indicator(predicted, label, 0.0, weight)
-    }.sum()
-    val totalWeight = weightedInput.map(_.weight).sum()
-    weightedError / totalWeight
+    val estimatorError = getEstimatorError(model, dataset)
+
+    val stopBoosting = shouldStopBoosting(estimatorError, boostIter, numClasses)
+
+    val reweightFunction: (Double, Double, Vector) => Double =
+      (label: Double, weight: Double, features: Vector) => {
+        val p = model.predictProbability(features).toArray
+        val logP = p.map(math.log)
+        val coded = Array.tabulate(numClasses) { i =>
+          if (i != label) -1.0 / (numClasses - 1.0) else 1.0
+        }
+        val estimatorWeight = -1.0 * getStepSize * (numClasses - 1.0) / numClasses *
+          BLAS.dot(new DenseVector(coded), new DenseVector(logP))
+        val newWeight = weight * math.exp(estimatorWeight)
+        newWeight
+      }
+
+    (model, 1.0, reweightFunction, stopBoosting)
   }
 
   /**
@@ -160,26 +184,16 @@ final class AdaBoostClassifier (override val uid: String)
    *
    * The implementation is based upon:
    *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
-   *
-   * @param sqlContext
-   * @param weightedInput Input data to be boosted.
+   * @param dataset Input data to be boosted.
    * @param numClasses The number of classes for the target variable.
    * @param boostIter The current boosting iteration index.
    */
-  private def boostDiscrete(sqlContext: SQLContext,
-                            df: DataFrame,
-      weightedInput: RDD[Instance],
-      numClasses: Int,
-      boostIter: Int):
+  private def boostDiscrete(dataset: DataFrame, numClasses: Int, boostIter: Int):
     (BaseTransformerType[Vector], Double, (Double, Double, Vector) => Double, Boolean) = {
     val learner = makeLearner()
-    val dfWeighted = sqlContext.createDataFrame(weightedInput)
-    val labelMeta = NominalAttribute.defaultAttr.withName("label")
-      .withNumValues(numClasses).toMetadata()
-    val model = learner.fit(dfWeighted.select(dfWeighted("features"),
-      dfWeighted("label").as("label", labelMeta), dfWeighted("weight")))
+    val model = learner.fit(dataset)
 
-    val estimatorError = getEstimatorError(model, weightedInput)
+    val estimatorError = getEstimatorError(model, dataset)
 
     val stopBoosting = shouldStopBoosting(estimatorError, boostIter, numClasses)
 
@@ -199,47 +213,35 @@ final class AdaBoostClassifier (override val uid: String)
   }
 
   /**
-   * Perform a single boosting iteration for the SAMME.R real AdaBoost algorithm
-   * for classification.
-   *
-   * @see [[http://en.wikipedia.org/wiki/AdaBoost AdaBoost]]
-   *
-   * The implementation is based upon:
-   *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
-   *
-   * @param sqlContext
-   * @param weightedInput Input data to be boosted.
-   * @param numClasses The number of classes for the target variable.
-   * @param boostIter The current boosting iteration index.
+   * Determine whether to stop boosting early.
    */
-  private def boostReal(sqlContext: SQLContext,
-                        df: DataFrame,
-      weightedInput: RDD[Instance],
-      numClasses: Int,
-      boostIter: Int):
-    (BaseTransformerType[Vector], Double, (Double, Double, Vector) => Double, Boolean) = {
-    val learner = makeLearner()
-    val dfWeighted = sqlContext.createDataFrame(weightedInput)
-    val labelMeta = NominalAttribute.defaultAttr.withName("label")
-      .withNumValues(numClasses).toMetadata()
-    val model = learner.fit(df)
-
-    val estimatorError = getEstimatorError(model, weightedInput)
-
-    val stopBoosting = shouldStopBoosting(estimatorError, boostIter, numClasses)
-
-    val reweightFunction: (Double, Double, Vector) => Double = (label: Double, weight: Double, features: Vector) => {
-      val p = model.predictProbability(features)
-      val coded = Array.tabulate(numClasses) { i =>
-        if (i != label) -1.0 / (numClasses - 1.0) else 1.0
-      }
-      val estimatorWeight = -1.0 * getStepSize * (numClasses / (numClasses - 1.0)) *
-        BLAS.dot(new DenseVector(coded), p)
-      val newWeight = math.exp(estimatorWeight)
-      newWeight
+  private def shouldStopBoosting(estimatorError: Double, iter: Int, numClasses: Int): Boolean = {
+    val isErrorWorseThanRandom = estimatorError >= 1.0 - (1.0 / numClasses)
+    val isClassificationPerfect = estimatorError <= 0.0
+    val isFirstIteration = iter == 0
+    if (isErrorWorseThanRandom && isFirstIteration) {
+      throw new RuntimeException("Error is worse than random guessing, model cannot be fit")
     }
+    isErrorWorseThanRandom || isClassificationPerfect
+  }
 
-    (model, 1.0, reweightFunction, stopBoosting)
+  /**
+   * Get the weighted error for a boosting base learner.
+   */
+  private def getEstimatorError(transformer: BaseTransformerType[Vector],
+                                df: DataFrame): Double = {
+    val errorFunc = (label: Double, weight: Double, features: Vector) => {
+      val predicted = transformer.predict(features)
+      AdaBoostClassifier.indicator(predicted, label, 0.0, weight)
+    }
+    val errorUDF = udf(errorFunc)
+    val errorColumn = errorUDF(col($(labelCol)), col($(weightCol)), col($(featuresCol)))
+    val weightedError = sum(errorColumn)
+    val totalWeight = sum(col($(weightCol)))
+    val result = df.select(weightedError.as("error"), totalWeight.as("total")).rdd.first()
+    result match { case Row(error: Double, total: Double) =>
+      error / total
+    }
   }
 
   override def copy(extra: ParamMap): AdaBoostClassifier = defaultCopy(extra)

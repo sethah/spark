@@ -20,6 +20,7 @@ package org.apache.spark.mllib.impl
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.sql.DataFrame
 
 
 /**
@@ -93,5 +94,27 @@ private[mllib] class PeriodicRDDCheckpointer[T](
 
   override protected def getCheckpointFiles(data: RDD[T]): Iterable[String] = {
     data.getCheckpointFile.map(x => x)
+  }
+}
+
+private[spark] class PeriodicDataFrameCheckpointer(
+    checkpointInterval: Int,
+    sc: SparkContext)
+  extends PeriodicCheckpointer[DataFrame](checkpointInterval, sc) {
+
+  override protected def checkpoint(data: DataFrame): Unit = data.rdd.checkpoint()
+
+  override protected def isCheckpointed(data: DataFrame): Boolean = data.rdd.isCheckpointed
+
+  override protected def persist(data: DataFrame): Unit = {
+    if (data.rdd.getStorageLevel == StorageLevel.NONE) {
+      data.persist()
+    }
+  }
+
+  override protected def unpersist(data: DataFrame): Unit = data.unpersist(blocking = false)
+
+  override protected def getCheckpointFiles(data: DataFrame): Iterable[String] = {
+    data.rdd.getCheckpointFile.map(x => x)
   }
 }
