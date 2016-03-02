@@ -117,6 +117,7 @@ final class AdaBoostClassifier (override val uid: String)
         case "SAMME.R" => boostReal(df, numClasses, m)
         case other => throw new RuntimeException
       }
+      model.transform(df).show()
 
       earlyStop = (m == numIterations - 1) || stopBoosting
       // TODO: this does nothing. When error is worse than random we need to return
@@ -132,6 +133,7 @@ final class AdaBoostClassifier (override val uid: String)
         df = df.select(col($(labelCol)), col($(featuresCol)),
           reweightUDF(col($(labelCol)), col($(weightCol)), col($(featuresCol))).as($(weightCol)))
         dataCheckPointer.update(df)
+        df.show()
       }
       m += 1
     }
@@ -162,8 +164,14 @@ final class AdaBoostClassifier (override val uid: String)
 
     val reweightFunction: (Double, Double, Vector) => Double =
       (label: Double, weight: Double, features: Vector) => {
-        val p = model.predictProbability(features).toArray
-        val logP = p.map(math.log)
+        val proba = model.predictProbability(features).toArray
+        val logP = proba.map {p =>
+          if (p < MLUtils.EPSILON) {
+            math.log(MLUtils.EPSILON)
+          } else {
+            math.log(p)
+          }
+        }
         val coded = Array.tabulate(numClasses) { i =>
           if (i != label) -1.0 / (numClasses - 1.0) else 1.0
         }
