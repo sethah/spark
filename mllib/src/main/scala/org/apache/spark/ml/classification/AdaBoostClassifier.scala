@@ -44,8 +44,8 @@ private[classification] trait AdaBoostClassifierParams
    * Set the AdaBoost algorithm.
    * Supported: "SAMME", "SAMME.R".
    * Default is "SAMME.R".
-    *
-    * @group param
+   *
+   * @group param
    */
   final val algo: Param[String] = new Param[String](this, "algo", s"AdaBoost algorithm variant.  " +
     s"Supported options: ${AdaBoostClassifier.supportedAlgos.mkString(", ")}",
@@ -78,7 +78,7 @@ final class AdaBoostClassifier (override val uid: String)
   setDefault(maxIter -> 10)
 
   @Since("2.0.0")
-  def setBaseEstimators(value: Array[BaseEstimatorType[Vector]]): this.type =
+  def setBaseEstimators(value: Array[_ <: BaseEstimatorType[Vector]]): this.type =
     set(baseEstimators, value)
   setDefault(baseEstimators -> Array(
       new DecisionTreeClassifier().setWeightCol("weight").setMaxDepth(1).setMinInstancesPerNode(0)))
@@ -86,6 +86,8 @@ final class AdaBoostClassifier (override val uid: String)
   @Since("2.0.0")
   def setAlgo(value: String): this.type = set(algo, value)
   setDefault(algo -> "SAMME.R")
+
+  private val learnerWeightCol = "weight"
 
   override protected def train(dataset: DataFrame): AdaBoostClassificationModel = {
     val numClasses: Int = MetadataUtils.getNumClasses(dataset.schema($(labelCol))) match {
@@ -96,13 +98,11 @@ final class AdaBoostClassifier (override val uid: String)
       // TODO: Automatically index labels: SPARK-7126
     }
 
-
     val w = if ($(weightCol).isEmpty) lit(1.0) else col($(weightCol))
-    if ($(weightCol).isEmpty) {
-      setWeightCol("weight")
-    }
+    getBaseEstimators.foreach(bl => bl.set(bl.weightCol, learnerWeightCol))
     val dataCheckPointer = new PeriodicDataFrameCheckpointer(10, dataset.rdd.sparkContext)
-    var df: DataFrame = dataset.select(col($(labelCol)), w.as("weight"), col($(featuresCol)))
+    var df: DataFrame = dataset.select(col($(labelCol)), w.as(learnerWeightCol),
+      col($(featuresCol)))
     dataCheckPointer.update(df)
 
     val numIterations = getMaxIter
@@ -115,13 +115,10 @@ final class AdaBoostClassifier (override val uid: String)
       val (model, estimatorWeight, reweightFunction, stopBoosting) = algorithm match {
         case "SAMME" => boostDiscrete(df, numClasses, m)
         case "SAMME.R" => boostReal(df, numClasses, m)
-        case other => throw new RuntimeException
+        case other => throw new RuntimeException(s"Cannot boost with unknown algorithm $other")
       }
-      model.transform(df).show()
 
       earlyStop = (m == numIterations - 1) || stopBoosting
-      // TODO: this does nothing. When error is worse than random we need to return
-      // TODO: estimatorWeight of zero.
       if (estimatorWeight > 0) {
         models(m) = model
         estimatorWeights(m) = estimatorWeight
@@ -131,9 +128,9 @@ final class AdaBoostClassifier (override val uid: String)
       if (!earlyStop) {
         val reweightUDF = udf(reweightFunction)
         df = df.select(col($(labelCol)), col($(featuresCol)),
-          reweightUDF(col($(labelCol)), col($(weightCol)), col($(featuresCol))).as($(weightCol)))
+          reweightUDF(col($(labelCol)), col(learnerWeightCol),
+            col($(featuresCol))).as(learnerWeightCol))
         dataCheckPointer.update(df)
-        df.show()
       }
       m += 1
     }
@@ -148,30 +145,29 @@ final class AdaBoostClassifier (override val uid: String)
    * @see [[http://en.wikipedia.org/wiki/AdaBoost AdaBoost]]
    *
    * The implementation is based upon:
-   *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
+   *   Zhu et al.,  "Multi-class AdaBoost." 2006.
    * @param dataset Input data to be boosted.
    * @param numClasses The number of classes for the target variable.
    * @param boostIter The current boosting iteration index.
    */
   private def boostReal(dataset: DataFrame, numClasses: Int, boostIter: Int):
-  (BaseTransformerType[Vector], Double, (Double, Double, Vector) => Double, Boolean) = {
+      (BaseTransformerType[Vector], Double, (Double, Double, Vector) => Double, Boolean) = {
     val learner = makeLearner()
     val model = learner.fit(dataset)
 
     val estimatorError = getEstimatorError(model, dataset)
 
-    val stopBoosting = shouldStopBoosting(estimatorError, boostIter, numClasses)
+    val isErrorWorseThanRandom = estimatorError >= 1.0 - (1.0 / numClasses)
+    val stopBoosting = isErrorWorseThanRandom || estimatorError <= 0.0
+    if (isErrorWorseThanRandom && boostIter == 0) {
+      throw new RuntimeException("Error is worse than random guessing, model cannot be fit")
+    }
+    val estimatorWeight = if (isErrorWorseThanRandom) 0.0 else 1.0
 
     val reweightFunction: (Double, Double, Vector) => Double =
       (label: Double, weight: Double, features: Vector) => {
         val proba = model.predictProbability(features).toArray
-        val logP = proba.map {p =>
-          if (p < MLUtils.EPSILON) {
-            math.log(MLUtils.EPSILON)
-          } else {
-            math.log(p)
-          }
-        }
+        val logP = proba.map(AdaBoostClassifier.safeLog)
         val coded = Array.tabulate(numClasses) { i =>
           if (i != label) -1.0 / (numClasses - 1.0) else 1.0
         }
@@ -191,7 +187,7 @@ final class AdaBoostClassifier (override val uid: String)
    * @see [[http://en.wikipedia.org/wiki/AdaBoost AdaBoost]]
    *
    * The implementation is based upon:
-   *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
+   *   Zhu et al.,  "Multi-class AdaBoost." 2006.
    * @param dataset Input data to be boosted.
    * @param numClasses The number of classes for the target variable.
    * @param boostIter The current boosting iteration index.
@@ -203,13 +199,20 @@ final class AdaBoostClassifier (override val uid: String)
 
     val estimatorError = getEstimatorError(model, dataset)
 
-    val stopBoosting = shouldStopBoosting(estimatorError, boostIter, numClasses)
+    val isErrorWorseThanRandom = estimatorError >= 1.0 - (1.0 / numClasses)
+    val stopBoosting = isErrorWorseThanRandom || estimatorError <= 0.0
+    if (isErrorWorseThanRandom && boostIter == 0) {
+      throw new RuntimeException("Error is worse than random guessing, model cannot be fit")
+    }
 
     val estimatorWeight = if (estimatorError <= 0.0) {
       1.0
+    } else if (isErrorWorseThanRandom) {
+      0.0
     } else {
       getStepSize * math.log((1 - estimatorError) / estimatorError) + math.log(numClasses - 1)
     }
+
     val reweightFunction: (Double, Double, Vector) => Double =
       (label: Double, weight: Double, features: Vector) => {
       val e = AdaBoostClassifier.indicator(model.predict(features),
@@ -221,34 +224,20 @@ final class AdaBoostClassifier (override val uid: String)
   }
 
   /**
-   * Determine whether to stop boosting early.
-   */
-  private def shouldStopBoosting(estimatorError: Double, iter: Int, numClasses: Int): Boolean = {
-    val isErrorWorseThanRandom = estimatorError >= 1.0 - (1.0 / numClasses)
-    val isClassificationPerfect = estimatorError <= 0.0
-    val isFirstIteration = iter == 0
-    if (isErrorWorseThanRandom && isFirstIteration) {
-      throw new RuntimeException("Error is worse than random guessing, model cannot be fit")
-    }
-    isErrorWorseThanRandom || isClassificationPerfect
-  }
-
-  /**
    * Get the weighted error for a boosting base learner.
    */
-  private def getEstimatorError(transformer: BaseTransformerType[Vector],
-                                df: DataFrame): Double = {
+  private def getEstimatorError(transformer: BaseTransformerType[Vector], df: DataFrame): Double = {
     val errorFunc = (label: Double, weight: Double, features: Vector) => {
       val predicted = transformer.predict(features)
       AdaBoostClassifier.indicator(predicted, label, 0.0, weight)
     }
     val errorUDF = udf(errorFunc)
-    val errorColumn = errorUDF(col($(labelCol)), col($(weightCol)), col($(featuresCol)))
+    val errorColumn = errorUDF(col($(labelCol)), col(learnerWeightCol), col($(featuresCol)))
     val weightedError = sum(errorColumn)
-    val totalWeight = sum(col($(weightCol)))
+    val totalWeight = sum(col(learnerWeightCol))
     val result = df.select(weightedError.as("error"), totalWeight.as("total")).rdd.first()
-    result match { case Row(error: Double, total: Double) =>
-      error / total
+    result match {
+      case Row(error: Double, total: Double) => error / total
     }
   }
 
@@ -261,6 +250,11 @@ object AdaBoostClassifier {
   private def indicator(predicted: Double, label: Double,
       trueValue: Double = 1.0, falseValue: Double = 0.0): Double = {
     if (predicted == label) trueValue else falseValue
+  }
+
+  private[ml] def safeLog(value: Double): Double = {
+    val eps = MLUtils.EPSILON
+    if (value < eps) math.log(eps) else math.log(value)
   }
 
   /** Set of Adaboost variants that AdaboostClassifier supports. */
@@ -291,17 +285,11 @@ final class AdaBoostClassificationModel private[ml](
    * Get the SAMME stage estimator from a base model.
    *
    * This is algorithm 4, step 2, part c from
-   *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
+   *   Zhu et al.,  "Multi-class AdaBoost." 2006.
    */
   private def sammeEstimator(transformer: BaseTransformerType[Vector], features: Vector): Vector = {
     val rawProba = transformer.predictProbability(features).toArray
-    val logProba = rawProba.map(p =>
-      if (p < MLUtils.EPSILON) {
-        math.log(MLUtils.EPSILON)
-      } else {
-        math.log(p)
-      }
-    )
+    val logProba = rawProba.map(AdaBoostClassifier.safeLog)
     val sumLogProba = logProba.sum
     val proba = logProba.map { x =>
       (numClasses - 1.0) * (x - (1.0 / numClasses) * sumLogProba)
@@ -372,7 +360,7 @@ final class AdaBoostClassificationModel private[ml](
    *
    * This is the equation for recovering class conditional probabilities
    * in section 2.1 of
-   *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
+   *   Zhu et al.,  "Multi-class AdaBoost." 2006.
    */
   private def realPredictRaw(features: Vector): Vector = {
     val proba = Vectors.zeros(numClasses).asInstanceOf[DenseVector]
@@ -395,7 +383,7 @@ final class AdaBoostClassificationModel private[ml](
    *
    * This is the equation for recovering class conditional probabilities
    * in section 2.1 of
-   *   Zhu et al.,  "Multi-class AdaBoost."  January 12, 2006.
+   *   Zhu et al.,  "Multi-class AdaBoost." 2006.
    */
   private def discretePredictRaw(features: Vector): Vector = {
     val weightSum = _modelWeights.sum

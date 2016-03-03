@@ -436,13 +436,13 @@ class LogisticRegression @Since("1.2.0") (
 
     val model = copyValues(new LogisticRegressionModel(uid, coefficients, intercept))
     val (summaryModel, probabilityColName) = model.findSummaryModelAndProbabilityCol()
-//    val logRegSummary = new BinaryLogisticRegressionTrainingSummary(
-//      summaryModel.transform(dataset),
-//      probabilityColName,
-//      $(labelCol),
-//      $(featuresCol),
-//      objectiveHistory)
-    model//.setSummary(logRegSummary)
+    val logRegSummary = new BinaryLogisticRegressionTrainingSummary(
+      summaryModel.transform(dataset),
+      probabilityColName,
+      $(labelCol),
+      $(featuresCol),
+      objectiveHistory)
+    model.setSummary(logRegSummary)
   }
 
   @Since("1.4.0")

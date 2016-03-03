@@ -84,7 +84,7 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
   }
 
-  test("early stopping") {
+  test("early stopping due to perfect classification") {
     val numClasses = 2
     val numIterations = 5
     val data = AdaBoostClassifierSuite.generateLinearlySeparableLabeledPoints(3, 10)
@@ -98,6 +98,15 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     AdaBoostClassifierSuite.validateBoostedClassifier(model, baseModel, data)
     assert(model.models.length == 1)
   }
+
+  test("early stopping due to divergence") {
+
+  }
+
+  test("throw error on bad first iteration") {
+
+  }
+
 
 }
 

@@ -136,19 +136,18 @@ private[classification] trait AdditiveClassifierParams[FeaturesType]
    *
    * @group param
    */
-  val baseEstimators: Param[Array[BaseEstimatorType[FeaturesType]]] =
+  val baseEstimators: Param[Array[_ <: BaseEstimatorType[FeaturesType]]] =
     new Param(this, "baseEstimators", "The set of candidate base learners to be chosen from at " +
-      "each boosting iteration.",
-      (ests: Array[BaseEstimatorType[FeaturesType]]) => ests.forall(_.hasParam("weightCol")))
+      "each boosting iteration.")
 
   /** @group getParam */
-  def getBaseEstimators: Array[BaseEstimatorType[FeaturesType]] =
+  def getBaseEstimators: Array[_ <: BaseEstimatorType[FeaturesType]] =
     $(baseEstimators)
 
   // scalastyle:off structural.type
-  type BaseEstimatorType[F] = ProbabilisticClassifier[F, BE, BM] forSome {
+  type BaseEstimatorType[F] = ProbabilisticClassifier[F, BE, BM] with HasWeightCol forSome {
     type BM <: ProbabilisticClassificationModel[F, BM]
-    type BE <: ProbabilisticClassifier[F, BE, BM]
+    type BE <: ProbabilisticClassifier[F, BE, BM] with HasWeightCol
   }
 
   type BaseTransformerType[F] = ProbabilisticClassificationModel[F, BM] forSome {

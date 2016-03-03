@@ -564,7 +564,7 @@ class GeneralizedLinearRegressionModel private[ml] (
   }
   lazy val familyAndLink = new FamilyAndLink(familyObj, linkObj)
 
-  override protected def predict(features: Vector): Double = {
+  override private[ml] def predict(features: Vector): Double = {
     val eta = BLAS.dot(features, coefficients) + intercept
     familyAndLink.fitted(eta)
   }
