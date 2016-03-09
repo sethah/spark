@@ -17,8 +17,6 @@
 
 package org.apache.spark.ml.classification
 
-import org.apache.spark.mllib.impl.{PeriodicDataFrameCheckpointer, PeriodicCheckpointer}
-
 import scala.language.existentials
 
 import org.apache.spark.annotation.Since
@@ -28,8 +26,9 @@ import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.param.{Param, ParamMap, ParamValidators}
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
-import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.mllib.impl.{PeriodicCheckpointer, PeriodicDataFrameCheckpointer}
 import org.apache.spark.mllib.linalg.{BLAS, DenseVector, SparseVector, Vector, Vectors}
+import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 import org.apache.spark.sql.functions._
@@ -78,9 +77,9 @@ final class AdaBoostClassifier (override val uid: String)
   setDefault(maxIter -> 10)
 
   @Since("2.0.0")
-  def setBaseEstimators(value: Array[_ <: BaseEstimatorType[Vector]]): this.type =
+  def setBaseEstimators(value: Set[BaseEstimatorType[Vector]]): this.type =
     set(baseEstimators, value)
-  setDefault(baseEstimators -> Array(
+  setDefault(baseEstimators -> Set(
       new DecisionTreeClassifier().setWeightCol("weight").setMaxDepth(1).setMinInstancesPerNode(0)))
 
   @Since("2.0.0")

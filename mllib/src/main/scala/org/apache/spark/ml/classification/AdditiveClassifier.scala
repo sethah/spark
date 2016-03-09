@@ -17,14 +17,12 @@
 
 package org.apache.spark.ml.classification
 
-import org.apache.spark.mllib.linalg.Vector
-
 import scala.language.existentials
 
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.param.shared._
-
+import org.apache.spark.mllib.linalg.Vector
 
 /**
  * :: DeveloperApi ::
@@ -46,7 +44,7 @@ abstract class AdditiveClassifier[
   /**
    * Get a boosting base learner for a single boosting iteration.
    */
-  protected def makeLearner(): BaseEstimatorType[FeaturesType]
+  protected def makeLearner(): ProbabilisticClassifier[FeaturesType, _, _]
 
 }
 
@@ -60,15 +58,14 @@ abstract class AdditiveClassifier[
  */
 @DeveloperApi
 abstract class AdditiveClassificationModel[
-FeaturesType,
-M <: AdditiveClassificationModel[FeaturesType, M]]
+    FeaturesType,
+    M <: AdditiveClassificationModel[FeaturesType, M]]
   extends ProbabilisticClassificationModel[FeaturesType, M]
     with AdditiveClassifierParams[FeaturesType] {
 
-  def models: Array[_ <: BaseTransformerType[FeaturesType]]
+  def models: Array[_ <: ProbabilisticClassificationModel[FeaturesType, _]]
 
   def modelWeights: Array[Double]
-
 }
 
 /**
@@ -90,6 +87,8 @@ abstract class WeightBoostingClassifier[
 
   /**
    * Get a boosting base learner for a single boosting iteration.
+   *
+   * Only a single candidate base learner is currently supported.
    */
   override protected def makeLearner(): BaseEstimatorType[FeaturesType] = {
     getBaseEstimators.head.copy(ParamMap.empty)
@@ -130,19 +129,31 @@ private[classification] trait AdditiveClassifierParams[FeaturesType]
   def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
   setDefault(checkpointInterval -> 10)
 
+}
+
+/**
+ * (private[classification])  Params for weighted boosted classification.
+ */
+private[classification] trait WeightBoostingParams[FeaturesType]
+  extends AdditiveClassifierParams[FeaturesType] with HasWeightCol {
+
   /**
    * The candidate base estimators to be chosen from at each boosting iteration.
    * (default = Array(DecisionTreeClassifier).
    *
    * @group param
    */
-  val baseEstimators: Param[Array[_ <: BaseEstimatorType[FeaturesType]]] =
+  val baseEstimators: Param[Set[BaseEstimatorType[FeaturesType]]] =
     new Param(this, "baseEstimators", "The set of candidate base learners to be chosen from at " +
       "each boosting iteration.")
 
   /** @group getParam */
-  def getBaseEstimators: Array[_ <: BaseEstimatorType[FeaturesType]] =
+  def getBaseEstimators: Set[BaseEstimatorType[FeaturesType]] =
     $(baseEstimators)
+
+  /** @group setParam */
+  def setWeightCol(value: String): this.type = set(weightCol, value)
+  setDefault(weightCol -> "")
 
   // scalastyle:off structural.type
   type BaseEstimatorType[F] = ProbabilisticClassifier[F, BE, BM] with HasWeightCol forSome {
@@ -154,17 +165,4 @@ private[classification] trait AdditiveClassifierParams[FeaturesType]
     type BM <: ProbabilisticClassificationModel[F, BM]
   }
   // scalastyle:on structural.type
-
-}
-
-/**
- * (private[classification])  Params for weighted boosted classification.
- */
-private[classification] trait WeightBoostingParams[FeaturesType]
-  extends AdditiveClassifierParams[FeaturesType] with HasWeightCol {
-
-  /** @group setParam */
-  def setWeightCol(value: String): this.type = set(weightCol, value)
-  setDefault(weightCol -> "")
-
 }

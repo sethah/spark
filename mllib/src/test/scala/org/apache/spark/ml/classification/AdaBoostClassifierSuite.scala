@@ -74,7 +74,7 @@ class AdaBoostClassifierSuite extends SparkFunSuite with MLlibTestSparkContext {
     val data = AdaBoostClassifierSuite.generateOrderedLabeledPoints(3, 10)
     val df = sqlContext.createDataFrame(data)
     val ada = new AdaBoostClassifier().setMaxIter(numIterations)
-      .setBaseEstimators(Array(new LogisticRegression()))
+      .setBaseEstimators(Set(new LogisticRegression()))
     val labelMeta = NominalAttribute.defaultAttr.withName("label")
       .withNumValues(numClasses).toMetadata()
     val model = ada.fit(df.select(df("features"), df("label").as("label", labelMeta)))

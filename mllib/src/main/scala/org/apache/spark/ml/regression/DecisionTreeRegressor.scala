@@ -17,11 +17,10 @@
 
 package org.apache.spark.ml.regression
 
-
 import org.apache.spark.annotation.{Experimental, Since}
+import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.param.shared.HasWeightCol
-import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree._
 import org.apache.spark.ml.tree.impl.RandomForest
@@ -30,8 +29,8 @@ import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, Strategy => OldStrategy}
 import org.apache.spark.mllib.tree.model.{DecisionTreeModel => OldDecisionTreeModel}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Row, DataFrame}
 
 /**
  * :: Experimental ::
