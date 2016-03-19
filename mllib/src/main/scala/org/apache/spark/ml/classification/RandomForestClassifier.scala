@@ -19,6 +19,8 @@ package org.apache.spark.ml.classification
 
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
+import org.apache.spark.ml.tree.impurity.{Gini, Entropy}
 import org.apache.spark.ml.tree.{DecisionTreeModel, RandomForestParams, TreeClassifierParams, TreeEnsembleModel}
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
@@ -106,7 +108,7 @@ final class RandomForestClassifier @Since("1.4.0") (
     }
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val strategy =
-      super.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, getOldImpurity)
+      super.makeStrategy(categoricalFeatures, numClasses, Algo.Classification, getNewImpurity)
     val trees =
       RandomForest.run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed)
         .map(_.asInstanceOf[DecisionTreeClassificationModel])

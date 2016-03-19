@@ -24,6 +24,8 @@ import org.json4s.JsonDSL._
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
+import org.apache.spark.ml.tree.impurity.Variance
 import org.apache.spark.ml.tree._
 import org.apache.spark.ml.tree.DecisionTreeModelReadWrite._
 import org.apache.spark.ml.tree.impl.RandomForest
@@ -87,7 +89,7 @@ final class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val 
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-    val strategy = getOldStrategy(categoricalFeatures)
+    val strategy = makeStrategy(categoricalFeatures)
     val trees = RandomForest.run(oldDataset, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = $(seed), parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
@@ -95,11 +97,17 @@ final class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val 
 
   /** (private[ml]) Train a decision tree on an RDD */
   private[ml] def train(data: RDD[LabeledPoint],
-      oldStrategy: OldStrategy): DecisionTreeRegressionModel = {
-    val trees = RandomForest.run(data, oldStrategy, numTrees = 1, featureSubsetStrategy = "all",
+      strategy: Strategy): DecisionTreeRegressionModel = {
+    val trees = RandomForest.run(data, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = $(seed), parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
   }
+
+  /** (private[ml]) Create a Strategy instance to use with the old API. */
+  private[ml] def makeStrategy(categoricalFeatures: Map[Int, Int]): Strategy = {
+    super.makeStrategy(categoricalFeatures, numClasses = 0, Algo.Regression, getNewImpurity,
+      subsamplingRate = 1.0)
+    }
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
   private[ml] def getOldStrategy(categoricalFeatures: Map[Int, Int]): OldStrategy = {

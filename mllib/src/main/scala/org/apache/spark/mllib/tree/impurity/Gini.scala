@@ -109,6 +109,11 @@ private[spark] class GiniAggregator(numClasses: Int)
   def getCalculator(allStats: Array[Double], offset: Int): GiniCalculator = {
     new GiniCalculator(allStats.view(offset, offset + statsSize).toArray)
   }
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> sloppy, but compiling
 }
 
 /**

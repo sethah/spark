@@ -26,6 +26,9 @@ import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.tree.{DecisionTreeModel, GBTParams, TreeEnsembleModel,
   TreeRegressorParams}
 import org.apache.spark.ml.tree.impl.GradientBoostedTrees
+import org.apache.spark.ml.tree.configuration.{BoostingStrategy, Algo, Strategy}
+import org.apache.spark.ml.tree.loss.{AbsoluteError, SquaredError, Loss}
+import org.apache.spark.ml.tree.impurity.Variance
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
@@ -125,6 +128,17 @@ final class GBTRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: Stri
   @Since("1.4.0")
   def getLossType: String = $(lossType).toLowerCase
 
+  // TODO: define as abstract method?
+  private[ml] def getNewLossType: Loss = {
+    getLossType match {
+      case "squared" => SquaredError
+      case "absolute" => AbsoluteError
+      case _ =>
+        // Should never happen because of check in setter method.
+        throw new RuntimeException(s"GBTRegressorParams was given bad loss type: $getLossType")
+    }
+  }
+
   /** (private[ml]) Convert new loss to old loss. */
   override private[ml] def getOldLossType: OldLoss = {
     getLossType match {
@@ -141,7 +155,9 @@ final class GBTRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: Stri
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Regression)
+    val treeStrategy = new Strategy(algo = Algo.Regression, impurity = Variance, maxDepth = getMaxDepth,
+      numClasses = 0)
+    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy,
       $(seed))
     new GBTRegressionModel(uid, baseLearners, learnerWeights, numFeatures)

@@ -21,7 +21,7 @@ import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.ml.tree.impurity.ImpurityCalculator
 import org.apache.spark.ml.tree.model.ImpurityStats
-import org.apache.spark.mllib.tree.model.{ImpurityStats,
+import org.apache.spark.mllib.tree.model.{
   InformationGainStats => OldInformationGainStats, Node => OldNode, Predict => OldPredict}
 
 /**

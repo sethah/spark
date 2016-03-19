@@ -21,6 +21,9 @@ import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util.SchemaUtils
+import org.apache.spark.ml.tree.configuration.{Algo, BoostingStrategy, Strategy}
+import org.apache.spark.ml.tree.impurity.{Entropy, Gini, Impurity, Variance}
+import org.apache.spark.ml.tree.loss.Loss
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, BoostingStrategy => OldBoostingStrategy, Strategy => OldStrategy}
 import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini, Impurity => OldImpurity, Variance => OldVariance}
 import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
@@ -153,6 +156,28 @@ private[ml] trait DecisionTreeParams extends PredictorParams
    */
   def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
 
+  /** (private[ml]) Create a Strategy instance. */
+  private[ml] def makeStrategy(
+      categoricalFeatures: Map[Int, Int],
+      numClasses: Int,
+      algo: Algo.Algo,
+      impurity: Impurity,
+      subsamplingRate: Double): Strategy = {
+    val strategy = Strategy.defaultStrategy(algo)
+    strategy.impurity = impurity
+    strategy.checkpointInterval = getCheckpointInterval
+    strategy.maxBins = getMaxBins
+    strategy.maxDepth = getMaxDepth
+    strategy.maxMemoryInMB = getMaxMemoryInMB
+    strategy.minInfoGain = getMinInfoGain
+    strategy.minInstancesPerNode = getMinInstancesPerNode
+    strategy.useNodeIdCache = getCacheNodeIds
+    strategy.numClasses = numClasses
+    strategy.categoricalFeaturesInfo = categoricalFeatures
+    strategy.subsamplingRate = subsamplingRate
+    strategy
+  }
+
   /** (private[ml]) Create a Strategy instance to use with the old API. */
   private[ml] def getOldStrategy(
       categoricalFeatures: Map[Int, Int],
@@ -200,6 +225,19 @@ private[ml] trait TreeClassifierParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
+  /** TODO. */
+  // TODO: rename
+  private[ml] def getNewImpurity: Impurity = {
+    getImpurity match {
+      case "entropy" => Entropy
+      case "gini" => Gini
+      case _ =>
+        // Should never happen because of check in setter method.
+        throw new RuntimeException(
+          s"TreeClassifierParams was given unrecognized impurity: $impurity.")
+    }
+  }
+
   /** Convert new impurity to old impurity. */
   private[ml] def getOldImpurity: OldImpurity = {
     getImpurity match {
@@ -244,6 +282,18 @@ private[ml] trait TreeRegressorParams extends Params {
 
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
+
+  /** TODO. */
+  // TODO: rename
+  private[ml] def getNewImpurity: Impurity = {
+    getImpurity match {
+      case "variance" => Variance
+      case _ =>
+        // Should never happen because of check in setter method.
+        throw new RuntimeException(
+          s"TreeRegressorParams was given unrecognized impurity: $impurity")
+    }
+  }
 
   /** Convert new impurity to old impurity. */
   private[ml] def getOldImpurity: OldImpurity = {
@@ -313,6 +363,14 @@ private[ml] trait TreeEnsembleParams extends DecisionTreeParams {
       oldImpurity: OldImpurity): OldStrategy = {
     super.getOldStrategy(categoricalFeatures, numClasses, oldAlgo, oldImpurity, getSubsamplingRate)
   }
+
+  private[ml] def makeStrategy(
+      categoricalFeatures: Map[Int, Int],
+    numClasses: Int,
+    algo: Algo.Algo,
+    impurity: Impurity): Strategy = {
+      super.makeStrategy(categoricalFeatures, numClasses, algo, impurity, getSubsamplingRate)
+    }
 }
 
 /**

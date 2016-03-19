@@ -27,6 +27,11 @@ import org.apache.spark.ml.regression.DecisionTreeRegressionModel
 import org.apache.spark.ml.tree.{DecisionTreeModel, GBTParams, TreeClassifierParams,
   TreeEnsembleModel}
 import org.apache.spark.ml.tree.impl.GradientBoostedTrees
+import org.apache.spark.ml.tree.impurity.Gini
+import org.apache.spark.ml.tree.configuration.Algo
+import org.apache.spark.ml.tree.loss.{AbsoluteError, SquaredError, LogLoss, Loss}
+import org.apache.spark.ml.tree.configuration.{Strategy, BoostingStrategy}
+import org.apache.spark.ml.tree.impl.GradientBoostedTrees
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
@@ -130,6 +135,16 @@ final class GBTClassifier @Since("1.4.0") (
   @Since("1.4.0")
   def getLossType: String = $(lossType).toLowerCase
 
+  /** TODO. */
+  private[ml] def getNewLossType: Loss = {
+    getLossType match {
+      case "logistic" => LogLoss
+      case _ =>
+        // Should never happen because of check in setter method.
+        throw new RuntimeException(s"GBTClassifier was given bad loss type: $getLossType")
+    }
+  }
+
   /** (private[ml]) Convert new loss to old loss. */
   override private[ml] def getOldLossType: OldLoss = {
     getLossType match {
@@ -154,7 +169,9 @@ final class GBTClassifier @Since("1.4.0") (
       s"GBTClassifier only supports binary classification but was given numClasses = $numClasses")
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Classification)
+    val treeStrategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = getMaxDepth,
+      numClasses = numClasses)
+    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy,
       $(seed))
     new GBTClassificationModel(uid, baseLearners, learnerWeights, numFeatures)

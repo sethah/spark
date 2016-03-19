@@ -27,6 +27,9 @@ import org.apache.spark.ml.tree._
 import org.apache.spark.ml.tree.DecisionTreeModelReadWrite._
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util._
+import org.apache.spark.ml.tree.configuration.{Strategy}
+import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
+import org.apache.spark.ml.tree.impurity.{Gini, Entropy}
 import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, Strategy => OldStrategy}
@@ -93,7 +96,7 @@ final class DecisionTreeClassifier @Since("1.4.0") (
         // TODO: Automatically index labels: SPARK-7126
     }
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-    val strategy = getOldStrategy(categoricalFeatures, numClasses)
+    val strategy = makeStrategy(categoricalFeatures, numClasses)
     val trees = RandomForest.run(oldDataset, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = $(seed), parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeClassificationModel]
@@ -101,8 +104,8 @@ final class DecisionTreeClassifier @Since("1.4.0") (
 
   /** (private[ml]) Train a decision tree on an RDD */
   private[ml] def train(data: RDD[LabeledPoint],
-      oldStrategy: OldStrategy): DecisionTreeClassificationModel = {
-    val trees = RandomForest.run(data, oldStrategy, numTrees = 1, featureSubsetStrategy = "all",
+      strategy: Strategy): DecisionTreeClassificationModel = {
+    val trees = RandomForest.run(data, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = 0L, parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeClassificationModel]
   }
@@ -112,6 +115,14 @@ final class DecisionTreeClassifier @Since("1.4.0") (
       categoricalFeatures: Map[Int, Int],
       numClasses: Int): OldStrategy = {
     super.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, getOldImpurity,
+      subsamplingRate = 1.0)
+  }
+
+  /** (private[ml]) Create a Strategy instance to use with the old API. */
+  private[ml] def makeStrategy(
+      categoricalFeatures: Map[Int, Int],
+      numClasses: Int): Strategy = {
+    super.makeStrategy(categoricalFeatures, numClasses, Algo.Classification, getNewImpurity,
       subsamplingRate = 1.0)
   }
 

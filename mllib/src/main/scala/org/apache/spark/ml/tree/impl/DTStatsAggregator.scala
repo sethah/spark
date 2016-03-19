@@ -17,8 +17,7 @@
 
 package org.apache.spark.ml.tree.impl
 
-import org.apache.spark.mllib.tree.impurity._
-
+import org.apache.spark.ml.tree.impurity._
 
 
 /**
@@ -73,6 +72,7 @@ private[spark] class DTStatsAggregator(
    * Flat array of elements.
    * Index for start of stats for a (feature, bin) is:
    *   index = featureOffsets(featureIndex) + binIndex * statsSize
+<<<<<<< HEAD
    */
   private val allStats: Array[Double] = new Array[Double](allStatsSize)
 
@@ -89,12 +89,29 @@ private[spark] class DTStatsAggregator(
    *
    * @param featureOffset  This is a pre-computed (node, feature) offset
    *                           from [[getFeatureOffset]].
+=======
+   * Note: For unordered features,
+   *       the left child stats have binIndex in [0, numBins(featureIndex) / 2))
+   *       and the right child stats in [numBins(featureIndex) / 2), numBins(featureIndex))
+   */
+  private val allStats: Array[Double] = new Array[Double](allStatsSize)
+
+
+  /**
+   * Get an [[ImpurityCalculator]] for a given (node, feature, bin).
+   * @param featureOffset  For ordered features, this is a pre-computed (node, feature) offset
+   *                           from [[getFeatureOffset]].
+   *                           For unordered features, this is a pre-computed
+   *                           (node, feature, left/right child) offset from
+   *                           [[getLeftRightFeatureOffsets]].
+>>>>>>> sloppy, but compiling
    */
   def getImpurityCalculator(featureOffset: Int, binIndex: Int): ImpurityCalculator = {
     impurityAggregator.getCalculator(allStats, featureOffset + binIndex * statsSize)
   }
 
   /**
+<<<<<<< HEAD
    * Get an [[ImpurityCalculator]] for the parent node.
    */
   def getParentImpurityCalculator(): ImpurityCalculator = {
@@ -102,6 +119,8 @@ private[spark] class DTStatsAggregator(
   }
 
   /**
+=======
+>>>>>>> sloppy, but compiling
    * Update the stats for a given (feature, bin) for ordered features, using the given label.
    */
   def update(featureIndex: Int, binIndex: Int, label: Double, instanceWeight: Double): Unit = {
@@ -110,6 +129,7 @@ private[spark] class DTStatsAggregator(
   }
 
   /**
+<<<<<<< HEAD
    * Update the parent node stats using the given label.
    */
   def updateParent(label: Double, instanceWeight: Double): Unit = {
@@ -122,6 +142,15 @@ private[spark] class DTStatsAggregator(
    *
    * @param featureOffset  This is a pre-computed feature offset
    *                           from [[getFeatureOffset]].
+=======
+   * Faster version of [[update]].
+   * Update the stats for a given (feature, bin), using the given label.
+   * @param featureOffset  For ordered features, this is a pre-computed feature offset
+   *                           from [[getFeatureOffset]].
+   *                           For unordered features, this is a pre-computed
+   *                           (feature, left/right child) offset from
+   *                           [[getLeftRightFeatureOffsets]].
+>>>>>>> sloppy, but compiling
    */
   def featureUpdate(
       featureOffset: Int,
@@ -139,10 +168,28 @@ private[spark] class DTStatsAggregator(
   def getFeatureOffset(featureIndex: Int): Int = featureOffsets(featureIndex)
 
   /**
+<<<<<<< HEAD
    * For a given feature, merge the stats for two bins.
    *
    * @param featureOffset  This is a pre-computed feature offset
    *                           from [[getFeatureOffset]].
+=======
+   * Pre-compute feature offset for use with [[featureUpdate]].
+   * For unordered features only.
+   */
+  def getLeftRightFeatureOffsets(featureIndex: Int): (Int, Int) = {
+    val baseOffset = featureOffsets(featureIndex)
+    (baseOffset, baseOffset + (numBins(featureIndex) >> 1) * statsSize)
+  }
+
+  /**
+   * For a given feature, merge the stats for two bins.
+   * @param featureOffset  For ordered features, this is a pre-computed feature offset
+   *                           from [[getFeatureOffset]].
+   *                           For unordered features, this is a pre-computed
+   *                           (feature, left/right child) offset from
+   *                           [[getLeftRightFeatureOffsets]].
+>>>>>>> sloppy, but compiling
    * @param binIndex  The other bin is merged into this bin.
    * @param otherBinIndex  This bin is not modified.
    */
@@ -165,6 +212,7 @@ private[spark] class DTStatsAggregator(
       allStats(i) += other.allStats(i)
       i += 1
     }
+<<<<<<< HEAD
 
     require(statsSize == other.statsSize,
       s"DTStatsAggregator.merge requires that both aggregators have the same length parent " +
@@ -176,6 +224,8 @@ private[spark] class DTStatsAggregator(
       j += 1
     }
 
+=======
+>>>>>>> sloppy, but compiling
     this
   }
 }
