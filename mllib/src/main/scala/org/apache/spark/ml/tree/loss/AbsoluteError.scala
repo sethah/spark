@@ -28,7 +28,7 @@ import org.apache.spark.annotation.{DeveloperApi, Since}
  *  |y - F(x)|
  * where y is the label and F(x) is the model prediction for features x.
  */
-@Since("1.2.0")
+@Since("2.0.0")
 @DeveloperApi
 object AbsoluteError extends Loss {
 
@@ -40,7 +40,7 @@ object AbsoluteError extends Loss {
    * @param label True label.
    * @return Loss gradient
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   override def gradient(prediction: Double, label: Double): Double = {
     if (label - prediction < 0) 1.0 else -1.0
   }

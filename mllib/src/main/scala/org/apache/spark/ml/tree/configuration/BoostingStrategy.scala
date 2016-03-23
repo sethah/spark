@@ -17,11 +17,11 @@
 
 package org.apache.spark.ml.tree.configuration
 
+import scala.beans.BeanProperty
+
 import org.apache.spark.annotation.Since
 import org.apache.spark.ml.tree.configuration.Algo._
 import org.apache.spark.ml.tree.loss.{LogLoss, Loss, SquaredError}
-
-import scala.beans.BeanProperty
 
 /**
  * Configuration options for [[org.apache.spark.mllib.tree.GradientBoostedTrees]].
@@ -45,15 +45,15 @@ import scala.beans.BeanProperty
  *                      Ignored when
  *                      [[org.apache.spark.mllib.tree.GradientBoostedTrees.run()]] is used.
  */
-@Since("1.2.0")
-case class BoostingStrategy @Since("1.4.0") (
+@Since("2.0.0")
+case class BoostingStrategy @Since("2.0.0") (
     // Required boosting parameters
-    @Since("1.2.0") @BeanProperty var treeStrategy: Strategy,
-    @Since("1.2.0") @BeanProperty var loss: Loss,
+    @Since("2.0.0") @BeanProperty var treeStrategy: Strategy,
+    @Since("2.0.0") @BeanProperty var loss: Loss,
     // Optional boosting parameters
-    @Since("1.2.0") @BeanProperty var numIterations: Int = 100,
-    @Since("1.2.0") @BeanProperty var learningRate: Double = 0.1,
-    @Since("1.4.0") @BeanProperty var validationTol: Double = 0.001) extends Serializable {
+    @Since("2.0.0") @BeanProperty var numIterations: Int = 100,
+    @Since("2.0.0") @BeanProperty var learningRate: Double = 0.1,
+    @Since("2.0.0") @BeanProperty var validationTol: Double = 0.001) extends Serializable {
 
   /**
    * Check validity of parameters.
@@ -76,29 +76,29 @@ case class BoostingStrategy @Since("1.4.0") (
   }
 }
 
-@Since("1.2.0")
+@Since("2.0.0")
 object BoostingStrategy {
 
   /**
    * Returns default configuration for the boosting algorithm
- *
+   *
    * @param algo Learning goal.  Supported: "Classification" or "Regression"
    * @return Configuration for boosting algorithm
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   def defaultParams(algo: String): BoostingStrategy = {
     defaultParams(Algo.fromString(algo))
   }
 
   /**
    * Returns default configuration for the boosting algorithm
- *
+   *
    * @param algo Learning goal.  Supported:
    *             [[org.apache.spark.mllib.tree.configuration.Algo.Classification]],
    *             [[org.apache.spark.mllib.tree.configuration.Algo.Regression]]
    * @return Configuration for boosting algorithm
    */
-  @Since("1.3.0")
+  @Since("2.0.0")
   def defaultParams(algo: Algo): BoostingStrategy = {
     val treeStrategy = Strategy.defaultStrategy(algo)
     treeStrategy.maxDepth = 3

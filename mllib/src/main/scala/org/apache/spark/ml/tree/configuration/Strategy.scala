@@ -66,32 +66,32 @@ import scala.collection.JavaConverters._
  *                           the checkpoint directory is not set in
  *                           [[org.apache.spark.SparkContext]], this setting is ignored.
  */
-@Since("1.0.0")
-class Strategy @Since("1.3.0") (
-    @Since("1.0.0") @BeanProperty var algo: Algo,
-    @Since("1.0.0") @BeanProperty var impurity: Impurity,
-    @Since("1.0.0") @BeanProperty var maxDepth: Int,
-    @Since("1.2.0") @BeanProperty var numClasses: Int = 2,
-    @Since("1.0.0") @BeanProperty var maxBins: Int = 32,
-    @Since("1.0.0") @BeanProperty var quantileCalculationStrategy: QuantileStrategy = Sort,
-    @Since("1.0.0") @BeanProperty var categoricalFeaturesInfo: Map[Int, Int] = Map[Int, Int](),
-    @Since("1.2.0") @BeanProperty var minInstancesPerNode: Int = 1,
-    @Since("1.2.0") @BeanProperty var minInfoGain: Double = 0.0,
-    @Since("1.0.0") @BeanProperty var maxMemoryInMB: Int = 256,
-    @Since("1.2.0") @BeanProperty var subsamplingRate: Double = 1,
-    @Since("1.2.0") @BeanProperty var useNodeIdCache: Boolean = false,
-    @Since("1.2.0") @BeanProperty var checkpointInterval: Int = 10) extends Serializable {
+@Since("2.0.0")
+class Strategy @Since("2.0.0") (
+    @Since("2.0.0") @BeanProperty var algo: Algo,
+    @Since("2.0.0") @BeanProperty var impurity: Impurity,
+    @Since("2.0.0") @BeanProperty var maxDepth: Int,
+    @Since("2.0.0") @BeanProperty var numClasses: Int = 2,
+    @Since("2.0.0") @BeanProperty var maxBins: Int = 32,
+    @Since("2.0.0") @BeanProperty var quantileCalculationStrategy: QuantileStrategy = Sort,
+    @Since("2.0.0") @BeanProperty var categoricalFeaturesInfo: Map[Int, Int] = Map[Int, Int](),
+    @Since("2.0.0") @BeanProperty var minInstancesPerNode: Int = 1,
+    @Since("2.0.0") @BeanProperty var minInfoGain: Double = 0.0,
+    @Since("2.0.0") @BeanProperty var maxMemoryInMB: Int = 256,
+    @Since("2.0.0") @BeanProperty var subsamplingRate: Double = 1,
+    @Since("2.0.0") @BeanProperty var useNodeIdCache: Boolean = false,
+    @Since("2.0.0") @BeanProperty var checkpointInterval: Int = 10) extends Serializable {
 
   /**
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   def isMulticlassClassification: Boolean = {
     algo == Classification && numClasses > 2
   }
 
   /**
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   def isMulticlassWithCategoricalFeatures: Boolean = {
     isMulticlassClassification && (categoricalFeaturesInfo.size > 0)
   }
@@ -99,7 +99,7 @@ class Strategy @Since("1.3.0") (
   /**
    * Java-friendly constructor for [[Strategy]]
    */
-  @Since("1.1.0")
+  @Since("2.0.0")
   def this(
       algo: Algo,
       impurity: Impurity,
@@ -114,7 +114,7 @@ class Strategy @Since("1.3.0") (
   /**
    * Sets Algorithm using a String.
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   def setAlgo(algo: String): Unit = algo match {
     case "Classification" => setAlgo(Classification)
     case "Regression" => setAlgo(Regression)
@@ -123,7 +123,7 @@ class Strategy @Since("1.3.0") (
   /**
    * Sets categoricalFeaturesInfo using a Java Map.
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   def setCategoricalFeaturesInfo(
       categoricalFeaturesInfo: java.util.Map[java.lang.Integer, java.lang.Integer]): Unit = {
     this.categoricalFeaturesInfo =
@@ -168,7 +168,7 @@ class Strategy @Since("1.3.0") (
   /**
    * Returns a shallow copy of this instance.
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   def copy: Strategy = {
     new Strategy(algo, impurity, maxDepth, numClasses, maxBins,
       quantileCalculationStrategy, categoricalFeaturesInfo, minInstancesPerNode, minInfoGain,
@@ -176,7 +176,7 @@ class Strategy @Since("1.3.0") (
   }
 }
 
-@Since("1.2.0")
+@Since("2.0.0")
 object Strategy {
 
   /**
@@ -184,7 +184,7 @@ object Strategy {
  *
    * @param algo  "Classification" or "Regression"
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   def defaultStrategy(algo: String): Strategy = {
     defaultStrategy(Algo.fromString(algo))
   }
@@ -194,7 +194,7 @@ object Strategy {
  *
    * @param algo Algo.Classification or Algo.Regression
    */
-  @Since("1.3.0")
+  @Since("2.0.0")
   def defaultStrategy(algo: Algo): Strategy = algo match {
     case Algo.Classification =>
       new Strategy(algo = Classification, impurity = Gini, maxDepth = 10,
@@ -205,7 +205,7 @@ object Strategy {
   }
 
   @deprecated("Use Strategy.defaultStrategy instead.", "1.5.0")
-  @Since("1.2.0")
+  @Since("2.0.0")
   def defaultStategy(algo: Algo): Strategy = defaultStrategy(algo)
 
 }

@@ -30,7 +30,7 @@ import org.apache.spark.mllib.util.MLUtils
  *   2 log(1 + exp(-2 y F(x)))
  * where y is a label in {-1, 1} and F(x) is the model prediction for features x.
  */
-@Since("1.2.0")
+@Since("2.0.0")
 @DeveloperApi
 object LogLoss extends Loss {
 
@@ -42,7 +42,7 @@ object LogLoss extends Loss {
    * @param label True label.
    * @return Loss gradient
    */
-  @Since("1.2.0")
+  @Since("2.0.0")
   override def gradient(prediction: Double, label: Double): Double = {
     - 4.0 * label / (1.0 + math.exp(2.0 * label * prediction))
   }
