@@ -89,7 +89,7 @@ final class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val 
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-    val strategy = makeStrategy(categoricalFeatures)
+    val strategy = getStrategy(categoricalFeatures)
     val trees = RandomForest.run(oldDataset, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = $(seed), parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
@@ -104,14 +104,8 @@ final class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val 
   }
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
-  private[ml] def makeStrategy(categoricalFeatures: Map[Int, Int]): Strategy = {
-    super.makeStrategy(categoricalFeatures, numClasses = 0, Algo.Regression, getNewImpurity,
-      subsamplingRate = 1.0)
-    }
-
-  /** (private[ml]) Create a Strategy instance to use with the old API. */
-  private[ml] def getOldStrategy(categoricalFeatures: Map[Int, Int]): OldStrategy = {
-    super.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, getOldImpurity,
+  private[ml] def getStrategy(categoricalFeatures: Map[Int, Int]): Strategy = {
+    super.getStrategy(categoricalFeatures, numClasses = 0, Algo.Regression, getImpurityFunction,
       subsamplingRate = 1.0)
   }
 

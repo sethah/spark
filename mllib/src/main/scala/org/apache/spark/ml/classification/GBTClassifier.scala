@@ -135,20 +135,10 @@ final class GBTClassifier @Since("1.4.0") (
   @Since("1.4.0")
   def getLossType: String = $(lossType).toLowerCase
 
-  /** TODO. */
-  private[ml] def getNewLossType: Loss = {
+  /** Get loss function from string. */
+  private[ml] def getLoss: Loss = {
     getLossType match {
       case "logistic" => LogLoss
-      case _ =>
-        // Should never happen because of check in setter method.
-        throw new RuntimeException(s"GBTClassifier was given bad loss type: $getLossType")
-    }
-  }
-
-  /** (private[ml]) Convert new loss to old loss. */
-  override private[ml] def getOldLossType: OldLoss = {
-    getLossType match {
-      case "logistic" => OldLogLoss
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(s"GBTClassifier was given bad loss type: $getLossType")
@@ -169,9 +159,7 @@ final class GBTClassifier @Since("1.4.0") (
       s"GBTClassifier only supports binary classification but was given numClasses = $numClasses")
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val treeStrategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = getMaxDepth,
-      numClasses = numClasses)
-    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
+    val boostingStrategy = super.getBoostingStrategy(categoricalFeatures, Algo.Classification)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy,
       $(seed))
     new GBTClassificationModel(uid, baseLearners, learnerWeights, numFeatures)

@@ -108,7 +108,7 @@ final class RandomForestClassifier @Since("1.4.0") (
     }
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val strategy =
-      super.makeStrategy(categoricalFeatures, numClasses, Algo.Classification, getNewImpurity)
+      super.getStrategy(categoricalFeatures, numClasses, Algo.Classification, getImpurityFunction)
     val trees =
       RandomForest.run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed)
         .map(_.asInstanceOf[DecisionTreeClassificationModel])

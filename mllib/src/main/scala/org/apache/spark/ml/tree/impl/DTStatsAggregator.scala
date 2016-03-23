@@ -20,6 +20,7 @@ package org.apache.spark.ml.tree.impl
 import org.apache.spark.ml.tree.impurity._
 
 
+
 /**
  * DecisionTree statistics aggregator for a node.
  * This holds a flat array of statistics for a set of (features, bins)
@@ -73,6 +74,7 @@ private[spark] class DTStatsAggregator(
    * Index for start of stats for a (feature, bin) is:
    *   index = featureOffsets(featureIndex) + binIndex * statsSize
 <<<<<<< HEAD
+<<<<<<< HEAD
    */
   private val allStats: Array[Double] = new Array[Double](allStatsSize)
 
@@ -93,18 +95,30 @@ private[spark] class DTStatsAggregator(
    * Note: For unordered features,
    *       the left child stats have binIndex in [0, numBins(featureIndex) / 2))
    *       and the right child stats in [numBins(featureIndex) / 2), numBins(featureIndex))
+=======
+>>>>>>> cleaning up strategy methods
    */
   private val allStats: Array[Double] = new Array[Double](allStatsSize)
 
+  /**
+   * Array of parent node sufficient stats.
+   *
+   * Note: this is necessary because stats for the parent node are not available
+   *       on the first iteration of tree learning.
+   */
+  private val parentStats: Array[Double] = new Array[Double](statsSize)
 
   /**
    * Get an [[ImpurityCalculator]] for a given (node, feature, bin).
-   * @param featureOffset  For ordered features, this is a pre-computed (node, feature) offset
+   * @param featureOffset  This is a pre-computed (node, feature) offset
    *                           from [[getFeatureOffset]].
+<<<<<<< HEAD
    *                           For unordered features, this is a pre-computed
    *                           (node, feature, left/right child) offset from
    *                           [[getLeftRightFeatureOffsets]].
 >>>>>>> sloppy, but compiling
+=======
+>>>>>>> cleaning up strategy methods
    */
   def getImpurityCalculator(featureOffset: Int, binIndex: Int): ImpurityCalculator = {
     impurityAggregator.getCalculator(allStats, featureOffset + binIndex * statsSize)
@@ -112,6 +126,9 @@ private[spark] class DTStatsAggregator(
 
   /**
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> cleaning up strategy methods
    * Get an [[ImpurityCalculator]] for the parent node.
    */
   def getParentImpurityCalculator(): ImpurityCalculator = {
@@ -119,8 +136,11 @@ private[spark] class DTStatsAggregator(
   }
 
   /**
+<<<<<<< HEAD
 =======
 >>>>>>> sloppy, but compiling
+=======
+>>>>>>> cleaning up strategy methods
    * Update the stats for a given (feature, bin) for ordered features, using the given label.
    */
   def update(featureIndex: Int, binIndex: Int, label: Double, instanceWeight: Double): Unit = {
@@ -130,6 +150,9 @@ private[spark] class DTStatsAggregator(
 
   /**
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> cleaning up strategy methods
    * Update the parent node stats using the given label.
    */
   def updateParent(label: Double, instanceWeight: Double): Unit = {
@@ -137,26 +160,32 @@ private[spark] class DTStatsAggregator(
   }
 
   /**
+<<<<<<< HEAD
    * Faster version of [[update]].
    * Update the stats for a given (feature, bin), using the given label.
    *
    * @param featureOffset  This is a pre-computed feature offset
    *                           from [[getFeatureOffset]].
 =======
+=======
+>>>>>>> cleaning up strategy methods
    * Faster version of [[update]].
    * Update the stats for a given (feature, bin), using the given label.
-   * @param featureOffset  For ordered features, this is a pre-computed feature offset
+   * @param featureOffset  This is a pre-computed feature offset
    *                           from [[getFeatureOffset]].
+<<<<<<< HEAD
    *                           For unordered features, this is a pre-computed
    *                           (feature, left/right child) offset from
    *                           [[getLeftRightFeatureOffsets]].
 >>>>>>> sloppy, but compiling
+=======
+>>>>>>> cleaning up strategy methods
    */
   def featureUpdate(
-      featureOffset: Int,
-      binIndex: Int,
-      label: Double,
-      instanceWeight: Double): Unit = {
+                     featureOffset: Int,
+                     binIndex: Int,
+                     label: Double,
+                     instanceWeight: Double): Unit = {
     impurityAggregator.update(allStats, featureOffset + binIndex * statsSize,
       label, instanceWeight)
   }
@@ -168,6 +197,7 @@ private[spark] class DTStatsAggregator(
   def getFeatureOffset(featureIndex: Int): Int = featureOffsets(featureIndex)
 
   /**
+<<<<<<< HEAD
 <<<<<<< HEAD
    * For a given feature, merge the stats for two bins.
    *
@@ -183,13 +213,18 @@ private[spark] class DTStatsAggregator(
   }
 
   /**
+=======
+>>>>>>> cleaning up strategy methods
    * For a given feature, merge the stats for two bins.
-   * @param featureOffset  For ordered features, this is a pre-computed feature offset
+   * @param featureOffset  This is a pre-computed feature offset
    *                           from [[getFeatureOffset]].
+<<<<<< HEAD
    *                           For unordered features, this is a pre-computed
    *                           (feature, left/right child) offset from
    *                           [[getLeftRightFeatureOffsets]].
 >>>>>>> sloppy, but compiling
+=======
+>>>>>>> cleaning up strategy methods
    * @param binIndex  The other bin is merged into this bin.
    * @param otherBinIndex  This bin is not modified.
    */
@@ -213,6 +248,9 @@ private[spark] class DTStatsAggregator(
       i += 1
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> cleaning up strategy methods
 
     require(statsSize == other.statsSize,
       s"DTStatsAggregator.merge requires that both aggregators have the same length parent " +
@@ -224,8 +262,11 @@ private[spark] class DTStatsAggregator(
       j += 1
     }
 
+<<<<<<< HEAD
 =======
 >>>>>>> sloppy, but compiling
+=======
+>>>>>>> cleaning up strategy methods
     this
   }
 }

@@ -157,7 +157,7 @@ private[ml] trait DecisionTreeParams extends PredictorParams
   def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
 
   /** (private[ml]) Create a Strategy instance. */
-  private[ml] def makeStrategy(
+  private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
       algo: Algo.Algo,
@@ -178,27 +178,6 @@ private[ml] trait DecisionTreeParams extends PredictorParams
     strategy
   }
 
-  /** (private[ml]) Create a Strategy instance to use with the old API. */
-  private[ml] def getOldStrategy(
-      categoricalFeatures: Map[Int, Int],
-      numClasses: Int,
-      oldAlgo: OldAlgo.Algo,
-      oldImpurity: OldImpurity,
-      subsamplingRate: Double): OldStrategy = {
-    val strategy = OldStrategy.defaultStrategy(oldAlgo)
-    strategy.impurity = oldImpurity
-    strategy.checkpointInterval = getCheckpointInterval
-    strategy.maxBins = getMaxBins
-    strategy.maxDepth = getMaxDepth
-    strategy.maxMemoryInMB = getMaxMemoryInMB
-    strategy.minInfoGain = getMinInfoGain
-    strategy.minInstancesPerNode = getMinInstancesPerNode
-    strategy.useNodeIdCache = getCacheNodeIds
-    strategy.numClasses = numClasses
-    strategy.categoricalFeaturesInfo = categoricalFeatures
-    strategy.subsamplingRate = subsamplingRate
-    strategy
-  }
 }
 
 /**
@@ -225,24 +204,11 @@ private[ml] trait TreeClassifierParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** TODO. */
-  // TODO: rename
-  private[ml] def getNewImpurity: Impurity = {
+  /** Get decision tree Impurity function. */
+  private[ml] def getImpurityFunction: Impurity = {
     getImpurity match {
       case "entropy" => Entropy
       case "gini" => Gini
-      case _ =>
-        // Should never happen because of check in setter method.
-        throw new RuntimeException(
-          s"TreeClassifierParams was given unrecognized impurity: $impurity.")
-    }
-  }
-
-  /** Convert new impurity to old impurity. */
-  private[ml] def getOldImpurity: OldImpurity = {
-    getImpurity match {
-      case "entropy" => OldEntropy
-      case "gini" => OldGini
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(
@@ -283,22 +249,10 @@ private[ml] trait TreeRegressorParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** TODO. */
-  // TODO: rename
-  private[ml] def getNewImpurity: Impurity = {
+  /** Get decision tree Impurity function. */
+  private[ml] def getImpurityFunction: Impurity = {
     getImpurity match {
       case "variance" => Variance
-      case _ =>
-        // Should never happen because of check in setter method.
-        throw new RuntimeException(
-          s"TreeRegressorParams was given unrecognized impurity: $impurity")
-    }
-  }
-
-  /** Convert new impurity to old impurity. */
-  private[ml] def getOldImpurity: OldImpurity = {
-    getImpurity match {
-      case "variance" => OldVariance
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(
@@ -352,24 +306,12 @@ private[ml] trait TreeEnsembleParams extends DecisionTreeParams {
   /** @group getParam */
   final def getSubsamplingRate: Double = $(subsamplingRate)
 
-  /**
-   * Create a Strategy instance to use with the old API.
-   * NOTE: The caller should set impurity and seed.
-   */
-  private[ml] def getOldStrategy(
-      categoricalFeatures: Map[Int, Int],
-      numClasses: Int,
-      oldAlgo: OldAlgo.Algo,
-      oldImpurity: OldImpurity): OldStrategy = {
-    super.getOldStrategy(categoricalFeatures, numClasses, oldAlgo, oldImpurity, getSubsamplingRate)
-  }
-
-  private[ml] def makeStrategy(
+  private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
     numClasses: Int,
     algo: Algo.Algo,
     impurity: Impurity): Strategy = {
-      super.makeStrategy(categoricalFeatures, numClasses, algo, impurity, getSubsamplingRate)
+      super.getStrategy(categoricalFeatures, numClasses, algo, impurity, getSubsamplingRate)
     }
 }
 
@@ -478,15 +420,14 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
       s"but it given invalid value $getStepSize.")
   }
 
-  /** (private[ml]) Create a BoostingStrategy instance to use with the old API. */
-  private[ml] def getOldBoostingStrategy(
+  /** (private[ml]) Create a BoostingStrategy for Gradient Boosting. */
+  private[ml] def getBoostingStrategy(
       categoricalFeatures: Map[Int, Int],
-      oldAlgo: OldAlgo.Algo): OldBoostingStrategy = {
-    val strategy = super.getOldStrategy(categoricalFeatures, numClasses = 2, oldAlgo, OldVariance)
-    // NOTE: The old API does not support "seed" so we ignore it.
-    new OldBoostingStrategy(strategy, getOldLossType, getMaxIter, getStepSize)
+      algo: Algo.Algo): BoostingStrategy = {
+    val strategy = super.getStrategy(categoricalFeatures, numClasses = 2, algo, Variance)
+    new BoostingStrategy(strategy, getLoss, getMaxIter, getStepSize)
   }
 
-  /** Get old Gradient Boosting Loss type */
-  private[ml] def getOldLossType: OldLoss
+  /** Get Gradient Boosting Loss function. */
+  private[ml] def getLoss: Loss
 }

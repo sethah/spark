@@ -128,22 +128,11 @@ final class GBTRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: Stri
   @Since("1.4.0")
   def getLossType: String = $(lossType).toLowerCase
 
-  // TODO: define as abstract method?
-  private[ml] def getNewLossType: Loss = {
+  /** Get loss function from string. */
+  override private[ml] def getLoss: Loss = {
     getLossType match {
       case "squared" => SquaredError
       case "absolute" => AbsoluteError
-      case _ =>
-        // Should never happen because of check in setter method.
-        throw new RuntimeException(s"GBTRegressorParams was given bad loss type: $getLossType")
-    }
-  }
-
-  /** (private[ml]) Convert new loss to old loss. */
-  override private[ml] def getOldLossType: OldLoss = {
-    getLossType match {
-      case "squared" => OldSquaredError
-      case "absolute" => OldAbsoluteError
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(s"GBTRegressorParams was given bad loss type: $getLossType")
@@ -155,9 +144,7 @@ final class GBTRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: Stri
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val treeStrategy = new Strategy(algo = Algo.Regression, impurity = Variance, maxDepth = getMaxDepth,
-      numClasses = 0)
-    val boostingStrategy = new BoostingStrategy(treeStrategy, getNewLossType, getMaxIter, getStepSize)
+    val boostingStrategy = super.getBoostingStrategy(categoricalFeatures, Algo.Regression)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy,
       $(seed))
     new GBTRegressionModel(uid, baseLearners, learnerWeights, numFeatures)
