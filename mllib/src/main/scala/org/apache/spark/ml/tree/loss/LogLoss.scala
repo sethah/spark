@@ -19,10 +19,11 @@ package org.apache.spark.ml.tree.loss
 
 import org.apache.spark.annotation.{DeveloperApi, Since}
 import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.mllib.tree.loss.{Loss => OldLoss, LogLoss => OldLogLoss}
+
 
 
 /**
- * :: DeveloperApi ::
  * Class for log loss calculation (for classification).
  * This uses twice the binomial negative log likelihood, called "deviance" in Friedman (1999).
  *
@@ -30,9 +31,7 @@ import org.apache.spark.mllib.util.MLUtils
  *   2 log(1 + exp(-2 y F(x)))
  * where y is a label in {-1, 1} and F(x) is the model prediction for features x.
  */
-@Since("2.0.0")
-@DeveloperApi
-object LogLoss extends Loss {
+private[spark] object LogLoss extends Loss {
 
   /**
    * Method to calculate the loss gradients for the gradient boosting calculation for binary
@@ -42,14 +41,15 @@ object LogLoss extends Loss {
    * @param label True label.
    * @return Loss gradient
    */
-  @Since("2.0.0")
   override def gradient(prediction: Double, label: Double): Double = {
     - 4.0 * label / (1.0 + math.exp(2.0 * label * prediction))
   }
 
-  override private[spark] def computeError(prediction: Double, label: Double): Double = {
+  override def computeError(prediction: Double, label: Double): Double = {
     val margin = 2.0 * label * prediction
     // The following is equivalent to 2.0 * log(1 + exp(-margin)) but more numerically stable.
     2.0 * MLUtils.log1pExp(-margin)
   }
+
+  def toOld: OldLoss = OldLogLoss
 }

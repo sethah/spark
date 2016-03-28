@@ -19,17 +19,15 @@ package org.apache.spark.ml.tree.loss
 
 import org.apache.spark.annotation.{DeveloperApi, Since}
 import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
 import org.apache.spark.ml.tree.TreeEnsembleModel
 import org.apache.spark.rdd.RDD
 
 
 /**
- * :: DeveloperApi ::
  * Trait for adding "pluggable" loss functions for the gradient boosting algorithm.
  */
-@Since("2.0.0")
-@DeveloperApi
-trait Loss extends Serializable {
+private[spark] trait Loss extends Serializable {
 
   /**
    * Method to calculate the gradients for the gradient boosting calculation.
@@ -37,7 +35,6 @@ trait Loss extends Serializable {
    * @param label true label.
    * @return Loss gradient.
    */
-  @Since("2.0.0")
   def gradient(prediction: Double, label: Double): Double
 
 //  /**
@@ -61,5 +58,7 @@ trait Loss extends Serializable {
    * @param label True label.
    * @return Measure of model error on datapoint.
    */
-  private[spark] def computeError(prediction: Double, label: Double): Double
+  def computeError(prediction: Double, label: Double): Double
+
+  def toOld: OldLoss
 }

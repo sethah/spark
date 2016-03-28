@@ -17,6 +17,8 @@
 
 package org.apache.spark.ml.tree.impurity
 
+import org.apache.spark.mllib.tree.impurity.{Impurity => OldImpurity, Gini => OldGini,
+Variance => OldVariance, Entropy => OldEntropy}
 /**
  * Factory for Impurity instances.
  */
@@ -27,6 +29,18 @@ private[ml] object Impurities {
     case "entropy" => Entropy
     case "variance" => Variance
     case _ => throw new IllegalArgumentException(s"Did not recognize Impurity name: $name")
+  }
+
+  def toOld(impurity: Impurity): OldImpurity = {
+    impurity match {
+      case Gini => OldGini
+      case Entropy => OldEntropy
+      case Variance => OldVariance
+      case _ =>
+        throw new IllegalArgumentException(
+          s"Impurity given invalid value: $impurity." +
+            s"  Valid settings are: Gini, Entropy, Variance.")
+    }
   }
 
 }

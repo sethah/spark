@@ -22,6 +22,7 @@ import scala.beans.BeanProperty
 import org.apache.spark.annotation.Since
 import org.apache.spark.ml.tree.configuration.Algo._
 import org.apache.spark.ml.tree.loss.{LogLoss, Loss, SquaredError}
+import org.apache.spark.mllib.tree.configuration.{BoostingStrategy => OldBoostingStrategy}
 
 /**
  * Configuration options for [[org.apache.spark.mllib.tree.GradientBoostedTrees]].
@@ -45,21 +46,20 @@ import org.apache.spark.ml.tree.loss.{LogLoss, Loss, SquaredError}
  *                      Ignored when
  *                      [[org.apache.spark.mllib.tree.GradientBoostedTrees.run()]] is used.
  */
-@Since("2.0.0")
-case class BoostingStrategy @Since("2.0.0") (
+private[spark] case class BoostingStrategy (
     // Required boosting parameters
-    @Since("2.0.0") @BeanProperty var treeStrategy: Strategy,
-    @Since("2.0.0") @BeanProperty var loss: Loss,
+    @BeanProperty var treeStrategy: Strategy,
+    @BeanProperty var loss: Loss,
     // Optional boosting parameters
-    @Since("2.0.0") @BeanProperty var numIterations: Int = 100,
-    @Since("2.0.0") @BeanProperty var learningRate: Double = 0.1,
-    @Since("2.0.0") @BeanProperty var validationTol: Double = 0.001) extends Serializable {
+    @BeanProperty var numIterations: Int = 100,
+    @BeanProperty var learningRate: Double = 0.1,
+    @BeanProperty var validationTol: Double = 0.001) extends Serializable {
 
   /**
    * Check validity of parameters.
    * Throws exception if invalid.
    */
-  private[spark] def assertValid(): Unit = {
+  def assertValid(): Unit = {
     treeStrategy.algo match {
       case Classification =>
         require(treeStrategy.numClasses == 2,
@@ -74,42 +74,9 @@ case class BoostingStrategy @Since("2.0.0") (
     require(learningRate > 0 && learningRate <= 1,
       "Learning rate should be in range (0, 1]. Provided learning rate is " + s"$learningRate.")
   }
-}
 
-@Since("2.0.0")
-object BoostingStrategy {
-
-  /**
-   * Returns default configuration for the boosting algorithm
-   *
-   * @param algo Learning goal.  Supported: "Classification" or "Regression"
-   * @return Configuration for boosting algorithm
-   */
-  @Since("2.0.0")
-  def defaultParams(algo: String): BoostingStrategy = {
-    defaultParams(Algo.fromString(algo))
-  }
-
-  /**
-   * Returns default configuration for the boosting algorithm
-   *
-   * @param algo Learning goal.  Supported:
-   *             [[org.apache.spark.mllib.tree.configuration.Algo.Classification]],
-   *             [[org.apache.spark.mllib.tree.configuration.Algo.Regression]]
-   * @return Configuration for boosting algorithm
-   */
-  @Since("2.0.0")
-  def defaultParams(algo: Algo): BoostingStrategy = {
-    val treeStrategy = Strategy.defaultStrategy(algo)
-    treeStrategy.maxDepth = 3
-    algo match {
-      case Algo.Classification =>
-        treeStrategy.numClasses = 2
-        new BoostingStrategy(treeStrategy, LogLoss)
-      case Algo.Regression =>
-        new BoostingStrategy(treeStrategy, SquaredError)
-      case _ =>
-        throw new IllegalArgumentException(s"$algo is not supported by boosting.")
-    }
+  def toOld: OldBoostingStrategy = {
+    new OldBoostingStrategy(treeStrategy.toOld, loss.toOld, numIterations, learningRate,
+      validationTol)
   }
 }

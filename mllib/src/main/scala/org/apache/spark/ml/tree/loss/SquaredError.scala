@@ -18,6 +18,8 @@
 package org.apache.spark.ml.tree.loss
 
 import org.apache.spark.annotation.{DeveloperApi, Since}
+import org.apache.spark.mllib.tree.loss.{Loss => OldLoss, SquaredError => OldSquaredError}
+
 
 
 /**
@@ -28,9 +30,8 @@ import org.apache.spark.annotation.{DeveloperApi, Since}
  *   (y - F(x))**2
  * where y is the label and F(x) is the model prediction for features x.
  */
-@Since("2.0.0")
 @DeveloperApi
-object SquaredError extends Loss {
+private[spark] object SquaredError extends Loss {
 
   /**
    * Method to calculate the gradients for the gradient boosting calculation for least
@@ -40,13 +41,14 @@ object SquaredError extends Loss {
    * @param label True label.
    * @return Loss gradient
    */
-  @Since("2.0.0")
   override def gradient(prediction: Double, label: Double): Double = {
     - 2.0 * (label - prediction)
   }
 
-  override private[spark] def computeError(prediction: Double, label: Double): Double = {
+  override def computeError(prediction: Double, label: Double): Double = {
     val err = label - prediction
     err * err
   }
+
+  def toOld: OldLoss = OldSquaredError
 }

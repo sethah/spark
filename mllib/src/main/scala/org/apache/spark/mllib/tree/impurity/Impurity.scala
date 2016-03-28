@@ -18,6 +18,8 @@
 package org.apache.spark.mllib.tree.impurity
 
 import org.apache.spark.annotation.{DeveloperApi, Experimental, Since}
+import org.apache.spark.ml.tree.impurity.{Impurity => NewImpurity, Gini => NewGini,
+  Variance => NewVariance, Entropy => NewEntropy}
 
 /**
  * :: Experimental ::
@@ -52,6 +54,7 @@ trait Impurity extends Serializable {
   @Since("1.0.0")
   @DeveloperApi
   def calculate(count: Double, sum: Double, sumSquares: Double): Double
+
 }
 
 /**

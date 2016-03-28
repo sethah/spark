@@ -18,22 +18,30 @@
 package org.apache.spark.ml.tree.configuration
 
 import org.apache.spark.annotation.{Experimental, Since}
+import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 
 /**
  * :: Experimental ::
  * Enum to select the algorithm for the decision tree
  */
-@Since("2.0.0")
-@Experimental
-object Algo extends Enumeration {
-  @Since("2.0.0")
+private[spark] object Algo extends Enumeration {
   type Algo = Value
-  @Since("2.0.0")
   val Classification, Regression = Value
 
-  private[spark] def fromString(name: String): Algo = name match {
+  def fromString(name: String): Algo = name match {
     case "classification" | "Classification" => Classification
     case "regression" | "Regression" => Regression
     case _ => throw new IllegalArgumentException(s"Did not recognize Algo name: $name")
+  }
+
+  def toOld(algo: Algo): OldAlgo.Value = {
+    algo match {
+      case Classification => OldAlgo.Classification
+      case Regression => OldAlgo.Regression
+      case _ =>
+        throw new IllegalArgumentException(
+          s"Algo given invalid value: $algo." +
+            s"  Valid settings are: Classification, Regression.")
+    }
   }
 }

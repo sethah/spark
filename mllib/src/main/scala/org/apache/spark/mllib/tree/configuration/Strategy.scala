@@ -23,7 +23,8 @@ import scala.collection.JavaConverters._
 import org.apache.spark.annotation.Since
 import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
-import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance}
+import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance, Impurities}
+import org.apache.spark.ml.tree.configuration.{Strategy => NewStrategy}
 
 /**
  * Stores all the configuration options for tree construction
@@ -173,6 +174,13 @@ class Strategy @Since("1.3.0") (
     new Strategy(algo, impurity, maxDepth, numClasses, maxBins,
       quantileCalculationStrategy, categoricalFeaturesInfo, minInstancesPerNode, minInfoGain,
       maxMemoryInMB, subsamplingRate, useNodeIdCache, checkpointInterval)
+  }
+
+  private[mllib] def toML: NewStrategy = {
+    new NewStrategy(Algo.toML(algo), Impurities.toML(impurity), maxDepth, numClasses, maxBins,
+      QuantileStrategy.toML(quantileCalculationStrategy), categoricalFeaturesInfo,
+      minInstancesPerNode, minInfoGain, maxMemoryInMB, subsamplingRate, useNodeIdCache,
+      checkpointInterval)
   }
 }
 

@@ -217,7 +217,7 @@ private[spark] class DTStatsAggregator(
 >>>>>>> cleaning up strategy methods
    * For a given feature, merge the stats for two bins.
    * @param featureOffset  This is a pre-computed feature offset
-   *                           from [[getFeatureOffset]].
+   *                           from [[getFeatureOffset]]ran.
 <<<<<< HEAD
    *                           For unordered features, this is a pre-computed
    *                           (feature, left/right child) offset from

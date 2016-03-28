@@ -20,15 +20,12 @@ package org.apache.spark.ml.tree.impurity
 import org.apache.spark.annotation.{DeveloperApi, Experimental, Since}
 
 /**
- * :: Experimental ::
  * Trait for calculating information gain.
  * This trait is used for
  *  (a) setting the impurity parameter in [[org.apache.spark.mllib.tree.configuration.Strategy]]
  *  (b) calculating impurity values from sufficient statistics.
  */
-@Since("2.0.0")
-@Experimental
-trait Impurity extends Serializable {
+private[spark] trait Impurity extends Serializable {
 
   /**
    * :: DeveloperApi ::
@@ -37,8 +34,6 @@ trait Impurity extends Serializable {
    * @param totalCount sum of counts for all labels
    * @return information value, or 0 if totalCount = 0
    */
-  @Since("2.0.0")
-  @DeveloperApi
   def calculate(counts: Array[Double], totalCount: Double): Double
 
   /**
@@ -49,8 +44,6 @@ trait Impurity extends Serializable {
    * @param sumSquares summation of squares of the labels
    * @return information value, or 0 if count = 0
    */
-  @Since("2.0.0")
-  @DeveloperApi
   def calculate(count: Double, sum: Double, sumSquares: Double): Double
 }
 

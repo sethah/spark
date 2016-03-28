@@ -25,6 +25,7 @@ import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{DecisionTree => OldDecisionTree, DecisionTreeSuite => OldDecisionTreeSuite}
+import org.apache.spark.mllib.tree.configuration.{Strategy => OldStrategy, Algo => OldAlgo, QuantileStrategy => OldQuantileStrategy}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Row}
@@ -388,8 +389,8 @@ private[ml] object DecisionTreeClassifierSuite extends SparkFunSuite {
       categoricalFeatures: Map[Int, Int],
       numClasses: Int): Unit = {
     val numFeatures = data.first().features.size
-    val oldStrategy = dt.getOldStrategy(categoricalFeatures, numClasses)
-    val oldTree = OldDecisionTree.train(data, oldStrategy)
+    val oldStrategy = dt.getStrategy(categoricalFeatures, numClasses)
+    val oldTree = OldDecisionTree.train(data, oldStrategy.toOld)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses)
     val newTree = dt.fit(newData)
     // Use parent from newTree since this is not checked anyways.

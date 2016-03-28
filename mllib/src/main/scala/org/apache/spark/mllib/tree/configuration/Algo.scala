@@ -18,6 +18,7 @@
 package org.apache.spark.mllib.tree.configuration
 
 import org.apache.spark.annotation.{Experimental, Since}
+import org.apache.spark.ml.tree.configuration.{Algo => NewAlgo}
 
 /**
  * :: Experimental ::
@@ -35,5 +36,16 @@ object Algo extends Enumeration {
     case "classification" | "Classification" => Classification
     case "regression" | "Regression" => Regression
     case _ => throw new IllegalArgumentException(s"Did not recognize Algo name: $name")
+  }
+
+  private[mllib] def toML(algo: Algo): NewAlgo.Value = {
+    algo match {
+      case Classification => NewAlgo.Classification
+      case Regression => NewAlgo.Regression
+      case _ =>
+        throw new IllegalArgumentException(
+          s"DecisionTree Strategy given invalid algo parameter: $algo." +
+            s"  Valid settings are: Classification, Regression.")
+    }
   }
 }

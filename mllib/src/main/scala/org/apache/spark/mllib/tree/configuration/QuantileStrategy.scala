@@ -18,6 +18,7 @@
 package org.apache.spark.mllib.tree.configuration
 
 import org.apache.spark.annotation.Since
+import org.apache.spark.ml.tree.configuration.{QuantileStrategy => NewQuantileStrategy}
 
 /**
  * Enum for selecting the quantile calculation strategy
@@ -28,4 +29,14 @@ object QuantileStrategy extends Enumeration {
   type QuantileStrategy = Value
   @Since("1.0.0")
   val Sort, MinMax, ApproxHist = Value
+
+  private[tree] def toML(quantileStrategy: QuantileStrategy) = {
+    quantileStrategy match {
+      case Sort => NewQuantileStrategy.Sort
+      case MinMax => NewQuantileStrategy.MinMax
+      case ApproxHist => NewQuantileStrategy.ApproxHist
+      case _ =>
+        throw new IllegalArgumentException(s"TODO")
+    }
+  }
 }

@@ -23,6 +23,7 @@ import org.apache.spark.ml.util.MLTestingUtils
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{EnsembleTestHelper, RandomForest => OldRandomForest}
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
+import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
@@ -139,10 +140,11 @@ private object RandomForestRegressorSuite extends SparkFunSuite {
       rf: RandomForestRegressor,
       categoricalFeatures: Map[Int, Int]): Unit = {
     val numFeatures = data.first().features.size
-    val oldStrategy =
-      rf.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, rf.getOldImpurity)
+    val strategy =
+      rf.getStrategy(categoricalFeatures, numClasses = 0, Algo.Regression,
+        rf.getImpurityFunction)
     val oldModel = OldRandomForest.trainRegressor(
-      data, oldStrategy, rf.getNumTrees, rf.getFeatureSubsetStrategy, rf.getSeed.toInt)
+      data, strategy.toOld, rf.getNumTrees, rf.getFeatureSubsetStrategy, rf.getSeed.toInt)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses = 0)
     val newModel = rf.fit(newData)
     // Use parent from newTree since this is not checked anyways.
