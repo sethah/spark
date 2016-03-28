@@ -29,8 +29,8 @@ import org.apache.spark.ml.tree._
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.ml.tree.configuration.{Strategy, Algo}
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, Strategy => OldStrategy}
-import org.apache.spark.mllib.tree.impurity.ImpurityCalculator
-import org.apache.spark.mllib.tree.model.ImpurityStats
+import org.apache.spark.ml.tree.impurity.ImpurityCalculator
+import org.apache.spark.ml.tree.model.ImpurityStats
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.random.{SamplingUtils, XORShiftRandom}
@@ -207,7 +207,7 @@ private[spark] object RandomForest extends Logging {
 
     parentUID match {
       case Some(uid) =>
-        if (strategy.algo == OldAlgo.Classification) {
+        if (strategy.algo == Algo.Classification) {
           topNodes.map { rootNode =>
             new DecisionTreeClassificationModel(uid, rootNode.toNode, numFeatures,
               strategy.getNumClasses)
@@ -218,7 +218,7 @@ private[spark] object RandomForest extends Logging {
           }
         }
       case None =>
-        if (strategy.algo == OldAlgo.Classification) {
+        if (strategy.algo == Algo.Classification) {
           topNodes.map { rootNode =>
             new DecisionTreeClassificationModel(rootNode.toNode, numFeatures,
               strategy.getNumClasses)
