@@ -22,7 +22,7 @@ import org.apache.spark.annotation.{DeveloperApi, Experimental, Since}
 /**
  * Trait for calculating information gain.
  * This trait is used for
- *  (a) setting the impurity parameter in [[org.apache.spark.mllib.tree.configuration.Strategy]]
+ *  (a) setting the impurity parameter in [[org.apache.spark.ml.tree.configuration.Strategy]]
  *  (b) calculating impurity values from sufficient statistics.
  */
 private[spark] trait Impurity extends Serializable {

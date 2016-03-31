@@ -31,16 +31,16 @@ private[mllib] object Impurities {
     case "variance" => Variance
     case _ => throw new IllegalArgumentException(s"Did not recognize Impurity name: $name")
   }
-
-  def toML(impurity: Impurity): NewImpurity = {
-    impurity match {
-      case Gini => NewGini
-      case Entropy => NewEntropy
-      case Variance => NewVariance
-      case _ =>
-        throw new IllegalArgumentException(
-          s"Impurity given invalid value: $impurity." +
-            s"  Valid settings are: Gini, Entropy, Variance.")
-    }
-  }
+//
+//  def toML(impurity: Impurity): NewImpurity = {
+//    impurity match {
+//      case Gini => NewGini
+//      case Entropy => NewEntropy
+//      case Variance => NewVariance
+//      case _ =>
+//        throw new IllegalArgumentException(
+//          s"Impurity given invalid value: $impurity." +
+//            s"  Valid settings are: Gini, Entropy, Variance.")
+//    }
+//  }
 }
