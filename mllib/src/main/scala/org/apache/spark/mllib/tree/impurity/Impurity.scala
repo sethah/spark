@@ -18,8 +18,6 @@
 package org.apache.spark.mllib.tree.impurity
 
 import org.apache.spark.annotation.{DeveloperApi, Experimental, Since}
-import org.apache.spark.ml.tree.impurity.{Impurity => NewImpurity, Gini => NewGini,
-  Variance => NewVariance, Entropy => NewEntropy}
 
 /**
  * :: Experimental ::

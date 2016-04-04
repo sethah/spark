@@ -17,13 +17,6 @@
 
 package org.apache.spark.ml.tree.loss
 
-import org.apache.spark.annotation.{DeveloperApi, Since}
-import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
-import org.apache.spark.ml.tree.TreeEnsembleModel
-import org.apache.spark.rdd.RDD
-
-
 /**
  * Trait for adding "pluggable" loss functions for the gradient boosting algorithm.
  */
@@ -36,19 +29,6 @@ private[spark] trait Loss extends Serializable {
    * @return Loss gradient.
    */
   def gradient(prediction: Double, label: Double): Double
-
-//  /**
-//   * Method to calculate error of the base learner for the gradient boosting calculation.
-//   * Note: This method is not used by the gradient boosting algorithm but is useful for debugging
-//   * purposes.
-//   * @param model Model of the weak learner.
-//   * @param data Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
-//   * @return Measure of model error on data
-//   */
-//  @Since("2.0.0")
-//  def computeError(model: TreeEnsembleModel, data: RDD[LabeledPoint]): Double = {
-//    data.map(point => computeError(model.predict(point.features), point.label)).mean()
-//  }
 
   /**
    * Method to calculate loss when the predictions are already known.

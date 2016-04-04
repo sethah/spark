@@ -17,11 +17,7 @@
 
 package org.apache.spark.ml.tree.loss
 
-import org.apache.spark.annotation.{DeveloperApi, Since}
 import org.apache.spark.mllib.util.MLUtils
-import org.apache.spark.mllib.tree.loss.{Loss => OldLoss, LogLoss => OldLogLoss}
-
-
 
 /**
  * Class for log loss calculation (for classification).
