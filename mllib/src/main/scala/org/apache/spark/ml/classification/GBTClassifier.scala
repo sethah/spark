@@ -31,7 +31,7 @@ import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
-import org.apache.spark.mllib.tree.loss.{LogLoss => OldLogLoss, Loss => OldLoss}
+import org.apache.spark.ml.tree.loss.{LogLoss, Loss}
 import org.apache.spark.mllib.tree.model.{GradientBoostedTreesModel => OldGBTModel}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
@@ -130,10 +130,10 @@ final class GBTClassifier @Since("1.4.0") (
   @Since("1.4.0")
   def getLossType: String = $(lossType).toLowerCase
 
-  /** (private[ml]) Convert new loss to old loss. */
-  override private[ml] def getOldLossType: OldLoss = {
+  /** (private[ml]) Get loss type. */
+  override private[ml] def getLoss: Loss = {
     getLossType match {
-      case "logistic" => OldLogLoss
+      case "logistic" => LogLoss
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(s"GBTClassifier was given bad loss type: $getLossType")

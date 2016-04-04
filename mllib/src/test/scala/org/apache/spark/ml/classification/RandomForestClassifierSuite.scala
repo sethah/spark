@@ -21,6 +21,7 @@ import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.param.ParamsSuite
 import org.apache.spark.ml.tree.LeafNode
 import org.apache.spark.ml.tree.impl.TreeTests
+import org.apache.spark.ml.tree.impurity.Impurities
 import org.apache.spark.ml.util.MLTestingUtils
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
@@ -218,7 +219,8 @@ private object RandomForestClassifierSuite extends SparkFunSuite {
       numClasses: Int): Unit = {
     val numFeatures = data.first().features.size
     val oldStrategy =
-      rf.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, rf.getOldImpurity)
+      rf.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification,
+        Impurities.toOld(rf.getImpurityFunction))
     val oldModel = OldRandomForest.trainClassifier(
       data, oldStrategy, rf.getNumTrees, rf.getFeatureSubsetStrategy, rf.getSeed.toInt)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses)

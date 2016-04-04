@@ -22,8 +22,10 @@ import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util.SchemaUtils
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, BoostingStrategy => OldBoostingStrategy, Strategy => OldStrategy}
-import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini, Impurity => OldImpurity, Variance => OldVariance}
-import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
+import org.apache.spark.ml.tree.impurity.{Entropy, Gini, Impurity, Variance}
+import org.apache.spark.mllib.tree.impurity.{Gini => OldGini, Entropy => OldEntropy,
+  Impurity => OldImpurity, Variance => OldVariance}
+import org.apache.spark.ml.tree.loss.{Loss, Losses}
 import org.apache.spark.sql.types.{DataType, DoubleType, StructType}
 
 /**
@@ -200,11 +202,11 @@ private[ml] trait TreeClassifierParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** Convert new impurity to old impurity. */
-  private[ml] def getOldImpurity: OldImpurity = {
+  /** Get decision tree impurity function. */
+  private[ml] def getImpurityFunction: Impurity = {
     getImpurity match {
-      case "entropy" => OldEntropy
-      case "gini" => OldGini
+      case "entropy" => Entropy
+      case "gini" => Gini
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(
@@ -245,10 +247,10 @@ private[ml] trait TreeRegressorParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** Convert new impurity to old impurity. */
-  private[ml] def getOldImpurity: OldImpurity = {
+  /** Get decision tree impurity function. */
+  private[ml] def getImpurityFunction: Impurity = {
     getImpurity match {
-      case "variance" => OldVariance
+      case "variance" => Variance
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(
@@ -426,9 +428,9 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
       oldAlgo: OldAlgo.Algo): OldBoostingStrategy = {
     val strategy = super.getOldStrategy(categoricalFeatures, numClasses = 2, oldAlgo, OldVariance)
     // NOTE: The old API does not support "seed" so we ignore it.
-    new OldBoostingStrategy(strategy, getOldLossType, getMaxIter, getStepSize)
+    new OldBoostingStrategy(strategy, Losses.toOld(getLoss), getMaxIter, getStepSize)
   }
 
   /** Get old Gradient Boosting Loss type */
-  private[ml] def getOldLossType: OldLoss
+  private[ml] def getLoss: Loss
 }

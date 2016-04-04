@@ -30,8 +30,7 @@ import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
-import org.apache.spark.mllib.tree.loss.{AbsoluteError => OldAbsoluteError, Loss => OldLoss,
-  SquaredError => OldSquaredError}
+import org.apache.spark.ml.tree.loss.{AbsoluteError, Loss, SquaredError}
 import org.apache.spark.mllib.tree.model.{GradientBoostedTreesModel => OldGBTModel}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
@@ -126,10 +125,10 @@ final class GBTRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: Stri
   def getLossType: String = $(lossType).toLowerCase
 
   /** (private[ml]) Convert new loss to old loss. */
-  override private[ml] def getOldLossType: OldLoss = {
+  override private[ml] def getLoss: Loss = {
     getLossType match {
-      case "squared" => OldSquaredError
-      case "absolute" => OldAbsoluteError
+      case "squared" => SquaredError
+      case "absolute" => AbsoluteError
       case _ =>
         // Should never happen because of check in setter method.
         throw new RuntimeException(s"GBTRegressorParams was given bad loss type: $getLossType")

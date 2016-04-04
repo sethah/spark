@@ -19,6 +19,7 @@ package org.apache.spark.ml.regression
 
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.tree.impl.TreeTests
+import org.apache.spark.ml.tree.impurity.Impurities
 import org.apache.spark.ml.util.MLTestingUtils
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{EnsembleTestHelper, RandomForest => OldRandomForest}
@@ -132,7 +133,8 @@ private object RandomForestRegressorSuite extends SparkFunSuite {
       categoricalFeatures: Map[Int, Int]): Unit = {
     val numFeatures = data.first().features.size
     val oldStrategy =
-      rf.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, rf.getOldImpurity)
+      rf.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression,
+        Impurities.toOld(rf.getImpurityFunction))
     val oldModel = OldRandomForest.trainRegressor(
       data, oldStrategy, rf.getNumTrees, rf.getFeatureSubsetStrategy, rf.getSeed.toInt)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses = 0)

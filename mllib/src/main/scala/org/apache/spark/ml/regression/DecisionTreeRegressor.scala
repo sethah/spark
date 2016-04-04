@@ -25,6 +25,7 @@ import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree._
+import org.apache.spark.ml.tree.impurity.Impurities
 import org.apache.spark.ml.tree.DecisionTreeModelReadWrite._
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util._
@@ -103,8 +104,8 @@ final class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val 
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
   private[ml] def getOldStrategy(categoricalFeatures: Map[Int, Int]): OldStrategy = {
-    super.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, getOldImpurity,
-      subsamplingRate = 1.0)
+    super.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression,
+      Impurities.toOld(getImpurityFunction), subsamplingRate = 1.0)
   }
 
   @Since("1.4.0")
