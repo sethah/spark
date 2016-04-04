@@ -28,10 +28,6 @@ import org.apache.spark.ml.regression.DecisionTreeRegressionModel
 import org.apache.spark.ml.tree._
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.ml.tree.configuration.{Strategy, Algo}
-<<<<<<< HEAD
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, Strategy => OldStrategy}
-=======
->>>>>>> deleting some old mllib stuff
 import org.apache.spark.ml.tree.impurity.ImpurityCalculator
 import org.apache.spark.ml.tree.model.ImpurityStats
 import org.apache.spark.rdd.RDD
