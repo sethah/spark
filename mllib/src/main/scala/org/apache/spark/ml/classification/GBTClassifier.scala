@@ -26,17 +26,13 @@ import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.regression.DecisionTreeRegressionModel
 import org.apache.spark.ml.tree.{DecisionTreeModel, GBTParams, TreeClassifierParams,
   TreeEnsembleModel}
-import org.apache.spark.ml.tree.impl.GradientBoostedTrees
-import org.apache.spark.ml.tree.impurity.Gini
 import org.apache.spark.ml.tree.configuration.Algo
-import org.apache.spark.ml.tree.loss.{AbsoluteError, SquaredError, LogLoss, Loss}
-import org.apache.spark.ml.tree.configuration.{Strategy, BoostingStrategy}
 import org.apache.spark.ml.tree.impl.GradientBoostedTrees
+import org.apache.spark.ml.tree.loss.{LogLoss, Loss}
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
-import org.apache.spark.mllib.tree.loss.{LogLoss => OldLogLoss, Loss => OldLoss}
 import org.apache.spark.mllib.tree.model.{GradientBoostedTreesModel => OldGBTModel}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame

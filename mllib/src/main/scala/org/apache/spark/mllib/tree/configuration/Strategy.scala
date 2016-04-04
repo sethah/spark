@@ -21,10 +21,10 @@ import scala.beans.BeanProperty
 import scala.collection.JavaConverters._
 
 import org.apache.spark.annotation.Since
+import org.apache.spark.ml.tree.configuration.{Strategy => NewStrategy}
 import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
-import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance}
-import org.apache.spark.ml.tree.configuration.{Strategy => NewStrategy}
+import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurities, Impurity, Variance}
 
 /**
  * Stores all the configuration options for tree construction
@@ -176,9 +176,10 @@ class Strategy @Since("1.3.0") (
       maxMemoryInMB, subsamplingRate, useNodeIdCache, checkpointInterval)
   }
 
-  private[mllib] def toML: NewStrategy = {
-    new NewStrategy(Algo.toML(algo), impurity.toML, maxDepth, numClasses, maxBins,
-      QuantileStrategy.toML(quantileCalculationStrategy), categoricalFeaturesInfo,
+  /** Convert a Strategy instance to the new API. */
+  private[mllib] def toNew: NewStrategy = {
+    new NewStrategy(Algo.toNew(algo), Impurities.toNew(impurity), maxDepth, numClasses, maxBins,
+      QuantileStrategy.toNew(quantileCalculationStrategy), categoricalFeaturesInfo,
       minInstancesPerNode, minInfoGain, maxMemoryInMB, subsamplingRate, useNodeIdCache,
       checkpointInterval)
   }

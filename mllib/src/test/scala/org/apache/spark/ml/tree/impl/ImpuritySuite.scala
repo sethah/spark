@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.spark.mllib.tree
+package org.apache.spark.ml.tree.impl
 
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.mllib.tree.impurity.{EntropyAggregator, GiniAggregator}
+import org.apache.spark.ml.tree.impurity._
 
 /**
  * Test suites for [[GiniAggregator]] and [[EntropyAggregator]].

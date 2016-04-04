@@ -82,7 +82,7 @@ private class RandomForest (
    */
   def run(input: RDD[LabeledPoint]): RandomForestModel = {
     val trees: Array[NewDTModel] =
-      NewRandomForest.run(input, strategy.toML, numTrees, featureSubsetStrategy, seed.toLong)
+      NewRandomForest.run(input, strategy.toNew, numTrees, featureSubsetStrategy, seed.toLong)
     new RandomForestModel(strategy.algo, trees.map(_.toOld))
   }
 

@@ -60,5 +60,4 @@ private[spark] trait Loss extends Serializable {
    */
   def computeError(prediction: Double, label: Double): Double
 
-  def toOld: OldLoss
 }

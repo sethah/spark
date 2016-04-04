@@ -19,9 +19,9 @@ package org.apache.spark.ml.classification
 
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.ml.param.ParamMap
-import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
-import org.apache.spark.ml.tree.impurity.{Gini, Entropy}
-import org.apache.spark.ml.tree.{DecisionTreeModel, RandomForestParams, TreeClassifierParams, TreeEnsembleModel}
+import org.apache.spark.ml.tree.{DecisionTreeModel, RandomForestParams, TreeClassifierParams,
+  TreeEnsembleModel}
+import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Vector, Vectors}

@@ -124,10 +124,10 @@ private[spark] class DTStatsAggregator(
    *                           from [[getFeatureOffset]].
    */
   def featureUpdate(
-                     featureOffset: Int,
-                     binIndex: Int,
-                     label: Double,
-                     instanceWeight: Double): Unit = {
+      featureOffset: Int,
+      binIndex: Int,
+      label: Double,
+      instanceWeight: Double): Unit = {
     impurityAggregator.update(allStats, featureOffset + binIndex * statsSize,
       label, instanceWeight)
   }

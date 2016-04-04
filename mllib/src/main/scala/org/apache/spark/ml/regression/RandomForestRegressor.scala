@@ -20,10 +20,9 @@ package org.apache.spark.ml.regression
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.tree.{DecisionTreeModel, RandomForestParams, TreeEnsembleModel,
+TreeRegressorParams}
 import org.apache.spark.ml.tree.configuration.Algo
-import org.apache.spark.ml.tree.configuration.Strategy
-import org.apache.spark.ml.tree.impurity.Variance
-import org.apache.spark.ml.tree.{DecisionTreeModel, RandomForestParams, TreeEnsembleModel, TreeRegressorParams}
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector

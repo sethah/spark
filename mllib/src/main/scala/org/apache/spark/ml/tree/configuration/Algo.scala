@@ -17,13 +17,14 @@
 
 package org.apache.spark.ml.tree.configuration
 
-import org.apache.spark.annotation.{Experimental, Since}
+import org.apache.spark.annotation.Experimental
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 
 /**
  * :: Experimental ::
  * Enum to select the algorithm for the decision tree
  */
+@Experimental
 private[spark] object Algo extends Enumeration {
   type Algo = Value
   val Classification, Regression = Value

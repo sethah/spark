@@ -19,13 +19,12 @@ package org.apache.spark.ml.tree.configuration
 
 import scala.beans.BeanProperty
 
-import org.apache.spark.annotation.Since
 import org.apache.spark.ml.tree.configuration.Algo._
-import org.apache.spark.ml.tree.loss.{LogLoss, Loss, SquaredError}
+import org.apache.spark.ml.tree.loss.{Loss, Losses}
 import org.apache.spark.mllib.tree.configuration.{BoostingStrategy => OldBoostingStrategy}
 
 /**
- * Configuration options for [[org.apache.spark.mllib.tree.GradientBoostedTrees]].
+ * Configuration options for [[org.apache.spark.ml.tree.impl.GradientBoostedTrees]].
  *
  * @param treeStrategy Parameters for the tree algorithm. We support regression and binary
  *                     classification for boosting. Impurity setting will be ignored.
@@ -44,7 +43,7 @@ import org.apache.spark.mllib.tree.configuration.{BoostingStrategy => OldBoostin
  *                      of validation error is compared to absolute tolerance which is
  *                      validationTol * 0.01.
  *                      Ignored when
- *                      [[org.apache.spark.mllib.tree.GradientBoostedTrees.run()]] is used.
+ *                      [[org.apache.spark.ml.tree.impl.GradientBoostedTrees.run()]] is used.
  */
 private[spark] case class BoostingStrategy (
     // Required boosting parameters
@@ -76,7 +75,7 @@ private[spark] case class BoostingStrategy (
   }
 
   def toOld: OldBoostingStrategy = {
-    new OldBoostingStrategy(treeStrategy.toOld, loss.toOld, numIterations, learningRate,
+    new OldBoostingStrategy(treeStrategy.toOld, Losses.toOld(loss), numIterations, learningRate,
       validationTol)
   }
 }

@@ -17,7 +17,6 @@
 
 package org.apache.spark.ml.tree.configuration
 
-import org.apache.spark.annotation.Since
 import org.apache.spark.mllib.tree.configuration.{QuantileStrategy => OldQuantileStrategy}
 
 /**
@@ -33,7 +32,8 @@ private[spark] object QuantileStrategy extends Enumeration {
       case MinMax => OldQuantileStrategy.MinMax
       case ApproxHist => OldQuantileStrategy.ApproxHist
       case _ =>
-        throw new IllegalArgumentException(s"TODO")
+        throw new IllegalArgumentException(s"Quantile strategy given invalid value" +
+          s"$quantileStrategy.")
     }
   }
 }

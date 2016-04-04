@@ -17,15 +17,15 @@
 
 package org.apache.spark.ml.tree.impl
 
+import scala.collection.mutable
+
 import org.apache.spark.internal.Logging
-import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.ml.tree.configuration.Algo._
 import org.apache.spark.ml.tree.configuration.QuantileStrategy._
 import org.apache.spark.ml.tree.configuration.Strategy
 import org.apache.spark.ml.tree.impurity.Impurity
+import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.rdd.RDD
-
-import scala.collection.mutable
 
 /**
  * Learning and dataset metadata for DecisionTree.

@@ -17,17 +17,23 @@
 
 package org.apache.spark.ml.tree.loss
 
-import org.apache.spark.annotation.Since
+import org.apache.spark.mllib.tree.loss.{AbsoluteError => OldAbsoluteError, LogLoss => OldLogLoss,
+  Loss => OldLoss, SquaredError => OldSquaredError}
 
-@Since("1.2.0")
-object Losses {
+private[ml] object Losses {
 
-  @Since("1.2.0")
   def fromString(name: String): Loss = name match {
     case "leastSquaresError" => SquaredError
     case "leastAbsoluteError" => AbsoluteError
     case "logLoss" => LogLoss
     case _ => throw new IllegalArgumentException(s"Did not recognize Loss name: $name")
+  }
+
+  def toOld(loss: Loss): OldLoss = loss match {
+    case SquaredError => OldSquaredError
+    case AbsoluteError => OldAbsoluteError
+    case LogLoss => OldLogLoss
+    case _ => throw new IllegalArgumentException(s"Invalid loss argument $loss given.")
   }
 
 }

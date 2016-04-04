@@ -17,8 +17,9 @@
 
 package org.apache.spark.ml.tree.impurity
 
-import org.apache.spark.mllib.tree.impurity.{Impurity => OldImpurity, Gini => OldGini,
-Variance => OldVariance, Entropy => OldEntropy}
+import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini,
+Impurity => OldImpurity, Variance => OldVariance}
+
 /**
  * Factory for Impurity instances.
  */

@@ -30,13 +30,14 @@ object QuantileStrategy extends Enumeration {
   @Since("1.0.0")
   val Sort, MinMax, ApproxHist = Value
 
-  private[tree] def toML(quantileStrategy: QuantileStrategy) = {
+  private[tree] def toNew(quantileStrategy: QuantileStrategy) = {
     quantileStrategy match {
       case Sort => NewQuantileStrategy.Sort
       case MinMax => NewQuantileStrategy.MinMax
       case ApproxHist => NewQuantileStrategy.ApproxHist
       case _ =>
-        throw new IllegalArgumentException(s"TODO")
+        throw new IllegalArgumentException(s"Quantile strategy given invalid value" +
+          s"$quantileStrategy")
     }
   }
 }

@@ -47,6 +47,4 @@ private[spark] object AbsoluteError extends Loss {
     val err = label - prediction
     math.abs(err)
   }
-
-  def toOld: OldLoss = OldAbsoluteError
 }

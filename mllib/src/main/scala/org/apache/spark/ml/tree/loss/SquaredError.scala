@@ -49,6 +49,4 @@ private[spark] object SquaredError extends Loss {
     val err = label - prediction
     err * err
   }
-
-  def toOld: OldLoss = OldSquaredError
 }

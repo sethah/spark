@@ -20,13 +20,10 @@ package org.apache.spark.ml.tree
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
-import org.apache.spark.ml.util.SchemaUtils
 import org.apache.spark.ml.tree.configuration.{Algo, BoostingStrategy, Strategy}
 import org.apache.spark.ml.tree.impurity.{Entropy, Gini, Impurity, Variance}
 import org.apache.spark.ml.tree.loss.Loss
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, BoostingStrategy => OldBoostingStrategy, Strategy => OldStrategy}
-import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini, Impurity => OldImpurity, Variance => OldVariance}
-import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
+import org.apache.spark.ml.util.SchemaUtils
 import org.apache.spark.sql.types.{DataType, DoubleType, StructType}
 
 /**
@@ -177,7 +174,6 @@ private[ml] trait DecisionTreeParams extends PredictorParams
     strategy.subsamplingRate = subsamplingRate
     strategy
   }
-
 }
 
 /**
@@ -204,7 +200,7 @@ private[ml] trait TreeClassifierParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** Get decision tree Impurity function. */
+  /** Get decision tree impurity function. */
   private[ml] def getImpurityFunction: Impurity = {
     getImpurity match {
       case "entropy" => Entropy
@@ -249,7 +245,7 @@ private[ml] trait TreeRegressorParams extends Params {
   /** @group getParam */
   final def getImpurity: String = $(impurity).toLowerCase
 
-  /** Get decision tree Impurity function. */
+  /** Get decision tree impurity function. */
   private[ml] def getImpurityFunction: Impurity = {
     getImpurity match {
       case "variance" => Variance
@@ -306,13 +302,17 @@ private[ml] trait TreeEnsembleParams extends DecisionTreeParams {
   /** @group getParam */
   final def getSubsamplingRate: Double = $(subsamplingRate)
 
+  /**
+   * Create a strategy instance.
+   * NOTE: The caller should set impurity and seed.
+   */
   private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
-    numClasses: Int,
-    algo: Algo.Algo,
-    impurity: Impurity): Strategy = {
-      super.getStrategy(categoricalFeatures, numClasses, algo, impurity, getSubsamplingRate)
-    }
+      numClasses: Int,
+      algo: Algo.Algo,
+      impurity: Impurity): Strategy = {
+    super.getStrategy(categoricalFeatures, numClasses, algo, impurity, getSubsamplingRate)
+  }
 }
 
 /**

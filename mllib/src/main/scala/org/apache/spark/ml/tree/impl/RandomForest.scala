@@ -26,10 +26,10 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.classification.DecisionTreeClassificationModel
 import org.apache.spark.ml.regression.DecisionTreeRegressionModel
 import org.apache.spark.ml.tree._
-import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.ml.tree.configuration.{Strategy, Algo}
+import org.apache.spark.ml.tree.configuration.{Algo, Strategy}
 import org.apache.spark.ml.tree.impurity.ImpurityCalculator
 import org.apache.spark.ml.tree.model.ImpurityStats
+import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.random.{SamplingUtils, XORShiftRandom}

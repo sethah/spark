@@ -50,6 +50,4 @@ private[spark] object LogLoss extends Loss {
     // The following is equivalent to 2.0 * log(1 + exp(-margin)) but more numerically stable.
     2.0 * MLUtils.log1pExp(-margin)
   }
-
-  def toOld: OldLoss = OldLogLoss
 }

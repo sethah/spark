@@ -38,7 +38,7 @@ object Algo extends Enumeration {
     case _ => throw new IllegalArgumentException(s"Did not recognize Algo name: $name")
   }
 
-  private[mllib] def toML(algo: Algo): NewAlgo.Value = {
+  private[mllib] def toNew(algo: Algo): NewAlgo.Value = {
     algo match {
       case Classification => NewAlgo.Classification
       case Regression => NewAlgo.Regression
