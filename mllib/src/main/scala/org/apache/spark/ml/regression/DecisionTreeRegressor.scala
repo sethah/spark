@@ -30,6 +30,7 @@ import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util._
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.ml.tree.configuration.Strategy
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, Strategy => OldStrategy}
 import org.apache.spark.mllib.tree.model.{DecisionTreeModel => OldDecisionTreeModel}
 import org.apache.spark.rdd.RDD
@@ -87,7 +88,7 @@ final class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val 
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
-    val strategy = getOldStrategy(categoricalFeatures)
+    val strategy = getStrategy(categoricalFeatures)
     val trees = RandomForest.run(oldDataset, strategy, numTrees = 1, featureSubsetStrategy = "all",
       seed = $(seed), parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
@@ -95,15 +96,15 @@ final class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val 
 
   /** (private[ml]) Train a decision tree on an RDD */
   private[ml] def train(data: RDD[LabeledPoint],
-      oldStrategy: OldStrategy): DecisionTreeRegressionModel = {
-    val trees = RandomForest.run(data, oldStrategy, numTrees = 1, featureSubsetStrategy = "all",
-      seed = $(seed), parentUID = Some(uid))
+      strategy: Strategy): DecisionTreeRegressionModel = {
+    val trees = RandomForest.run(data, strategy, numTrees = 1,
+      featureSubsetStrategy = "all", seed = $(seed), parentUID = Some(uid))
     trees.head.asInstanceOf[DecisionTreeRegressionModel]
   }
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
-  private[ml] def getOldStrategy(categoricalFeatures: Map[Int, Int]): OldStrategy = {
-    super.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, getOldImpurity,
+  private[ml] def getStrategy(categoricalFeatures: Map[Int, Int]): Strategy = {
+    super.getStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, getOldImpurity,
       subsamplingRate = 1.0)
   }
 

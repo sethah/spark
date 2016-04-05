@@ -21,6 +21,7 @@ import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util.SchemaUtils
+import org.apache.spark.ml.tree.configuration.{BoostingStrategy, Strategy}
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, BoostingStrategy => OldBoostingStrategy, Strategy => OldStrategy}
 import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini, Impurity => OldImpurity, Variance => OldVariance}
 import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
@@ -154,13 +155,13 @@ private[ml] trait DecisionTreeParams extends PredictorParams
   def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
 
   /** (private[ml]) Create a Strategy instance to use with the old API. */
-  private[ml] def getOldStrategy(
+  private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
       oldAlgo: OldAlgo.Algo,
       oldImpurity: OldImpurity,
-      subsamplingRate: Double): OldStrategy = {
-    val strategy = OldStrategy.defaultStrategy(oldAlgo)
+      subsamplingRate: Double): Strategy = {
+    val strategy = Strategy.defaultStrategy(oldAlgo)
     strategy.impurity = oldImpurity
     strategy.checkpointInterval = getCheckpointInterval
     strategy.maxBins = getMaxBins
@@ -306,12 +307,12 @@ private[ml] trait TreeEnsembleParams extends DecisionTreeParams {
    * Create a Strategy instance to use with the old API.
    * NOTE: The caller should set impurity and seed.
    */
-  private[ml] def getOldStrategy(
+  private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
       oldAlgo: OldAlgo.Algo,
-      oldImpurity: OldImpurity): OldStrategy = {
-    super.getOldStrategy(categoricalFeatures, numClasses, oldAlgo, oldImpurity, getSubsamplingRate)
+      oldImpurity: OldImpurity): Strategy = {
+    super.getStrategy(categoricalFeatures, numClasses, oldAlgo, oldImpurity, getSubsamplingRate)
   }
 }
 
@@ -445,12 +446,12 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
   }
 
   /** (private[ml]) Create a BoostingStrategy instance to use with the old API. */
-  private[ml] def getOldBoostingStrategy(
+  private[ml] def getBoostingStrategy(
       categoricalFeatures: Map[Int, Int],
-      oldAlgo: OldAlgo.Algo): OldBoostingStrategy = {
-    val strategy = super.getOldStrategy(categoricalFeatures, numClasses = 2, oldAlgo, OldVariance)
+      oldAlgo: OldAlgo.Algo): BoostingStrategy = {
+    val strategy = super.getStrategy(categoricalFeatures, numClasses = 2, oldAlgo, OldVariance)
     // NOTE: The old API does not support "seed" so we ignore it.
-    new OldBoostingStrategy(strategy, getOldLossType, getMaxIter, getStepSize)
+    new BoostingStrategy(strategy, getOldLossType, getMaxIter, getStepSize)
   }
 
   /** Get old Gradient Boosting Loss type */

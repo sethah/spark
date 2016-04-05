@@ -388,8 +388,8 @@ private[ml] object DecisionTreeClassifierSuite extends SparkFunSuite {
       categoricalFeatures: Map[Int, Int],
       numClasses: Int): Unit = {
     val numFeatures = data.first().features.size
-    val oldStrategy = dt.getOldStrategy(categoricalFeatures, numClasses)
-    val oldTree = OldDecisionTree.train(data, oldStrategy)
+    val strategy = dt.getStrategy(categoricalFeatures, numClasses)
+    val oldTree = OldDecisionTree.train(data, strategy.toOld)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses)
     val newTree = dt.fit(newData)
     // Use parent from newTree since this is not checked anyways.

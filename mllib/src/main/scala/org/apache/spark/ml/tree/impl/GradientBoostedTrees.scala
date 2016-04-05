@@ -24,6 +24,7 @@ import org.apache.spark.mllib.impl.PeriodicRDDCheckpointer
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
+import org.apache.spark.ml.tree.configuration.BoostingStrategy
 import org.apache.spark.mllib.tree.configuration.{BoostingStrategy => OldBoostingStrategy}
 import org.apache.spark.mllib.tree.impurity.{Variance => OldVariance}
 import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
@@ -41,7 +42,7 @@ private[ml] object GradientBoostedTrees extends Logging {
    */
   def run(
       input: RDD[LabeledPoint],
-      boostingStrategy: OldBoostingStrategy,
+      boostingStrategy: BoostingStrategy,
       seed: Long): (Array[DecisionTreeRegressionModel], Array[Double]) = {
     val algo = boostingStrategy.treeStrategy.algo
     algo match {
@@ -72,7 +73,7 @@ private[ml] object GradientBoostedTrees extends Logging {
   def runWithValidation(
       input: RDD[LabeledPoint],
       validationInput: RDD[LabeledPoint],
-      boostingStrategy: OldBoostingStrategy,
+      boostingStrategy: BoostingStrategy,
       seed: Long): (Array[DecisionTreeRegressionModel], Array[Double]) = {
     val algo = boostingStrategy.treeStrategy.algo
     algo match {
@@ -154,7 +155,7 @@ private[ml] object GradientBoostedTrees extends Logging {
   def boost(
       input: RDD[LabeledPoint],
       validationInput: RDD[LabeledPoint],
-      boostingStrategy: OldBoostingStrategy,
+      boostingStrategy: BoostingStrategy,
       validate: Boolean,
       seed: Long): (Array[DecisionTreeRegressionModel], Array[Double]) = {
     val timer = new TimeTracker()

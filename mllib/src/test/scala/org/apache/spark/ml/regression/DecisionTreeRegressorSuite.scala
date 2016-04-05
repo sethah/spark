@@ -169,8 +169,8 @@ private[ml] object DecisionTreeRegressorSuite extends SparkFunSuite {
       dt: DecisionTreeRegressor,
       categoricalFeatures: Map[Int, Int]): Unit = {
     val numFeatures = data.first().features.size
-    val oldStrategy = dt.getOldStrategy(categoricalFeatures)
-    val oldTree = OldDecisionTree.train(data, oldStrategy)
+    val strategy = dt.getStrategy(categoricalFeatures)
+    val oldTree = OldDecisionTree.train(data, strategy.toOld)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses = 0)
     val newTree = dt.fit(newData)
     // Use parent from newTree since this is not checked anyways.

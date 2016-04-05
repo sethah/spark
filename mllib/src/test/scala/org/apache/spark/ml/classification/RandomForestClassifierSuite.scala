@@ -223,10 +223,10 @@ private object RandomForestClassifierSuite extends SparkFunSuite {
       categoricalFeatures: Map[Int, Int],
       numClasses: Int): Unit = {
     val numFeatures = data.first().features.size
-    val oldStrategy =
-      rf.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, rf.getOldImpurity)
+    val strategy =
+      rf.getStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, rf.getOldImpurity)
     val oldModel = OldRandomForest.trainClassifier(
-      data, oldStrategy, rf.getNumTrees, rf.getFeatureSubsetStrategy, rf.getSeed.toInt)
+      data, strategy.toOld, rf.getNumTrees, rf.getFeatureSubsetStrategy, rf.getSeed.toInt)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses)
     val newModel = rf.fit(newData)
     // Use parent from newTree since this is not checked anyways.
