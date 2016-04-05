@@ -17,16 +17,15 @@
 
 package org.apache.spark.ml.tree.configuration
 
-import org.apache.spark.mllib.tree.configuration.Algo._
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
-import org.apache.spark.mllib.tree.loss.{LogLoss, Loss, SquaredError}
-import org.apache.spark.mllib.tree.configuration.{BoostingStrategy => OldBoostingStrategy}
-
-
 import scala.beans.BeanProperty
 
+import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo,
+  BoostingStrategy => OldBoostingStrategy}
+import org.apache.spark.mllib.tree.loss.Loss
+
+
 /**
- * Configuration options for [[org.apache.spark.mllib.tree.GradientBoostedTrees]].
+ * Configuration options for [[org.apache.spark.ml.tree.impl.GradientBoostedTrees]].
  *
  * @param treeStrategy Parameters for the tree algorithm. We support regression and binary
  *                     classification for boosting. Impurity setting will be ignored.
@@ -45,7 +44,7 @@ import scala.beans.BeanProperty
  *                      of validation error is compared to absolute tolerance which is
  *                      validationTol * 0.01.
  *                      Ignored when
- *                      [[org.apache.spark.mllib.tree.GradientBoostedTrees.run()]] is used.
+ *                      [[org.apache.spark.ml.tree.impl.GradientBoostedTrees.run()]] is used.
  */
 private[spark] case class BoostingStrategy (
     // Required boosting parameters
@@ -62,10 +61,10 @@ private[spark] case class BoostingStrategy (
    */
   def assertValid(): Unit = {
     treeStrategy.algo match {
-      case Classification =>
+      case OldAlgo.Classification =>
         require(treeStrategy.numClasses == 2,
           "Only binary classification is supported for boosting.")
-      case Regression =>
+      case OldAlgo.Regression =>
         // nothing
       case _ =>
         throw new IllegalArgumentException(
@@ -79,40 +78,5 @@ private[spark] case class BoostingStrategy (
   def toOld: OldBoostingStrategy = {
     new OldBoostingStrategy(treeStrategy.toOld, loss, numIterations, learningRate,
       validationTol)
-  }
-}
-
-private[spark] object BoostingStrategy {
-
-  /**
-   * Returns default configuration for the boosting algorithm
-   *
-   * @param algo Learning goal.  Supported: "Classification" or "Regression"
-   * @return Configuration for boosting algorithm
-   */
-  def defaultParams(algo: String): BoostingStrategy = {
-    defaultParams(OldAlgo.fromString(algo))
-  }
-
-  /**
-   * Returns default configuration for the boosting algorithm
-   *
-   * @param algo Learning goal.  Supported:
-   *             [[org.apache.spark.mllib.tree.configuration.Algo.Classification]],
-   *             [[org.apache.spark.mllib.tree.configuration.Algo.Regression]]
-   * @return Configuration for boosting algorithm
-   */
-  def defaultParams(algo: Algo): BoostingStrategy = {
-    val treeStrategy = Strategy.defaultStrategy(algo)
-    treeStrategy.maxDepth = 3
-    algo match {
-      case OldAlgo.Classification =>
-        treeStrategy.numClasses = 2
-        new BoostingStrategy(treeStrategy, LogLoss)
-      case OldAlgo.Regression =>
-        new BoostingStrategy(treeStrategy, SquaredError)
-      case _ =>
-        throw new IllegalArgumentException(s"$algo is not supported by boosting.")
-    }
   }
 }

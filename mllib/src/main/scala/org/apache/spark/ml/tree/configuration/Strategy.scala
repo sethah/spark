@@ -17,15 +17,14 @@
 
 package org.apache.spark.ml.tree.configuration
 
-import org.apache.spark.annotation.Since
-import org.apache.spark.mllib.tree.configuration.Algo._
+import scala.beans.BeanProperty
+import scala.collection.JavaConverters._
+
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.mllib.tree.configuration.{Strategy => OldStrategy}
 import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
 import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance}
 
-import scala.beans.BeanProperty
-import scala.collection.JavaConverters._
 
 /**
  * Stores all the configuration options for tree construction
@@ -70,7 +69,7 @@ import scala.collection.JavaConverters._
  *                           [[org.apache.spark.SparkContext]], this setting is ignored.
  */
 private[spark] class Strategy (
-    @BeanProperty var algo: Algo,
+    @BeanProperty var algo: OldAlgo.Algo,
     @BeanProperty var impurity: Impurity,
     @BeanProperty var maxDepth: Int,
     @BeanProperty var numClasses: Int = 2,
@@ -87,7 +86,7 @@ private[spark] class Strategy (
   /**
    */
   def isMulticlassClassification: Boolean = {
-    algo == Classification && numClasses > 2
+    algo == OldAlgo.Classification && numClasses > 2
   }
 
   /**
@@ -100,7 +99,7 @@ private[spark] class Strategy (
    * Java-friendly constructor for [[Strategy]]
    */
   def this(
-      algo: Algo,
+      algo: OldAlgo.Algo,
       impurity: Impurity,
       maxDepth: Int,
       numClasses: Int,
@@ -114,8 +113,8 @@ private[spark] class Strategy (
    * Sets Algorithm using a String.
    */
   def setAlgo(algo: String): Unit = algo match {
-    case "Classification" => setAlgo(Classification)
-    case "Regression" => setAlgo(Regression)
+    case "Classification" => setAlgo(OldAlgo.Classification)
+    case "Regression" => setAlgo(OldAlgo.Regression)
   }
 
   /**
@@ -131,16 +130,16 @@ private[spark] class Strategy (
    * Check validity of parameters.
    * Throws exception if invalid.
    */
-  private[spark] def assertValid(): Unit = {
+  def assertValid(): Unit = {
     algo match {
-      case Classification =>
+      case OldAlgo.Classification =>
         require(numClasses >= 2,
           s"DecisionTree Strategy for Classification must have numClasses >= 2," +
           s" but numClasses = $numClasses.")
         require(Set(Gini, Entropy).contains(impurity),
           s"DecisionTree Strategy given invalid impurity for Classification: $impurity." +
           s"  Valid settings: Gini, Entropy")
-      case Regression =>
+      case OldAlgo.Regression =>
         require(impurity == Variance,
           s"DecisionTree Strategy given invalid impurity for Regression: $impurity." +
           s"  Valid settings: Variance")
@@ -185,7 +184,9 @@ private[spark] class Strategy (
 private[spark] object Strategy {
 
   /**
-   * Construct a default set of parameters for [[org.apache.spark.mllib.tree.DecisionTree]]
+   * Construct a default set of parameters for
+   * [[org.apache.spark.ml.classification.DecisionTreeClassifier]],
+   * [[org.apache.spark.ml.regression.DecisionTreeRegressor]]
    *
    * @param algo  "Classification" or "Regression"
    */
@@ -194,16 +195,18 @@ private[spark] object Strategy {
   }
 
   /**
-   * Construct a default set of parameters for [[org.apache.spark.mllib.tree.DecisionTree]]
+   * Construct a default set of parameters for
+   * [[org.apache.spark.ml.classification.DecisionTreeClassifier]],
+   * [[org.apache.spark.ml.regression.DecisionTreeRegressor]]
    *
-   * @param algo Algo.Classification or Algo.Regression
+   * @param algo OldAlgo.Classification or OldAlgo.Regression
    */
-  def defaultStrategy(algo: Algo): Strategy = algo match {
+  def defaultStrategy(algo: OldAlgo.Algo): Strategy = algo match {
     case OldAlgo.Classification =>
-      new Strategy(algo = Classification, impurity = Gini, maxDepth = 10,
+      new Strategy(algo = OldAlgo.Classification, impurity = Gini, maxDepth = 10,
         numClasses = 2)
     case OldAlgo.Regression =>
-      new Strategy(algo = Regression, impurity = Variance, maxDepth = 10,
+      new Strategy(algo = OldAlgo.Regression, impurity = Variance, maxDepth = 10,
         numClasses = 0)
   }
 

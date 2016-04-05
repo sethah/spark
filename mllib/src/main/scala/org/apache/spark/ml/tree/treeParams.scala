@@ -20,9 +20,9 @@ package org.apache.spark.ml.tree
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
-import org.apache.spark.ml.util.SchemaUtils
 import org.apache.spark.ml.tree.configuration.{BoostingStrategy, Strategy}
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, BoostingStrategy => OldBoostingStrategy, Strategy => OldStrategy}
+import org.apache.spark.ml.util.SchemaUtils
+import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini, Impurity => OldImpurity, Variance => OldVariance}
 import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
 import org.apache.spark.sql.types.{DataType, DoubleType, StructType}
@@ -154,7 +154,7 @@ private[ml] trait DecisionTreeParams extends PredictorParams
    */
   def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
 
-  /** (private[ml]) Create a Strategy instance to use with the old API. */
+  /** (private[ml]) Create a decision tree Strategy instance. */
   private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
@@ -304,7 +304,7 @@ private[ml] trait TreeEnsembleParams extends DecisionTreeParams {
   final def getSubsamplingRate: Double = $(subsamplingRate)
 
   /**
-   * Create a Strategy instance to use with the old API.
+   * Create a decision tree Strategy instance.
    * NOTE: The caller should set impurity and seed.
    */
   private[ml] def getStrategy(
@@ -445,12 +445,11 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
       s"but it given invalid value $getStepSize.")
   }
 
-  /** (private[ml]) Create a BoostingStrategy instance to use with the old API. */
+  /** (private[ml]) Create a BoostingStrategy instance. */
   private[ml] def getBoostingStrategy(
       categoricalFeatures: Map[Int, Int],
       oldAlgo: OldAlgo.Algo): BoostingStrategy = {
     val strategy = super.getStrategy(categoricalFeatures, numClasses = 2, oldAlgo, OldVariance)
-    // NOTE: The old API does not support "seed" so we ignore it.
     new BoostingStrategy(strategy, getOldLossType, getMaxIter, getStepSize)
   }
 
