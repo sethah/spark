@@ -20,9 +20,8 @@ package org.apache.spark.ml.tree
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
-import org.apache.spark.ml.tree.configuration.{BoostingStrategy, Strategy}
+import org.apache.spark.ml.tree.configuration.{Algo, BoostingStrategy, Strategy}
 import org.apache.spark.ml.util.SchemaUtils
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.mllib.tree.impurity.{Entropy => OldEntropy, Gini => OldGini, Impurity => OldImpurity, Variance => OldVariance}
 import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
 import org.apache.spark.sql.types.{DataType, DoubleType, StructType}
@@ -158,10 +157,10 @@ private[ml] trait DecisionTreeParams extends PredictorParams
   private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
-      oldAlgo: OldAlgo.Algo,
+      algo: Algo.Algo,
       oldImpurity: OldImpurity,
       subsamplingRate: Double): Strategy = {
-    val strategy = Strategy.defaultStrategy(oldAlgo)
+    val strategy = Strategy.defaultStrategy(algo)
     strategy.impurity = oldImpurity
     strategy.checkpointInterval = getCheckpointInterval
     strategy.maxBins = getMaxBins
@@ -310,9 +309,9 @@ private[ml] trait TreeEnsembleParams extends DecisionTreeParams {
   private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int,
-      oldAlgo: OldAlgo.Algo,
+      algo: Algo.Algo,
       oldImpurity: OldImpurity): Strategy = {
-    super.getStrategy(categoricalFeatures, numClasses, oldAlgo, oldImpurity, getSubsamplingRate)
+    super.getStrategy(categoricalFeatures, numClasses, algo, oldImpurity, getSubsamplingRate)
   }
 }
 
@@ -448,8 +447,8 @@ private[ml] trait GBTParams extends TreeEnsembleParams with HasMaxIter with HasS
   /** (private[ml]) Create a BoostingStrategy instance. */
   private[ml] def getBoostingStrategy(
       categoricalFeatures: Map[Int, Int],
-      oldAlgo: OldAlgo.Algo): BoostingStrategy = {
-    val strategy = super.getStrategy(categoricalFeatures, numClasses = 2, oldAlgo, OldVariance)
+      algo: Algo.Algo): BoostingStrategy = {
+    val strategy = super.getStrategy(categoricalFeatures, numClasses = 2, algo, OldVariance)
     new BoostingStrategy(strategy, getOldLossType, getMaxIter, getStepSize)
   }
 

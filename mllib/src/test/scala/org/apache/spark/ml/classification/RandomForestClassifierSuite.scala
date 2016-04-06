@@ -20,12 +20,12 @@ package org.apache.spark.ml.classification
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.param.ParamsSuite
 import org.apache.spark.ml.tree.LeafNode
+import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.ml.tree.impl.TreeTests
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{EnsembleTestHelper, RandomForest => OldRandomForest}
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.mllib.util.TestingUtils._
 import org.apache.spark.rdd.RDD
@@ -224,7 +224,7 @@ private object RandomForestClassifierSuite extends SparkFunSuite {
       numClasses: Int): Unit = {
     val numFeatures = data.first().features.size
     val strategy =
-      rf.getStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, rf.getOldImpurity)
+      rf.getStrategy(categoricalFeatures, numClasses, Algo.Classification, rf.getOldImpurity)
     val oldModel = OldRandomForest.trainClassifier(
       data, strategy.toOld, rf.getNumTrees, rf.getFeatureSubsetStrategy, rf.getSeed.toInt)
     val newData: DataFrame = TreeTests.setMetadata(data, categoricalFeatures, numClasses)

@@ -22,11 +22,11 @@ import scala.collection.mutable
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.classification.DecisionTreeClassificationModel
 import org.apache.spark.ml.tree._
-import org.apache.spark.ml.tree.configuration.Strategy
+import org.apache.spark.ml.tree.configuration.{Algo, QuantileStrategy, Strategy}
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.{DecisionTreeSuite => OldDTSuite, EnsembleTestHelper}
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, QuantileStrategy, Strategy => OldStrategy}
+//import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, QuantileStrategy}
 import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, GiniCalculator}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.mllib.util.TestingUtils._
@@ -47,7 +47,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     val arr = OldDTSuite.generateOrderedLabeledPointsWithLabel1()
     assert(arr.length === 1000)
     val rdd = sc.parallelize(arr)
-    val strategy = new Strategy(OldAlgo.Classification, Gini, 3, 2, 100)
+    val strategy = new Strategy(Algo.Classification, Gini, 3, 2, 100)
     val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
     assert(!metadata.isUnordered(featureIndex = 0))
     val splits = RandomForest.findSplits(rdd, metadata, seed = 42)
@@ -59,7 +59,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     val arr = OldDTSuite.generateCategoricalDataPoints()
     assert(arr.length === 1000)
     val rdd = sc.parallelize(arr)
-    val strategy = new Strategy(OldAlgo.Classification, Gini, maxDepth = 2, numClasses = 2,
+    val strategy = new Strategy(Algo.Classification, Gini, maxDepth = 2, numClasses = 2,
       maxBins = 100, categoricalFeaturesInfo = Map(0 -> 2, 1 -> 2))
 
     val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
@@ -76,7 +76,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     val arr = OldDTSuite.generateCategoricalDataPoints()
     assert(arr.length === 1000)
     val rdd = sc.parallelize(arr)
-    val strategy = new Strategy(OldAlgo.Classification, Gini, maxDepth = 2, numClasses = 2,
+    val strategy = new Strategy(Algo.Classification, Gini, maxDepth = 2, numClasses = 2,
       maxBins = 100, categoricalFeaturesInfo = Map(0 -> 3, 1 -> 3))
 
     val metadata = DecisionTreeMetadata.buildMetadata(rdd, strategy)
@@ -153,7 +153,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(arr.length === 1000)
     val rdd = sc.parallelize(arr)
     val strategy = new Strategy(
-      OldAlgo.Classification,
+      Algo.Classification,
       Gini,
       maxDepth = 2,
       numClasses = 100,
@@ -193,7 +193,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     val arr = OldDTSuite.generateCategoricalDataPointsForMulticlassForOrderedFeatures()
     assert(arr.length === 3000)
     val rdd = sc.parallelize(arr)
-    val strategy = new Strategy(OldAlgo.Classification, Gini, maxDepth = 2, numClasses = 100,
+    val strategy = new Strategy(Algo.Classification, Gini, maxDepth = 2, numClasses = 100,
       maxBins = 100, categoricalFeaturesInfo = Map(0 -> 10, 1 -> 10))
     // 2^(10-1) - 1 > 100, so categorical features will be ordered
 
@@ -224,7 +224,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
       LabeledPoint(1.0, Vectors.dense(0.0, 2.0, 1.0)))
     val input = sc.parallelize(arr)
 
-    val strategy = new Strategy(algo = OldAlgo.Classification, impurity = Gini, maxDepth = 1,
+    val strategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 1,
       numClasses = 2, categoricalFeaturesInfo = Map(0 -> 3))
     val metadata = DecisionTreeMetadata.buildMetadata(input, strategy)
     val splits = RandomForest.findSplits(input, metadata, seed = 42)
@@ -266,7 +266,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
       LabeledPoint(1.0, Vectors.dense(0.0, 2.0, 1.0)))
     val input = sc.parallelize(arr)
 
-    val strategy = new Strategy(algo = OldAlgo.Classification, impurity = Gini, maxDepth = 5,
+    val strategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 5,
       numClasses = 2, categoricalFeaturesInfo = Map(0 -> 3))
     val metadata = DecisionTreeMetadata.buildMetadata(input, strategy)
     val splits = RandomForest.findSplits(input, metadata, seed = 42)
@@ -319,7 +319,7 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     val input = sc.parallelize(arr)
 
     // Must set maxBins s.t. the feature will be treated as an ordered categorical feature.
-    val strategy = new Strategy(algo = OldAlgo.Classification, impurity = Gini, maxDepth = 1,
+    val strategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 1,
       numClasses = 2, categoricalFeaturesInfo = Map(0 -> 3), maxBins = 3)
 
     val model = RandomForest.run(input, strategy, numTrees = 1, featureSubsetStrategy = "all",
@@ -338,10 +338,10 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
     val rdd = sc.parallelize(arr)
     // For tree with 1 group
     val strategy1 =
-      new Strategy(OldAlgo.Classification, Entropy, 3, 2, 100, maxMemoryInMB = 1000)
+      new Strategy(Algo.Classification, Entropy, 3, 2, 100, maxMemoryInMB = 1000)
     // For tree with multiple groups
     val strategy2 =
-      new Strategy(OldAlgo.Classification, Entropy, 3, 2, 100, maxMemoryInMB = 0)
+      new Strategy(Algo.Classification, Entropy, 3, 2, 100, maxMemoryInMB = 0)
 
     val tree1 = RandomForest.run(rdd, strategy1, numTrees = 1, featureSubsetStrategy = "all",
       seed = 42).head
@@ -434,14 +434,14 @@ class RandomForestSuite extends SparkFunSuite with MLlibTestSparkContext {
 
   test("Binary classification with continuous features: subsampling features") {
     val categoricalFeaturesInfo = Map.empty[Int, Int]
-    val strategy = new Strategy(algo = OldAlgo.Classification, impurity = Gini, maxDepth = 2,
+    val strategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 2,
       numClasses = 2, categoricalFeaturesInfo = categoricalFeaturesInfo)
     binaryClassificationTestWithContinuousFeaturesAndSubsampledFeatures(strategy)
   }
 
   test("Binary classification with continuous features and node Id cache: subsampling features") {
     val categoricalFeaturesInfo = Map.empty[Int, Int]
-    val strategy = new Strategy(algo = OldAlgo.Classification, impurity = Gini, maxDepth = 2,
+    val strategy = new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 2,
       numClasses = 2, categoricalFeaturesInfo = categoricalFeaturesInfo,
       useNodeIdCache = true)
     binaryClassificationTestWithContinuousFeaturesAndSubsampledFeatures(strategy)

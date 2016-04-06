@@ -19,8 +19,7 @@ package org.apache.spark.ml.tree.configuration
 
 import scala.beans.BeanProperty
 
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo,
-  BoostingStrategy => OldBoostingStrategy}
+import org.apache.spark.mllib.tree.configuration.{BoostingStrategy => OldBoostingStrategy}
 import org.apache.spark.mllib.tree.loss.Loss
 
 
@@ -61,10 +60,10 @@ private[spark] case class BoostingStrategy (
    */
   def assertValid(): Unit = {
     treeStrategy.algo match {
-      case OldAlgo.Classification =>
+      case Algo.Classification =>
         require(treeStrategy.numClasses == 2,
           "Only binary classification is supported for boosting.")
-      case OldAlgo.Regression =>
+      case Algo.Regression =>
         // nothing
       case _ =>
         throw new IllegalArgumentException(
@@ -75,6 +74,9 @@ private[spark] case class BoostingStrategy (
       "Learning rate should be in range (0, 1]. Provided learning rate is " + s"$learningRate.")
   }
 
+  /**
+   * Convert a Boosting Strategy instance to the old API.
+   */
   def toOld: OldBoostingStrategy = {
     new OldBoostingStrategy(treeStrategy.toOld, loss, numIterations, learningRate,
       validationTol)

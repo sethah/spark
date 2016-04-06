@@ -23,6 +23,7 @@ import org.json4s.JsonDSL._
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree._
+import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util._
 import org.apache.spark.ml.util.DefaultParamsReader.Metadata
@@ -110,7 +111,7 @@ final class RandomForestClassifier @Since("1.4.0") (
     }
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val strategy =
-      super.getStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, getOldImpurity)
+      super.getStrategy(categoricalFeatures, numClasses, Algo.Classification, getOldImpurity)
     val trees =
       RandomForest.run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed)
         .map(_.asInstanceOf[DecisionTreeClassificationModel])

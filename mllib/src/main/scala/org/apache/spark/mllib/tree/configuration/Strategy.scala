@@ -177,9 +177,9 @@ class Strategy @Since("1.3.0") (
   }
 
   /** Convert a Strategy instance to the new API. */
-  private[spark] def toNew: NewStrategy = {
-    new NewStrategy(algo, impurity, maxDepth, numClasses, maxBins,
-      quantileCalculationStrategy, categoricalFeaturesInfo,
+  private[mllib] def toNew: NewStrategy = {
+    new NewStrategy(Algo.toNew(algo), impurity, maxDepth, numClasses, maxBins,
+      QuantileStrategy.toNew(quantileCalculationStrategy), categoricalFeaturesInfo,
       minInstancesPerNode, minInfoGain, maxMemoryInMB, subsamplingRate, useNodeIdCache,
       checkpointInterval)
   }

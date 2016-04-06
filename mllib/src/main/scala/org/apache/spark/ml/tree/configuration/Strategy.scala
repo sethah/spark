@@ -20,9 +20,8 @@ package org.apache.spark.ml.tree.configuration
 import scala.beans.BeanProperty
 import scala.collection.JavaConverters._
 
-import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
+import org.apache.spark.ml.tree.configuration.QuantileStrategy._
 import org.apache.spark.mllib.tree.configuration.{Strategy => OldStrategy}
-import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
 import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance}
 
 
@@ -30,8 +29,8 @@ import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance}
  * Stores all the configuration options for tree construction
  *
  * @param algo  Learning goal.  Supported:
- *              [[org.apache.spark.mllib.tree.configuration.Algo.Classification]],
- *              [[org.apache.spark.mllib.tree.configuration.Algo.Regression]]
+ *              [[org.apache.spark.ml.tree.configuration.Algo.Classification]],
+ *              [[org.apache.spark.ml.tree.configuration.Algo.Regression]]
  * @param impurity Criterion used for information gain calculation.
  *                 Supported for Classification: [[org.apache.spark.mllib.tree.impurity.Gini]],
  *                  [[org.apache.spark.mllib.tree.impurity.Entropy]].
@@ -45,7 +44,7 @@ import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance}
  *                for choosing how to split on features at each node.
  *                More bins give higher granularity.
  * @param quantileCalculationStrategy Algorithm for calculating quantiles.  Supported:
- *                             [[org.apache.spark.mllib.tree.configuration.QuantileStrategy.Sort]]
+ *                             [[org.apache.spark.ml.tree.configuration.QuantileStrategy.Sort]]
  * @param categoricalFeaturesInfo A map storing information about the categorical variables and the
  *                                number of discrete values they take. An entry (n -> k)
  *                                indicates that feature n is categorical with k categories
@@ -69,7 +68,7 @@ import org.apache.spark.mllib.tree.impurity.{Entropy, Gini, Impurity, Variance}
  *                           [[org.apache.spark.SparkContext]], this setting is ignored.
  */
 private[spark] class Strategy (
-    @BeanProperty var algo: OldAlgo.Algo,
+    @BeanProperty var algo: Algo.Algo,
     @BeanProperty var impurity: Impurity,
     @BeanProperty var maxDepth: Int,
     @BeanProperty var numClasses: Int = 2,
@@ -86,7 +85,7 @@ private[spark] class Strategy (
   /**
    */
   def isMulticlassClassification: Boolean = {
-    algo == OldAlgo.Classification && numClasses > 2
+    algo == Algo.Classification && numClasses > 2
   }
 
   /**
@@ -99,7 +98,7 @@ private[spark] class Strategy (
    * Java-friendly constructor for [[Strategy]]
    */
   def this(
-      algo: OldAlgo.Algo,
+      algo: Algo.Algo,
       impurity: Impurity,
       maxDepth: Int,
       numClasses: Int,
@@ -113,8 +112,8 @@ private[spark] class Strategy (
    * Sets Algorithm using a String.
    */
   def setAlgo(algo: String): Unit = algo match {
-    case "Classification" => setAlgo(OldAlgo.Classification)
-    case "Regression" => setAlgo(OldAlgo.Regression)
+    case "Classification" => setAlgo(Algo.Classification)
+    case "Regression" => setAlgo(Algo.Regression)
   }
 
   /**
@@ -132,14 +131,14 @@ private[spark] class Strategy (
    */
   def assertValid(): Unit = {
     algo match {
-      case OldAlgo.Classification =>
+      case Algo.Classification =>
         require(numClasses >= 2,
           s"DecisionTree Strategy for Classification must have numClasses >= 2," +
           s" but numClasses = $numClasses.")
         require(Set(Gini, Entropy).contains(impurity),
           s"DecisionTree Strategy given invalid impurity for Classification: $impurity." +
           s"  Valid settings: Gini, Entropy")
-      case OldAlgo.Regression =>
+      case Algo.Regression =>
         require(impurity == Variance,
           s"DecisionTree Strategy given invalid impurity for Regression: $impurity." +
           s"  Valid settings: Variance")
@@ -174,8 +173,8 @@ private[spark] class Strategy (
    * Convert a Strategy instance to the old API.
    */
   def toOld: OldStrategy = {
-    new OldStrategy(algo, impurity, maxDepth, numClasses, maxBins,
-      quantileCalculationStrategy, categoricalFeaturesInfo,
+    new OldStrategy(Algo.toOld(algo), impurity, maxDepth, numClasses, maxBins,
+      QuantileStrategy.toOld(quantileCalculationStrategy), categoricalFeaturesInfo,
       minInstancesPerNode, minInfoGain, maxMemoryInMB, subsamplingRate, useNodeIdCache,
       checkpointInterval)
   }
@@ -191,7 +190,7 @@ private[spark] object Strategy {
    * @param algo  "Classification" or "Regression"
    */
   def defaultStrategy(algo: String): Strategy = {
-    defaultStrategy(OldAlgo.fromString(algo))
+    defaultStrategy(Algo.fromString(algo))
   }
 
   /**
@@ -199,14 +198,14 @@ private[spark] object Strategy {
    * [[org.apache.spark.ml.classification.DecisionTreeClassifier]],
    * [[org.apache.spark.ml.regression.DecisionTreeRegressor]]
    *
-   * @param algo OldAlgo.Classification or OldAlgo.Regression
+   * @param algo Algo.Classification or Algo.Regression
    */
-  def defaultStrategy(algo: OldAlgo.Algo): Strategy = algo match {
-    case OldAlgo.Classification =>
-      new Strategy(algo = OldAlgo.Classification, impurity = Gini, maxDepth = 10,
+  def defaultStrategy(algo: Algo.Algo): Strategy = algo match {
+    case Algo.Classification =>
+      new Strategy(algo = Algo.Classification, impurity = Gini, maxDepth = 10,
         numClasses = 2)
-    case OldAlgo.Regression =>
-      new Strategy(algo = OldAlgo.Regression, impurity = Variance, maxDepth = 10,
+    case Algo.Regression =>
+      new Strategy(algo = Algo.Regression, impurity = Variance, maxDepth = 10,
         numClasses = 0)
   }
 

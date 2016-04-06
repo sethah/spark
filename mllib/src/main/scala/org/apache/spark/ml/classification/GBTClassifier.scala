@@ -25,6 +25,7 @@ import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.regression.DecisionTreeRegressionModel
 import org.apache.spark.ml.tree.{GBTParams, TreeClassifierParams, TreeEnsembleModel}
+import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.ml.tree.impl.GradientBoostedTrees
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
@@ -153,7 +154,7 @@ final class GBTClassifier @Since("1.4.0") (
       s"GBTClassifier only supports binary classification but was given numClasses = $numClasses")
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val boostingStrategy = super.getBoostingStrategy(categoricalFeatures, OldAlgo.Classification)
+    val boostingStrategy = super.getBoostingStrategy(categoricalFeatures, Algo.Classification)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy,
       $(seed))
     new GBTClassificationModel(uid, baseLearners, learnerWeights, numFeatures)

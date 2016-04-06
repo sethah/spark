@@ -24,6 +24,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.{PredictionModel, Predictor}
 import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.tree.{GBTParams, TreeEnsembleModel, TreeRegressorParams}
+import org.apache.spark.ml.tree.configuration.Algo
 import org.apache.spark.ml.tree.impl.GradientBoostedTrees
 import org.apache.spark.ml.util.{Identifiable, MetadataUtils}
 import org.apache.spark.mllib.linalg.Vector
@@ -140,7 +141,7 @@ final class GBTRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: Stri
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
     val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val numFeatures = oldDataset.first().features.size
-    val boostingStrategy = super.getBoostingStrategy(categoricalFeatures, OldAlgo.Regression)
+    val boostingStrategy = super.getBoostingStrategy(categoricalFeatures, Algo.Regression)
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy,
       $(seed))
     new GBTRegressionModel(uid, baseLearners, learnerWeights, numFeatures)

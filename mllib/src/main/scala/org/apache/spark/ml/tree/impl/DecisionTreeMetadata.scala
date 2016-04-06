@@ -20,10 +20,10 @@ package org.apache.spark.ml.tree.impl
 import scala.collection.mutable
 
 import org.apache.spark.internal.Logging
+import org.apache.spark.ml.tree.configuration.Algo._
+import org.apache.spark.ml.tree.configuration.QuantileStrategy._
 import org.apache.spark.ml.tree.configuration.Strategy
 import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.tree.configuration.Algo._
-import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
 import org.apache.spark.mllib.tree.impurity.Impurity
 import org.apache.spark.rdd.RDD
 

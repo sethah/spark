@@ -24,7 +24,7 @@ import org.json4s.JsonDSL._
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree._
-import org.apache.spark.ml.tree.configuration.Strategy
+import org.apache.spark.ml.tree.configuration.{Strategy, Algo}
 import org.apache.spark.ml.tree.DecisionTreeModelReadWrite._
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util._
@@ -112,7 +112,7 @@ final class DecisionTreeClassifier @Since("1.4.0") (
   private[ml] def getStrategy(
       categoricalFeatures: Map[Int, Int],
       numClasses: Int): Strategy = {
-    super.getStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, getOldImpurity,
+    super.getStrategy(categoricalFeatures, numClasses, Algo.Classification, getOldImpurity,
       subsamplingRate = 1.0)
   }
 
