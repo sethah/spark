@@ -235,7 +235,7 @@ private object RandomForestClassifierSuite extends SparkFunSuite {
       numClasses)
     TreeTests.checkEqual(oldModelAsNew, newModel)
     assert(newModel.hasParent)
-    assert(!newModel.trees.head.asInstanceOf[DecisionTreeClassificationModel].hasParent)
+    assert(!newModel.trees.head.hasParent)
     assert(newModel.numClasses === numClasses)
     assert(newModel.numFeatures === numFeatures)
   }

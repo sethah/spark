@@ -17,9 +17,6 @@
 
 package org.apache.spark.mllib.tree
 
-import org.apache.spark.ml.classification.DecisionTreeClassificationModel
-import org.apache.spark.ml.regression.DecisionTreeRegressionModel
-
 import scala.collection.JavaConverters._
 
 import org.apache.spark.annotation.Since

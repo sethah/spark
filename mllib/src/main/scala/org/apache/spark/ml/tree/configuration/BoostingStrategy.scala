@@ -45,7 +45,7 @@ import org.apache.spark.mllib.tree.loss.Loss
  *                      Ignored when
  *                      [[org.apache.spark.ml.tree.impl.GradientBoostedTrees.run()]] is used.
  */
-private[spark] case class BoostingStrategy (
+private[tree] case class BoostingStrategy (
     // Required boosting parameters
     @BeanProperty var treeStrategy: Strategy,
     @BeanProperty var loss: Loss,
