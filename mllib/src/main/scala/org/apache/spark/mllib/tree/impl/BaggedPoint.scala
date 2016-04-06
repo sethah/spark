@@ -60,20 +60,22 @@ private[spark] object BaggedPoint {
       subsamplingRate: Double,
       numSubsamples: Int,
       withReplacement: Boolean,
+      weightFunction: (Datum => Double) = (_: Datum) => 1.0,
       seed: Long = Utils.random.nextLong()): RDD[BaggedPoint[Datum]] = {
     if (withReplacement) {
-      convertToBaggedRDDSamplingWithReplacement(input, subsamplingRate, numSubsamples, seed)
+      convertToBaggedRDDSamplingWithReplacement(input, weightFunction, subsamplingRate, numSubsamples, seed)
     } else {
       if (numSubsamples == 1 && subsamplingRate == 1.0) {
-        convertToBaggedRDDWithoutSampling(input)
+        convertToBaggedRDDWithoutSampling(input, weightFunction)
       } else {
-        convertToBaggedRDDSamplingWithoutReplacement(input, subsamplingRate, numSubsamples, seed)
+        convertToBaggedRDDSamplingWithoutReplacement(input, weightFunction, subsamplingRate, numSubsamples, seed)
       }
     }
   }
 
   private def convertToBaggedRDDSamplingWithoutReplacement[Datum] (
       input: RDD[Datum],
+      weightFunction: (Datum => Double),
       subsamplingRate: Double,
       numSubsamples: Int,
       seed: Long): RDD[BaggedPoint[Datum]] = {
@@ -82,12 +84,13 @@ private[spark] object BaggedPoint {
       val rng = new XORShiftRandom
       rng.setSeed(seed + partitionIndex + 1)
       instances.map { instance =>
+        val sampleWeight = weightFunction(instance)
         val subsampleWeights = new Array[Double](numSubsamples)
         var subsampleIndex = 0
         while (subsampleIndex < numSubsamples) {
           val x = rng.nextDouble()
           subsampleWeights(subsampleIndex) = {
-            if (x < subsamplingRate) 1.0 else 0.0
+            if (x < subsamplingRate) sampleWeight else 0.0
           }
           subsampleIndex += 1
         }
@@ -98,6 +101,7 @@ private[spark] object BaggedPoint {
 
   private def convertToBaggedRDDSamplingWithReplacement[Datum] (
       input: RDD[Datum],
+      weightFunction: (Datum => Double),
       subsample: Double,
       numSubsamples: Int,
       seed: Long): RDD[BaggedPoint[Datum]] = {
@@ -106,10 +110,11 @@ private[spark] object BaggedPoint {
       val poisson = new PoissonDistribution(subsample)
       poisson.reseedRandomGenerator(seed + partitionIndex + 1)
       instances.map { instance =>
+        val sampleWeight = weightFunction(instance)
         val subsampleWeights = new Array[Double](numSubsamples)
         var subsampleIndex = 0
         while (subsampleIndex < numSubsamples) {
-          subsampleWeights(subsampleIndex) = poisson.sample()
+          subsampleWeights(subsampleIndex) = poisson.sample() * sampleWeight
           subsampleIndex += 1
         }
         new BaggedPoint(instance, subsampleWeights)
@@ -118,8 +123,9 @@ private[spark] object BaggedPoint {
   }
 
   private def convertToBaggedRDDWithoutSampling[Datum] (
-      input: RDD[Datum]): RDD[BaggedPoint[Datum]] = {
-    input.map(datum => new BaggedPoint(datum, Array(1.0)))
+      input: RDD[Datum],
+      weightFunction: (Datum => Double)): RDD[BaggedPoint[Datum]] = {
+    input.map(datum => new BaggedPoint(datum, Array(weightFunction(datum))))
   }
 
 }

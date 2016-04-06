@@ -20,6 +20,7 @@ package org.apache.spark.mllib.tree.impl
 import scala.collection.mutable
 
 import org.apache.spark.internal.Logging
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
@@ -102,7 +103,7 @@ private[spark] object DecisionTreeMetadata extends Logging {
    * as well as the number of splits and bins for each feature.
    */
   def buildMetadata(
-      input: RDD[LabeledPoint],
+      input: RDD[Instance],
       strategy: Strategy,
       numTrees: Int,
       featureSubsetStrategy: String): DecisionTreeMetadata = {
@@ -200,7 +201,7 @@ private[spark] object DecisionTreeMetadata extends Logging {
    * Version of [[DecisionTreeMetadata#buildMetadata]] for DecisionTree.
    */
   def buildMetadata(
-      input: RDD[LabeledPoint],
+      input: RDD[Instance],
       strategy: Strategy): DecisionTreeMetadata = {
     buildMetadata(input, strategy, numTrees = 1, featureSubsetStrategy = "all")
   }

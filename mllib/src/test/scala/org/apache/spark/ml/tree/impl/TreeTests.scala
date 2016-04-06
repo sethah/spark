@@ -18,6 +18,7 @@
 package org.apache.spark.ml.tree.impl
 
 import scala.collection.JavaConverters._
+import scala.util.Random
 
 import org.apache.spark.{SparkContext, SparkFunSuite}
 import org.apache.spark.api.java.JavaRDD
@@ -32,6 +33,7 @@ private[ml] object TreeTests extends SparkFunSuite {
 
   /**
    * Convert the given data to a DataFrame, and set the features and label metadata.
+   *
    * @param data  Dataset.  Categorical features and labels must already have 0-based indices.
    *              This must be non-empty.
    * @param categoricalFeatures  Map: categorical feature index -> number of distinct values
@@ -128,6 +130,7 @@ private[ml] object TreeTests extends SparkFunSuite {
   /**
    * Helper method for constructing a tree for testing.
    * Given left, right children, construct a parent node.
+   *
    * @param split  Split for parent node
    * @return  Parent node with children attached
    */
@@ -184,5 +187,13 @@ private[ml] object TreeTests extends SparkFunSuite {
       LabeledPoint(1.0, Vectors.dense(1.0, 0.0)),
       LabeledPoint(1.0, Vectors.dense(1.0, 2.0)))
     sc.parallelize(arr)
+  }
+
+  def generateNoisyData(n: Int, seed: Long): Seq[LabeledPoint] = {
+    val rnd = new Random(seed)
+    Range(0, n).map { i =>
+      LabeledPoint(rnd.nextInt(2),
+        Vectors.dense(rnd.nextInt(4), rnd.nextDouble(), rnd.nextInt(4), rnd.nextDouble()))
+    }
   }
 }

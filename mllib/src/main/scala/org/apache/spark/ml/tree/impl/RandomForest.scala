@@ -24,6 +24,7 @@ import scala.util.Random
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.classification.DecisionTreeClassificationModel
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.regression.DecisionTreeRegressionModel
 import org.apache.spark.ml.tree._
 import org.apache.spark.mllib.regression.LabeledPoint
@@ -80,13 +81,23 @@ import org.apache.spark.util.random.{SamplingUtils, XORShiftRandom}
  */
 private[spark] object RandomForest extends Logging {
 
+  def run(
+      input: RDD[LabeledPoint],
+      strategy: OldStrategy,
+      numTrees: Int,
+      featureSubsetStrategy: String,
+      seed: Long): Array[DecisionTreeModel] = {
+    val instances = input.map {lp => Instance(lp.label, 1.0, lp.features)}
+    run(instances, strategy, numTrees, featureSubsetStrategy, seed)
+  }
+
   /**
    * Train a random forest.
-   * @param input Training data: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]]
+   * @param input Training data: RDD of [[org.apache.spark.ml.feature.Instance]]
    * @return an unweighted set of trees
    */
   def run(
-      input: RDD[LabeledPoint],
+      input: RDD[Instance],
       strategy: OldStrategy,
       numTrees: Int,
       featureSubsetStrategy: String,
@@ -99,9 +110,9 @@ private[spark] object RandomForest extends Logging {
 
     timer.start("init")
 
-    val retaggedInput = input.retag(classOf[LabeledPoint])
-    val metadata =
-      DecisionTreeMetadata.buildMetadata(retaggedInput, strategy, numTrees, featureSubsetStrategy)
+    val retaggedInput = input.retag(classOf[Instance])
+    val metadata = DecisionTreeMetadata
+      .buildMetadata(retaggedInput, strategy, numTrees, featureSubsetStrategy)
     logDebug("algo = " + strategy.algo)
     logDebug("numTrees = " + numTrees)
     logDebug("seed = " + seed)
@@ -127,7 +138,8 @@ private[spark] object RandomForest extends Logging {
     val withReplacement = numTrees > 1
 
     val baggedInput = BaggedPoint
-      .convertToBaggedRDD(treeInput, strategy.subsamplingRate, numTrees, withReplacement, seed)
+      .convertToBaggedRDD(treeInput, strategy.subsamplingRate, numTrees,
+        withReplacement, (tp: TreePoint) => tp.weight, seed = seed)
       .persist(StorageLevel.MEMORY_AND_DISK)
 
     // depth of the decision tree
@@ -840,7 +852,7 @@ private[spark] object RandomForest extends Logging {
    *          of size (numFeatures, numSplits)
    */
   protected[tree] def findSplits(
-      input: RDD[LabeledPoint],
+      input: RDD[Instance],
       metadata: DecisionTreeMetadata,
       seed: Long): Array[Array[Split]] = {
 
@@ -861,14 +873,14 @@ private[spark] object RandomForest extends Logging {
       logDebug("fraction of data used for calculating quantiles = " + fraction)
       input.sample(withReplacement = false, fraction, new XORShiftRandom(seed).nextInt())
     } else {
-      input.sparkContext.emptyRDD[LabeledPoint]
+      input.sparkContext.emptyRDD[Instance]
     }
 
     findSplitsBySorting(sampledInput, metadata, continuousFeatures)
   }
 
   private def findSplitsBySorting(
-      input: RDD[LabeledPoint],
+      input: RDD[Instance],
       metadata: DecisionTreeMetadata,
       continuousFeatures: IndexedSeq[Int]): Array[Array[Split]] = {
 
@@ -1103,4 +1115,17 @@ private[spark] object RandomForest extends Logging {
     }
   }
 
+  /**
+   * Inject the sample weight to sub-sample weights of the baggedPoints
+   */
+  private[impl] def reweightSubSampleWeights(
+      baggedTreePoints: RDD[BaggedPoint[TreePoint]]): RDD[BaggedPoint[TreePoint]] = {
+    baggedTreePoints.map {bagged =>
+      val treePoint = bagged.datum
+      val adjustedSubSampleWeights = bagged.subsampleWeights.map(w => w * treePoint.weight)
+      new BaggedPoint[TreePoint](treePoint, adjustedSubSampleWeights)
+    }
+  }
+
 }
+

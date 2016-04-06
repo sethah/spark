@@ -17,9 +17,12 @@
 
 package org.apache.spark.mllib.tree
 
+import org.apache.spark.rdd.RDD
+
 import scala.collection.JavaConverters._
 
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.configuration.Algo._
@@ -33,6 +36,8 @@ import org.apache.spark.util.Utils
 
 
 class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
+
+  import DecisionTreeSuite.toInstance
 
   /////////////////////////////////////////////////////////////////////////////
   // Tests calling train()
@@ -434,6 +439,8 @@ class DecisionTreeSuite extends SparkFunSuite with MLlibTestSparkContext {
 
 object DecisionTreeSuite extends SparkFunSuite {
 
+  implicit def toInstance(data: RDD[LabeledPoint]): RDD[Instance] = data.map(lp => Instance(lp.label, 1.0, lp.features))
+
   def validateClassifier(
       model: DecisionTreeModel,
       input: Seq[LabeledPoint],
@@ -511,15 +518,15 @@ object DecisionTreeSuite extends SparkFunSuite {
     generateCategoricalDataPoints().toList.asJava
   }
 
-  def generateCategoricalDataPointsForMulticlass(): Array[LabeledPoint] = {
-    val arr = new Array[LabeledPoint](3000)
+  def generateCategoricalDataPointsForMulticlass(): Array[Instance] = {
+    val arr = new Array[Instance](3000)
     for (i <- 0 until 3000) {
       if (i < 1000) {
-        arr(i) = new LabeledPoint(2.0, Vectors.dense(2.0, 2.0))
+        arr(i) = new Instance(2.0, 1.0, Vectors.dense(2.0, 2.0))
       } else if (i < 2000) {
-        arr(i) = new LabeledPoint(1.0, Vectors.dense(1.0, 2.0))
+        arr(i) = new Instance(1.0, 1.0, Vectors.dense(1.0, 2.0))
       } else {
-        arr(i) = new LabeledPoint(2.0, Vectors.dense(2.0, 2.0))
+        arr(i) = new Instance(2.0, 1.0, Vectors.dense(2.0, 2.0))
       }
     }
     arr
