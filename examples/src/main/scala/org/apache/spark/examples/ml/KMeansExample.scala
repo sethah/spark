@@ -21,10 +21,13 @@ package org.apache.spark.examples.ml
 
 // $example on$
 import org.apache.spark.ml.clustering.KMeans
-import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.ml.feature.VectorAssembler
 // $example off$
 import org.apache.spark.sql.SparkSession
+// $example on$
+import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
+// $example off$
+
 
 /**
  * An example demonstrating a k-means clustering.
@@ -41,14 +44,21 @@ object KMeansExample {
 
     // $example on$
     // Crates a DataFrame
-    val dataset: DataFrame = spark.createDataFrame(Seq(
-      (1, Vectors.dense(0.0, 0.0, 0.0)),
-      (2, Vectors.dense(0.1, 0.1, 0.1)),
-      (3, Vectors.dense(0.2, 0.2, 0.2)),
-      (4, Vectors.dense(9.0, 9.0, 9.0)),
-      (5, Vectors.dense(9.1, 9.1, 9.1)),
-      (6, Vectors.dense(9.2, 9.2, 9.2))
-    )).toDF("id", "features")
+    val vecAssembler = new VectorAssembler()
+      .setInputCols(Array("x", "y", "z"))
+      .setOutputCol("features")
+
+    val schema = StructType(Array(
+      StructField("x", DataTypes.DoubleType),
+      StructField("y", DataTypes.DoubleType),
+      StructField("z", DataTypes.DoubleType)))
+
+    val dataset = vecAssembler.transform(
+      spark.read
+      .format("csv")
+      .option("sep", " ")
+      .schema(schema)
+      .load("data/mllib/kmeans_data.txt"))
 
     // Trains a k-means model
     val kmeans = new KMeans()
@@ -59,7 +69,7 @@ object KMeansExample {
 
     // Shows the result
     println("Within Set Sum of Squared Errors = " + model.computeCost(dataset))
-    println("Final Centers: ")
+    println("Final Centers:")
     model.clusterCenters.foreach(println)
     // $example off$
 

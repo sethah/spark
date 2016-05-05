@@ -18,17 +18,12 @@
 package org.apache.spark.examples.ml;
 
 // $example on$
-import java.util.Arrays;
-import java.util.List;
-
 import org.apache.spark.ml.clustering.KMeansModel;
 import org.apache.spark.ml.clustering.KMeans;
+import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.mllib.linalg.Vector;
-import org.apache.spark.mllib.linalg.VectorUDT;
-import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
-import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
@@ -51,19 +46,23 @@ public class JavaKMeansExample {
 
     // $example on$
     // Loads data
-    List<Row> data = Arrays.asList(
-      RowFactory.create(1, Vectors.dense(0.0, 0.0, 0.0)),
-      RowFactory.create(2, Vectors.dense(0.1, 0.1, 0.1)),
-      RowFactory.create(3, Vectors.dense(0.2, 0.2, 0.2)),
-      RowFactory.create(4, Vectors.dense(9.0, 9.0, 9.0)),
-      RowFactory.create(5, Vectors.dense(9.1, 9.1, 9.1)),
-      RowFactory.create(6, Vectors.dense(9.2, 9.2, 9.2))
-    );
+    VectorAssembler vecAssembler = new VectorAssembler()
+      .setInputCols(new String[]{"x", "y", "z"})
+      .setOutputCol("features");
+
     StructType schema = new StructType(new StructField[]{
-      new StructField("id", DataTypes.IntegerType, false, Metadata.empty()),
-      new StructField("features", new VectorUDT(), false, Metadata.empty())
+      new StructField("x", DataTypes.DoubleType, false, Metadata.empty()),
+      new StructField("y", DataTypes.DoubleType, false, Metadata.empty()),
+      new StructField("z", DataTypes.DoubleType, false, Metadata.empty())
     });
-    Dataset<Row> dataset = spark.createDataFrame(data, schema);
+    Dataset<Row> dataset = vecAssembler.transform(
+      spark
+        .read()
+        .format("csv")
+        .option("sep", " ")
+        .schema(schema)
+        .load("data/mllib/kmeans_data.txt")
+    );
 
     // Trains a k-means model
     KMeans kmeans = new KMeans()
@@ -74,7 +73,7 @@ public class JavaKMeansExample {
     // Shows the result
     System.out.println("Within Set Sum of Squared Errors = " + model.computeCost(dataset));
     Vector[] centers = model.clusterCenters();
-    System.out.println("Cluster Centers: ");
+    System.out.println("Cluster Centers:");
     for (Vector center: centers) {
       System.out.println(center);
     }

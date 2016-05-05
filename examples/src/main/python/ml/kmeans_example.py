@@ -20,6 +20,8 @@ from __future__ import print_function
 # $example on$
 from pyspark.ml.clustering import KMeans, KMeansModel
 from pyspark.mllib.linalg import Vectors
+from pyspark.ml.feature import VectorAssembler
+from pyspark.sql.types import DoubleType, StructField, StructType
 # $example off$
 from pyspark.sql import SparkSession
 
@@ -28,14 +30,23 @@ if __name__ == "__main__":
     spark = SparkSession.builder.appName("PythonKMeansExample").getOrCreate()
 
     # $example on$
-    dataset = spark.createDataFrame([
-        (1, Vectors.dense(0.0, 0.0, 0.0)),
-        (2, Vectors.dense(0.1, 0.1, 0.1)),
-        (3, Vectors.dense(0.2, 0.2, 0.2)),
-        (4, Vectors.dense(9.0, 9.0, 9.0)),
-        (5, Vectors.dense(9.1, 9.1, 9.1)),
-        (6, Vectors.dense(9.2, 9.2, 9.2))], ["id", "features"])
-
+    # load the data
+    vecAssembler = VectorAssembler()\
+        .setInputCols(["x", "y", "z"])\
+        .setOutputCol("features")
+    schema = StructType([
+        StructField("x", DoubleType()),
+        StructField("y", DoubleType()),
+        StructField("z", DoubleType())
+    ])
+    dataset = vecAssembler.transform(
+        spark
+            .read
+            .format("csv")
+            .option("sep", " ")
+            .schema(schema)
+            .load("data/mllib/kmeans_data.txt")
+    )
 
     kmeans = KMeans(k=2, seed=1)
     model = kmeans.fit(dataset)
@@ -43,7 +54,7 @@ if __name__ == "__main__":
 
     print("Within Set Sum of Squared Errors = %s" % model.computeCost(dataset))
 
-    print("Final cluster centers")
+    print("Final cluster centers:")
     for center in centers:
         print(center)
     # $example off$
