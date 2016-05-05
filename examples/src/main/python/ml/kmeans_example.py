@@ -17,52 +17,35 @@
 
 from __future__ import print_function
 
-import sys
-
-import numpy as np
+# $example on$
 from pyspark.ml.clustering import KMeans, KMeansModel
-from pyspark.mllib.linalg import VectorUDT, _convert_to_vector
+from pyspark.mllib.linalg import Vectors
+# $example off$
 from pyspark.sql import SparkSession
-from pyspark.sql.types import Row, StructField, StructType
-
-"""
-A simple example demonstrating a k-means clustering.
-Run with:
-  bin/spark-submit examples/src/main/python/ml/kmeans_example.py <input> <k>
-
-This example requires NumPy (http://www.numpy.org/).
-"""
-
-
-def parseVector(row):
-    array = np.array([float(x) for x in row.value.split(' ')])
-    return _convert_to_vector(array)
-
 
 if __name__ == "__main__":
 
-    FEATURES_COL = "features"
-
-    if len(sys.argv) != 3:
-        print("Usage: kmeans_example.py <file> <k>", file=sys.stderr)
-        exit(-1)
-    path = sys.argv[1]
-    k = sys.argv[2]
-
     spark = SparkSession.builder.appName("PythonKMeansExample").getOrCreate()
 
-    lines = spark.read.text(path).rdd
-    data = lines.map(parseVector)
-    row_rdd = data.map(lambda x: Row(x))
-    schema = StructType([StructField(FEATURES_COL, VectorUDT(), False)])
-    df = spark.createDataFrame(row_rdd, schema)
+    # $example on$
+    dataset = spark.createDataFrame([
+        (1, Vectors.dense(0.0, 0.0, 0.0)),
+        (2, Vectors.dense(0.1, 0.1, 0.1)),
+        (3, Vectors.dense(0.2, 0.2, 0.2)),
+        (4, Vectors.dense(9.0, 9.0, 9.0)),
+        (5, Vectors.dense(9.1, 9.1, 9.1)),
+        (6, Vectors.dense(9.2, 9.2, 9.2))], ["id", "features"])
 
-    kmeans = KMeans().setK(2).setSeed(1).setFeaturesCol(FEATURES_COL)
-    model = kmeans.fit(df)
+
+    kmeans = KMeans(k=2, seed=1)
+    model = kmeans.fit(dataset)
     centers = model.clusterCenters()
 
-    print("Cluster Centers: ")
+    print("Within Set Sum of Squared Errors = %s" % model.computeCost(dataset))
+
+    print("Final cluster centers")
     for center in centers:
         print(center)
+    # $example off$
 
     spark.stop()

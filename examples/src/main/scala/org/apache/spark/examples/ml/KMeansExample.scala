@@ -22,8 +22,9 @@ package org.apache.spark.examples.ml
 // $example on$
 import org.apache.spark.ml.clustering.KMeans
 import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.DataFrame
 // $example off$
+import org.apache.spark.sql.SparkSession
 
 /**
  * An example demonstrating a k-means clustering.
@@ -57,6 +58,7 @@ object KMeansExample {
     val model = kmeans.fit(dataset)
 
     // Shows the result
+    println("Within Set Sum of Squared Errors = " + model.computeCost(dataset))
     println("Final Centers: ")
     model.clusterCenters.foreach(println)
     // $example off$
