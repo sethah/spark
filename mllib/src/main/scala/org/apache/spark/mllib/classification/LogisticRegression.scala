@@ -112,10 +112,10 @@ class LogisticRegressionModel @Since("1.3.0") (
     this
   }
 
-  override protected def predictPoint(
+  override def predictPoint(
       dataMatrix: Vector,
       weightMatrix: Vector,
-      intercept: Double) = {
+      intercept: Double): Double = {
     require(dataMatrix.size == numFeatures)
 
     // If dataMatrix and weightMatrix have the same dimension, it's binary logistic regression.
@@ -138,6 +138,7 @@ class LogisticRegressionModel @Since("1.3.0") (
       var bestClass = 0
       var maxMargin = 0.0
       val withBias = dataMatrix.size + 1 == dataWithBiasSize
+      val margins = Array.fill[Double](numClasses - 1)(0.0)
       (0 until numClasses - 1).foreach { i =>
         var margin = 0.0
         dataMatrix.foreachActive { (index, value) =>
@@ -151,7 +152,9 @@ class LogisticRegressionModel @Since("1.3.0") (
           maxMargin = margin
           bestClass = i + 1
         }
+        margins(i) = margin
       }
+      println(margins.mkString("&&"))
       bestClass.toDouble
     }
   }
@@ -431,7 +434,7 @@ class LogisticRegressionWithLBFGS
         if (userSuppliedWeights) {
           val uid = Identifiable.randomUID("logreg-static")
           lr.setInitialModel(new org.apache.spark.ml.classification.LogisticRegressionModel(
-            uid, initialWeights, 1.0))
+            uid, initialWeights, 1.0, 2))
         }
         lr.setFitIntercept(addIntercept)
         lr.setMaxIter(optimizer.getNumIterations())
