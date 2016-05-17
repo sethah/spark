@@ -303,6 +303,8 @@ class LogisticRegression @Since("1.2.0") (
     val numClasses = histogram.length
     println(histogram.mkString(","))
     val numFeatures = summarizer.mean.size
+    // TODO: better name?
+    val coefLength = if (getFitIntercept) numFeatures + 1 else numFeatures
     println(summarizer.mean.toArray.mkString("*"))
 
     instr.logNumClasses(numClasses)
@@ -391,25 +393,28 @@ class LogisticRegression @Since("1.2.0") (
           if ($(fitIntercept)) {
             initialCoefficientsWithInterceptArray(numFeatures) == optInitialModel.get.intercept
           }
+
+        } else if ($(fitIntercept)) {
+          // TODO: comment is wrong now
+          /*
+             For binary logistic regression, when we initialize the coefficients as zeros,
+             it will converge faster if we initialize the intercept such that
+             it follows the distribution of the labels.
+
+             {{{
+               P(0) = 1 / (1 + \exp(b)), and
+               P(1) = \exp(b) / (1 + \exp(b))
+             }}}, hence
+             {{{
+               b = \log{P(1) / P(0)} = \log{count_1 / count_0}
+             }}}
+           */
+          (1 to histogram.length - 1).foreach { i =>
+            initialCoefficientsWithIntercept.toArray((i - 1) * coefLength + numFeatures) = math.log(
+              histogram(i) / histogram(0))
+          }
         }
-        // TODO: need to change this
-//        } else if ($(fitIntercept) && numClasses == 2) {
-//          /*
-//             For binary logistic regression, when we initialize the coefficients as zeros,
-//             it will converge faster if we initialize the intercept such that
-//             it follows the distribution of the labels.
-//
-//             {{{
-//               P(0) = 1 / (1 + \exp(b)), and
-//               P(1) = \exp(b) / (1 + \exp(b))
-//             }}}, hence
-//             {{{
-//               b = \log{P(1) / P(0)} = \log{count_1 / count_0}
-//             }}}
-//           */
-//          initialCoefficientsWithIntercept.toArray(numFeatures) = math.log(
-//            histogram(1) / histogram(0))
-//        }
+        println("interceptinit", initialCoefficientsWithIntercept.toArray.mkString("!!"))
 
         val states = optimizer.iterations(new CachedDiffFunction(costFun),
           initialCoefficientsWithIntercept.toBreeze.toDenseVector)
@@ -463,6 +468,7 @@ class LogisticRegression @Since("1.2.0") (
     if (handlePersistence) instances.unpersist()
 
     val model = copyValues(new LogisticRegressionModel(uid, coefficients, intercept, numClasses))
+    // TODO
 //    val (summaryModel, probabilityColName) = model.findSummaryModelAndProbabilityCol()
 //    val logRegSummary = new BinaryLogisticRegressionTrainingSummary(
 //      summaryModel.transform(dataset),
@@ -547,6 +553,7 @@ class LogisticRegressionModel private[spark] (
   }
 
   val scores: Vector => Vector = (features) => {
+    // TODO: overflow correction
     val m = margins(features)
     val sum = m.toArray.tail.map(math.exp).sum
 
@@ -619,17 +626,26 @@ class LogisticRegressionModel private[spark] (
    * The behavior of this can be adjusted using [[thresholds]].
    */
   override protected def predict(features: Vector): Double = {
+    // TODO: handle thresholds here
     // Note: We should use getThreshold instead of $(threshold) since getThreshold is overridden.
-    if (score(features) > getThreshold) 1 else 0
+//    if (score(features) > getThreshold) 1 else 0
+    scores(features).argmax
   }
 
   override protected def raw2probabilityInPlace(rawPrediction: Vector): Vector = {
+    // TODO
     rawPrediction match {
       case dv: DenseVector =>
         var i = 0
         val size = dv.size
+        var sum = 0.0
+        var j = 1
+        while (j < size) {
+          sum += math.exp(dv.values(j))
+          j += 1
+        }
         while (i < size) {
-          dv.values(i) = 1.0 / (1.0 + math.exp(-dv.values(i)))
+          dv.values(i) = math.exp(dv.values(i)) / (1 + sum)
           i += 1
         }
         dv
@@ -640,8 +656,9 @@ class LogisticRegressionModel private[spark] (
   }
 
   override protected def predictRaw(features: Vector): Vector = {
-    val m = margin(features)
-    Vectors.dense(-m, m)
+//    val m = margin(features)
+//    Vectors.dense(-m, m)
+     margins(features)
   }
 
   @Since("1.4.0")
@@ -653,21 +670,32 @@ class LogisticRegressionModel private[spark] (
   }
 
   override protected def raw2prediction(rawPrediction: Vector): Double = {
+    // TODO
     // Note: We should use getThreshold instead of $(threshold) since getThreshold is overridden.
-    val t = getThreshold
-    val rawThreshold = if (t == 0.0) {
-      Double.NegativeInfinity
-    } else if (t == 1.0) {
-      Double.PositiveInfinity
-    } else {
-      math.log(t / (1.0 - t))
-    }
-    if (rawPrediction(1) > rawThreshold) 1 else 0
+//    val t = getThreshold
+    //    val rawThreshold = if (t == 0.0) {
+    //      Double.NegativeInfinity
+    //    } else if (t == 1.0) {
+    //      Double.PositiveInfinity
+    //    } else {
+    //      math.log(t / (1.0 - t))
+    //    }
+    //    if (rawPrediction(1) > rawThreshold) 1 else 0
+    rawPrediction.argmax
   }
 
   override protected def probability2prediction(probability: Vector): Double = {
     // Note: We should use getThreshold instead of $(threshold) since getThreshold is overridden.
-    if (probability(1) > getThreshold) 1 else 0
+    if (!isDefined(thresholds)) {
+      probability.argmax
+    } else {
+      val thresholds: Array[Double] = getThresholds
+      val scaledProbability: Array[Double] =
+        probability.toArray.zip(thresholds).map { case (p, t) =>
+          if (t == 0.0) Double.PositiveInfinity else p / t
+        }
+      Vectors.dense(scaledProbability).argmax
+    }
   }
 
   /**
@@ -1221,30 +1249,23 @@ private class LogisticCostFun(
     val totalGradientArray = logisticAggregator.gradient.toArray
 
     // regVal is the sum of coefficients squares excluding intercept for L2 regularization.
+    // TODO: double check this
+    val dataSize = if (fitIntercept) numFeatures + 1 else numFeatures
     val regVal = if (regParamL2 == 0.0) {
       0.0
     } else {
-      // TODO: adapt for multiclass
       var sum = 0.0
-      coeffs.foreachActive { (index, value) =>
-        // If `fitIntercept` is true, the last term which is intercept doesn't
-        // contribute to the regularization.
-        if (index != numFeatures) {
-          // The following code will compute the loss of the regularization; also
-          // the gradient of the regularization, and add back to totalGradientArray.
+      (0 until numClasses - 1).foreach { i =>
+        (0 until numFeatures).foreach { index =>
+          val value = coeffs(i * dataSize + index)
           sum += {
             if (standardization) {
-              totalGradientArray(index) += regParamL2 * value
+              totalGradientArray(i * dataSize + index) += regParamL2 * value
               value * value
             } else {
               if (featuresStd(index) != 0.0) {
-                // If `standardization` is false, we still standardize the data
-                // to improve the rate of convergence; as a result, we have to
-                // perform this reverse standardization by penalizing each component
-                // differently to get effectively the same objective function when
-                // the training dataset is not standardized.
                 val temp = value / (featuresStd(index) * featuresStd(index))
-                totalGradientArray(index) += regParamL2 * temp
+                totalGradientArray(i * dataSize + index) += regParamL2 * value
                 value * temp
               } else {
                 0.0
@@ -1255,6 +1276,35 @@ private class LogisticCostFun(
       }
       0.5 * regParamL2 * sum
     }
+//      coeffs.foreachActive { (index, value) =>
+//        // If `fitIntercept` is true, the last term which is intercept doesn't
+//        // contribute to the regularization.
+//        if (index != numFeatures) {
+//          // The following code will compute the loss of the regularization; also
+//          // the gradient of the regularization, and add back to totalGradientArray.
+//          sum += {
+//            if (standardization) {
+//              totalGradientArray(index) += regParamL2 * value
+//              value * value
+//            } else {
+//              if (featuresStd(index) != 0.0) {
+//                // If `standardization` is false, we still standardize the data
+//                // to improve the rate of convergence; as a result, we have to
+//                // perform this reverse standardization by penalizing each component
+//                // differently to get effectively the same objective function when
+//                // the training dataset is not standardized.
+//                val temp = value / (featuresStd(index) * featuresStd(index))
+//                totalGradientArray(index) += regParamL2 * temp
+//                value * temp
+//              } else {
+//                0.0
+//              }
+//            }
+//          }
+//        }
+//      }
+//      0.5 * regParamL2 * sum
+//    }
 
     (logisticAggregator.loss + regVal, new BDV(totalGradientArray))
   }

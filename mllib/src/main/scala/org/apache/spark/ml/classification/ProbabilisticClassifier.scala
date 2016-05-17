@@ -130,8 +130,10 @@ abstract class ProbabilisticClassificationModel[
       val predUDF = if ($(rawPredictionCol).nonEmpty) {
         udf(raw2prediction _).apply(col($(rawPredictionCol)))
       } else if ($(probabilityCol).nonEmpty) {
+        println("as;ldkfj")
         udf(probability2prediction _).apply(col($(probabilityCol)))
       } else {
+        println("%%%%asl;dkfj")
         val predictUDF = udf { (features: Any) =>
           predict(features.asInstanceOf[FeaturesType])
         }
@@ -167,8 +169,10 @@ abstract class ProbabilisticClassificationModel[
 
   override protected def raw2prediction(rawPrediction: Vector): Double = {
     if (!isDefined(thresholds)) {
+      println("argmaxing!!!!")
       rawPrediction.argmax
     } else {
+      println("not argmaxing!!!")
       probability2prediction(raw2probability(rawPrediction))
     }
   }
