@@ -256,7 +256,6 @@ object LBFGS extends Logging {
        * for other updater, the same logic is followed.
        */
       val regVal = updater.compute(w, Vectors.zeros(n), 0, 1, regParam)._2
-      println("regval", regVal, w.toArray.mkString(","))
 
       val loss = lossSum / numExamples + regVal
       /**
@@ -280,7 +279,6 @@ object LBFGS extends Logging {
       axpy(-1.0, updater.compute(w, Vectors.zeros(n), 1, 1, regParam)._1, gradientTotal)
 
       // gradientTotal = gradientSum / numExamples + gradientTotal
-      println("gtotal", gradientTotal.toArray.mkString(",,"))
       axpy(1.0 / numExamples, gradientSum, gradientTotal)
 
       (loss, gradientTotal.toBreeze.asInstanceOf[BDV[Double]])

@@ -297,7 +297,6 @@ abstract class GeneralizedLinearAlgorithm[M <: GeneralizedLinearModel]
           input.map(lp => (lp.label, lp.features))
         }
       }
-    println("first", data.take(2).mkString("^"))
 
     /**
      * TODO: For better convergence, in logistic regression, the intercepts should be computed
@@ -343,7 +342,6 @@ abstract class GeneralizedLinearAlgorithm[M <: GeneralizedLinearModel]
          * excluded when `addIntercept == true` since the intercepts are part of weights now.
          */
         var i = 0
-        println("oldweights", weights.toArray.mkString(","))
         val n = weights.size / numOfLinearPredictor
         val weightsArray = weights.toArray
         while (i < numOfLinearPredictor) {

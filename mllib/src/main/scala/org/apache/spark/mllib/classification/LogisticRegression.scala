@@ -154,7 +154,6 @@ class LogisticRegressionModel @Since("1.3.0") (
         }
         margins(i) = margin
       }
-      println(margins.mkString("&&"))
       bestClass.toDouble
     }
   }
