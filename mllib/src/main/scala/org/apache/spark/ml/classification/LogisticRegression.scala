@@ -350,7 +350,6 @@ class LogisticRegression @Since("1.2.0") (
         val optimizer = if ($(elasticNetParam) == 0.0 || $(regParam) == 0.0) {
           new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
         } else {
-          // TODO
           val standardizationParam = $(standardization)
           def regParamL1Fun = (index: Int) => {
             // Remove the L1 penalization on the intercept
@@ -392,18 +391,17 @@ class LogisticRegression @Since("1.2.0") (
           }
 
         } else if ($(fitIntercept)) {
-          // TODO: comment is wrong now
           /*
-             For binary logistic regression, when we initialize the coefficients as zeros,
+             For logistic regression, when we initialize the coefficients as zeros,
              it will converge faster if we initialize the intercept such that
              it follows the distribution of the labels.
 
              {{{
-               P(0) = 1 / (1 + \exp(b)), and
-               P(1) = \exp(b) / (1 + \exp(b))
+               P(0) = 1 / (1 + \sum_{k=1}^{K-1} \exp(b_k)), and
+               P(k) = \exp(b_k) / (1 + \sum_{k=1}^{K-1} \exp(b_k))
              }}}, hence
              {{{
-               b = \log{P(1) / P(0)} = \log{count_1 / count_0}
+               b_k = \log{P(k) / P(0)} = \log{count_k / count_0}
              }}}
            */
           (0 until histogram.length - 1).foreach { i =>
