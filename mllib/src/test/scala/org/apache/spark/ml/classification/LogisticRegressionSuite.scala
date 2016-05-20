@@ -17,6 +17,8 @@
 
 package org.apache.spark.ml.classification
 
+import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
+
 import scala.language.existentials
 import scala.util.Random
 
@@ -37,6 +39,7 @@ class LogisticRegressionSuite
 
   @transient var dataset: Dataset[_] = _
   @transient var binaryDataset: DataFrame = _
+  @transient var multinomialDataset: DataFrame = _
   private val eps: Double = 1e-5
 
   override def beforeAll(): Unit = {
@@ -56,6 +59,23 @@ class LogisticRegressionSuite
 
       spark.createDataFrame(sc.parallelize(testData, 4))
     }
+
+    multinomialDataset = {
+      val nPoints = 10000
+      val coefficients = Array(
+        -0.57997, 0.912083, -0.371077, -0.819866, 2.688191,
+        -0.16624, -0.84355, -0.048509, -0.301789, 4.170682)
+
+      val xMean = Array(5.843, 3.057, 3.758, 1.199)
+      val xVariance = Array(0.6856, 0.1899, 3.116, 0.581)
+
+      val testData = generateMultinomialLogisticInput(
+        coefficients, xMean, xVariance, addIntercept = true, nPoints, 42)
+
+      val df = spark.createDataFrame(testData)
+      df.cache()
+      df
+    }
   }
 
   /**
@@ -70,7 +90,7 @@ class LogisticRegressionSuite
 
   test("params") {
     ParamsSuite.checkParams(new LogisticRegression)
-    val model = new LogisticRegressionModel("logReg", Vectors.dense(0.0), 0.0)
+    val model = new LogisticRegressionModel("logReg", Vectors.dense(0.0), 0.0, 2)
     ParamsSuite.checkParams(model)
   }
 
@@ -607,6 +627,182 @@ class LogisticRegressionSuite
     assert(model2.intercept ~== interceptR2 absTol 1E-3)
     assert(model2.coefficients ~= coefficientsR2 relTol 1E-2)
   }
+
+  test("multinomial logistic regression with intercept without regularization") {
+
+    val trainer1 = (new LogisticRegression).setFitIntercept(true)
+      .setElasticNetParam(0.0).setRegParam(0.0).setStandardization(true)
+    val trainer2 = (new LogisticRegression).setFitIntercept(true)
+      .setElasticNetParam(0.0).setRegParam(0.0).setStandardization(false)
+
+    val model1 = trainer1.fit(multinomialDataset)
+    val model2 = trainer2.fit(multinomialDataset)
+
+    /*
+       Using the following R code to load the data and train the model using glmnet package.
+
+       library("glmnet")
+       data <- read.csv("path", header=FALSE)
+       label = as.factor(data$V1)
+       features = as.matrix(data.frame(data$V2, data$V3, data$V4, data$V5))
+       coefficients = coef(glmnet(features, label, family="multinomial", alpha = 0, lambda = 0))
+
+       The model weights of multinomial logistic regression in R have `K` set of linear predictors
+       for `K` classes classification problem; however, only `K-1` set is required if the first
+       outcome is chosen as a "pivot", and the other `K-1` outcomes are separately regressed against
+       the pivot outcome. This can be done by subtracting the first weights from those `K-1` set
+       weights. The mathematical discussion and proof can be found here:
+       http://en.wikipedia.org/wiki/Multinomial_logistic_regression
+
+       > coefficients$`1` - coefficients$`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                   s0
+            2.6228269
+        V2 -0.5837166
+        V3  0.9285260
+        V4 -0.3783612
+        V5 -0.8123411
+
+       > coefficients$`2` - coefficients$`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                    s0
+            4.11197445
+        V2 -0.16918650
+        V3 -0.81104784
+        V4 -0.06463799
+        V5 -0.29198337
+     */
+
+    val weightsR = Vectors.dense(Array(
+      -0.5837166, 0.9285260, -0.3783612, -0.8123411, 2.6228269,
+      -0.1691865, -0.811048, -0.0646380, -0.2919834, 4.1119745))
+
+    assert(model1.coefficients ~== weightsR relTol 0.05)
+    assert(model2.coefficients ~== weightsR relTol 0.05)
+  }
+
+  test("multinomial logistic regression without intercept without regularization") {
+
+    val trainer1 = (new LogisticRegression).setFitIntercept(false)
+      .setElasticNetParam(0.0).setRegParam(0.0).setStandardization(true)
+    val trainer2 = (new LogisticRegression).setFitIntercept(false)
+      .setElasticNetParam(0.0).setRegParam(0.0).setStandardization(false)
+
+    val model1 = trainer1.fit(multinomialDataset)
+    val model2 = trainer2.fit(multinomialDataset)
+
+    /*
+       Using the following R code to load the data and train the model using glmnet package.
+
+       library("glmnet")
+       data <- read.csv("path", header=FALSE)
+       label = as.factor(data$V1)
+       features = as.matrix(data.frame(data$V2, data$V3, data$V4, data$V5))
+       coefficients = coef(glmnet(features, label, family="multinomial", alpha = 0, lambda = 0,
+        intercept=F))
+
+       > coefficients$`1` - coefficients$`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                   s0
+            .
+        V2 -0.3735515
+        V3  1.3105908
+        V4 -0.3485306
+        V5 -0.7570060
+
+       > coefficients$`2` - coefficients$`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                    s0
+            .
+        V2  0.16377759
+        V3 -0.21370731
+        V4 -0.01574977
+        V5 -0.20456028
+     */
+
+    val weightsR = Vectors.dense(Array(
+      -0.3735515, 1.3105908, -0.3485306, -0.7570060,
+      0.16377759, -0.21370731, -0.01574977, -0.20456028))
+
+    assert(model1.coefficients ~== weightsR relTol 0.05)
+    assert(model2.coefficients ~== weightsR relTol 0.05)
+  }
+
+  test("multinomial logistic regression with intercept with L1 regularization") {
+
+    val trainer1 = (new LogisticRegression).setFitIntercept(true)
+      .setElasticNetParam(1.0).setRegParam(0.12).setStandardization(true)
+    val trainer2 = (new LogisticRegression).setFitIntercept(true)
+      .setElasticNetParam(1.0).setRegParam(0.12).setStandardization(false)
+
+    val model1 = trainer1.fit(multinomialDataset)
+    val model2 = trainer2.fit(multinomialDataset)
+
+    /*
+       Using the following R code to load the data and train the model using glmnet package.
+
+       library("glmnet")
+       data <- read.csv("path", header=FALSE)
+       label = as.factor(data$V1)
+       features = as.matrix(data.frame(data$V2, data$V3, data$V4, data$V5))
+       coefficientsStd = coef(glmnet(features, label, family="multinomial", alpha = 1,
+        lambda = 0.12))
+       coefficients = coef(glmnet(features, label, family="multinomial", alpha = 1, lambda = 0.12,
+        standardize=F))
+
+       > coefficientsStd`1` - coefficientsStd`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                  s0
+           -0.174806
+        V2  .
+        V3  .
+        V4  .
+        V5  .
+
+       > coefficientsStd`2` - coefficientsStd`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                   s0
+            0.03896597
+        V2  .
+        V3  .
+        V4  .
+        V5  .
+
+       > coefficients$`1` - coefficients$`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                   s0
+            0.2072453
+        V2  .
+        V3  .
+        V4 -0.1035397
+        V5  .
+        > coefficients$`2` - coefficients$`0`
+        5 x 1 sparse Matrix of class "dgCMatrix"
+                   s0
+           0.03899219
+        V2 .
+        V3 .
+        V4 .
+        V5 .
+     */
+
+    val weightsRStandardized = Vectors.dense(Array(
+      0.0, 0.0, 0.0, 0.0, -0.174806,
+      0.0, 0.0, 0.0, 0.0, 0.03896597))
+
+    val weightsR = Vectors.dense(Array(
+      0.0, 0.0, -0.1035397, 0.0, 0.2072453,
+      0.0, 0.0, 0.0, 0.0, 0.03899219))
+
+    assert(model1.coefficients ~== weightsRStandardized absTol 0.001)
+    assert(model2.coefficients ~== weightsR absTol 0.001)
+  }
+
+  // TODO: tests for thresholds
+//  test("multinomial logistic regression with intercept without regularization")
+//  test("multinomial logistic regression without intercept without regularization")
+//  test("multinomial logistic regression with intercept with L2 regularization")
+//  test("multinomial logistic regression with intercept with L1 regularization")
 
   test("binary logistic regression with intercept with ElasticNet regularization") {
     val trainer1 = (new LogisticRegression).setFitIntercept(true)

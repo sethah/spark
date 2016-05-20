@@ -353,7 +353,7 @@ class LogisticRegression @Since("1.2.0") (
           val standardizationParam = $(standardization)
           def regParamL1Fun = (index: Int) => {
             // Remove the L1 penalization on the intercept
-            if (index % numFeatures == 0) {
+            if ((index + 1) % (numFeatures + 1) == 0) {
               0.0
             } else {
               if (standardizationParam) {
@@ -364,7 +364,11 @@ class LogisticRegression @Since("1.2.0") (
                 // perform this reverse standardization by penalizing each component
                 // differently to get effectively the same objective function when
                 // the training dataset is not standardized.
-                if (featuresStd(index) != 0.0) regParamL1 / featuresStd(index) else 0.0
+                if (featuresStd(index % (numFeatures + 1)) != 0.0) {
+                  regParamL1 / featuresStd(index % (numFeatures + 1))
+                } else {
+                  0.0
+                }
               }
             }
           }
@@ -374,14 +378,22 @@ class LogisticRegression @Since("1.2.0") (
         val initialCoefficientsWithIntercept =
           Vectors.zeros((numClasses - 1) * coefWithInterceptLength)
 
-        if (optInitialModel.isDefined && optInitialModel.get.coefficients.size != numFeatures) {
+        // TODO: implement initial model for multiclass
+        if (optInitialModel.isDefined && numClasses != 2) {
+          logWarning(
+            s"Initial coefficients are only supported for binary logistic regression and will" +
+              s"be ignored!")
+        }
+        if (optInitialModel.isDefined && numClasses == 2
+          && optInitialModel.get.coefficients.size != numFeatures) {
           val vecSize = optInitialModel.get.coefficients.size
           logWarning(
             s"Initial coefficients will be ignored!! As its size $vecSize did not match the " +
             s"expected size $numFeatures")
         }
 
-        if (optInitialModel.isDefined && optInitialModel.get.coefficients.size == numFeatures) {
+        if (optInitialModel.isDefined && numClasses == 3
+          && optInitialModel.get.coefficients.size == numFeatures) {
           val initialCoefficientsWithInterceptArray = initialCoefficientsWithIntercept.toArray
           optInitialModel.get.coefficients.foreachActive { case (index, value) =>
             initialCoefficientsWithInterceptArray(index) = value
@@ -461,7 +473,7 @@ class LogisticRegression @Since("1.2.0") (
     if (handlePersistence) instances.unpersist()
 
     val model = copyValues(new LogisticRegressionModel(uid, coefficients, intercept, numClasses))
-    val m = if (numClasses == 2) {
+    val m = if (numClasses == 2 || numClasses == 1) {
       val (summaryModel, probabilityColName) = model.findSummaryModelAndProbabilityCol()
       val logRegSummary = new BinaryLogisticRegressionTrainingSummary(
         summaryModel.transform(dataset),
@@ -591,7 +603,7 @@ class LogisticRegressionModel private[spark] (
   }
 
   @Since("1.6.0")
-  override val numFeatures: Int = if (numClasses == 2) {
+  override val numFeatures: Int = if (numClasses == 1 || numClasses == 2) {
     coefficients.size
   } else {
     coefficients.size / (numClasses - 1) - 1
@@ -1336,7 +1348,7 @@ private class LogisticCostFun(
             } else {
               if (featuresStd(index) != 0.0) {
                 val temp = value / (featuresStd(index) * featuresStd(index))
-                totalGradientArray(i * dataSize + index) += regParamL2 * value
+                totalGradientArray(i * dataSize + index) += regParamL2 * temp
                 value * temp
               } else {
                 0.0
@@ -1347,6 +1359,11 @@ private class LogisticCostFun(
       }
       0.5 * regParamL2 * sum
     }
+
+//    val regVal = if (regParamL2 == 0.0) {
+//      0.0
+//    } else {
+//      var sum = 0.0
 //      coeffs.foreachActive { (index, value) =>
 //        // If `fitIntercept` is true, the last term which is intercept doesn't
 //        // contribute to the regularization.
@@ -1355,6 +1372,7 @@ private class LogisticCostFun(
 //          // the gradient of the regularization, and add back to totalGradientArray.
 //          sum += {
 //            if (standardization) {
+//              println("std", index, value, regParamL2)
 //              totalGradientArray(index) += regParamL2 * value
 //              value * value
 //            } else {
@@ -1364,8 +1382,10 @@ private class LogisticCostFun(
 //                // perform this reverse standardization by penalizing each component
 //                // differently to get effectively the same objective function when
 //                // the training dataset is not standardized.
+//                println(value, featuresStd.length, index, featuresStd(index), regParamL2)
 //                val temp = value / (featuresStd(index) * featuresStd(index))
 //                totalGradientArray(index) += regParamL2 * temp
+//                println(totalGradientArray.mkString(","))
 //                value * temp
 //              } else {
 //                0.0
