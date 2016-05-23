@@ -299,7 +299,6 @@ class LogisticRegression @Since("1.2.0") (
     }
 
     val histogram = labelSummarizer.histogram
-    println(histogram.mkString("::"))
     val numInvalid = labelSummarizer.countInvalid
     val numClasses = MetadataUtils.getNumClasses(dataset.schema($(labelCol))) match {
       case Some(n: Int) => n
@@ -416,7 +415,7 @@ class LogisticRegression @Since("1.2.0") (
         }
 
         val initialCoefficientsWithIntercept =
-          Vectors.zeros((numClasses - 1) * coefWithInterceptLength)
+          Vectors.zeros(numClasses * coefWithInterceptLength)
 
         // TODO: implement initial model for multiclass
         if (optInitialModel.isDefined && numClasses != 2) {
@@ -456,9 +455,11 @@ class LogisticRegression @Since("1.2.0") (
                b_k = \log{P(k) / P(0)} = \log{count_k / count_0}
              }}}
            */
-          (0 until histogram.length - 1).foreach { i =>
+          // TODO
+          val numInstances = histogram.sum
+          histogram.indices.foreach { i =>
             initialCoefficientsWithIntercept.toArray(i * coefWithInterceptLength + numFeatures) =
-              math.log(histogram(i + 1) / histogram(0))
+              0 * math.log(histogram(i) / numInstances.toDouble)
           }
         }
 
@@ -490,7 +491,8 @@ class LogisticRegression @Since("1.2.0") (
            as a result, no scaling is needed.
          */
         val rawCoefficients = state.x.toArray.clone()
-        (0 until numClasses - 1).foreach { k =>
+//        println("raw coef", rawCoefficients.mkString(","))
+        (0 until numClasses).foreach { k =>
           val dataSize = if ($(fitIntercept)) numFeatures + 1 else numFeatures
           var i = 0
           while (i < numFeatures) {
@@ -499,7 +501,6 @@ class LogisticRegression @Since("1.2.0") (
             i += 1
           }
         }
-
 
         if ($(fitIntercept) && numClasses == 2) {
           (Vectors.dense(rawCoefficients.dropRight(1)).compressed, rawCoefficients.last,
@@ -577,7 +578,7 @@ class LogisticRegressionModel private[spark] (
       val m = margin(features)
       Vectors.dense(0, m)
     } else {
-      val marginsArray = (0 until numClasses - 1).map { i =>
+      val marginsArray = (0 until numClasses).map { i =>
         var margin = 0.0
         features.foreachActive { (index, value) =>
           if (value != 0.0) margin += value * coefficients((i * coefWithInterceptLength) + index)
@@ -588,7 +589,7 @@ class LogisticRegressionModel private[spark] (
         }
         margin
       }.toArray
-      Vectors.dense(0.0 +: marginsArray)
+      Vectors.dense(marginsArray)
     }
   }
 
@@ -604,20 +605,16 @@ class LogisticRegressionModel private[spark] (
     var maxMargin = Double.NegativeInfinity
     var maxMarginIndex = 0
     val margins = Array.tabulate(numClasses) { i =>
-      if (i == 0) {
-        0.0
-      } else {
-        var margin = 0.0
-        features.foreachActive { (index, value) =>
-          if (value != 0.0) margin +=
-            value * coefficients(((i - 1) * coefWithInterceptLength) + index)
-        }
-        if (margin > maxMargin) {
-          maxMargin = margin
-          maxMarginIndex = i
-        }
-        margin
+      var margin = 0.0
+      features.foreachActive { (index, value) =>
+        if (value != 0.0) margin +=
+          value * coefficients((i * coefWithInterceptLength) + index)
       }
+      if (margin > maxMargin) {
+        maxMargin = margin
+        maxMarginIndex = i
+      }
+      margin
     }
 
     // adjust margins for overflow
@@ -626,27 +623,24 @@ class LogisticRegressionModel private[spark] (
       if (maxMargin > 0) {
         for (i <- 0 until numClasses) {
           margins(i) -= maxMargin
-          if (i == maxMarginIndex) {
-            temp += math.exp(-maxMargin)
-          } else if (i != 0) {
-            temp += math.exp(margins(i))
-          }
+          temp += math.exp(margins(i))
         }
       } else {
-        for (i <- 0 until numClasses - 1) {
+        for (i <- 0 until numClasses ) {
           temp += math.exp(margins(i))
         }
       }
       temp
     }
-    Vectors.dense(margins.map(m => math.exp(m) / (1 + sum)))
+    Vectors.dense(margins.map(m => math.exp(m) / sum))
   }
 
   @Since("1.6.0")
   override val numFeatures: Int = if (numClasses == 1 || numClasses == 2) {
     coefficients.size
   } else {
-    coefficients.size / (numClasses - 1) - 1
+    // TODO: this correct?
+    coefficients.size / numClasses - 1
   }
 
   private val coefWithInterceptLength = if (getFitIntercept) numFeatures + 1 else numFeatures
@@ -738,6 +732,7 @@ class LogisticRegressionModel private[spark] (
           i += 1
         }
 
+        // TODO: this is sloppy, but it's here because in scala inf - inf = nan
         if (maxMargin == Double.PositiveInfinity) {
           (0 until size).foreach { j =>
             if (j == maxMarginIndex) {
@@ -753,11 +748,7 @@ class LogisticRegressionModel private[spark] (
             if (maxMargin > 0) {
               for (j <- 0 until numClasses) {
                 dv.values(j) -= maxMargin
-                if (j == maxMarginIndex) {
-                  temp += math.exp(-maxMargin)
-                } else if (j != 0) {
-                  temp += math.exp(dv.values(j))
-                }
+                temp += math.exp(dv.values(j))
               }
             } else {
               for (j <- 1 until numClasses) {
@@ -770,7 +761,7 @@ class LogisticRegressionModel private[spark] (
           // update in place
           i = 0
           while (i < size) {
-            dv.values(i) = math.exp(dv.values(i)) / (1 + sum)
+            dv.values(i) = math.exp(dv.values(i)) / sum
             i += 1
           }
         }
@@ -1186,7 +1177,7 @@ private class LogisticAggregator(
    */
   def add(instance: Instance): this.type = {
     instance match { case Instance(label, weight, features) =>
-      require(numClasses == coefficientsArray.length / coefficientLength + 1)
+      require(numClasses == coefficientsArray.length / coefficientLength)
       if (fitIntercept) {
         require(dim % (features.size + 1) == 0)
       } else {
@@ -1241,7 +1232,7 @@ private class LogisticAggregator(
           var maxMargin = Double.NegativeInfinity
           var maxMarginIndex = 0
 
-          val margins = Array.tabulate(numClasses - 1) { i =>
+          val margins = Array.tabulate(numClasses) { i =>
             var margin = 0.0
             features.foreachActive { (index, value) =>
               if (value != 0.0) margin += value / featuresStd(index) *
@@ -1254,7 +1245,7 @@ private class LogisticAggregator(
                 0.0
               }
             }
-            if (i == label.toInt - 1) marginY = margin
+            if (i == label.toInt) marginY = margin
             if (margin > maxMargin) {
               maxMargin = margin
               maxMarginIndex = i
@@ -1265,25 +1256,21 @@ private class LogisticAggregator(
           val sum = {
             var temp = 0.0
             if (maxMargin > 0) {
-              for (i <- 0 until numClasses - 1) {
+              for (i <- 0 until numClasses) {
                 margins(i) -= maxMargin
-                if (i == maxMarginIndex) {
-                  temp += math.exp(-maxMargin)
-                } else {
-                  temp += math.exp(margins(i))
-                }
+                temp += math.exp(margins(i))
               }
             } else {
-              for (i <- 0 until numClasses - 1) {
+              for (i <- 0 until numClasses) {
                 temp += math.exp(margins(i))
               }
             }
             temp
           }
 
-          for (i <- 0 until numClasses - 1) {
-            val multiplier = math.exp(margins(i)) / (sum + 1.0) - {
-              if (label != 0.0 && label == i + 1) 1.0 else 0.0
+          for (i <- 0 until numClasses) {
+            val multiplier = math.exp(margins(i)) / sum - {
+              if (label == i) 1.0 else 0.0
             }
             features.foreachActive { (index, value) =>
               if (value != 0.0) localGradientSumArray(i * coefficientLength + index) +=
@@ -1294,7 +1281,7 @@ private class LogisticAggregator(
             }
           }
 
-          val loss = if (label > 0.0) math.log1p(sum) - marginY else math.log1p(sum)
+          val loss = math.log(sum) - marginY
 
           val add = if (maxMargin > 0) {
             loss + maxMargin
@@ -1369,6 +1356,7 @@ private class LogisticCostFun(
   override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
     val numFeatures = featuresStd.length
     val coeffs = Vectors.fromBreeze(coefficients)
+//    println(coeffs.toArray.mkString("**"))
 
     val logisticAggregator = {
       val seqOp = (c: LogisticAggregator, instance: Instance) => c.add(instance)
@@ -1380,6 +1368,7 @@ private class LogisticCostFun(
     }
 
     val totalGradientArray = logisticAggregator.gradient.toArray
+//    println(totalGradientArray.mkString("%") + "\n")
 
     // regVal is the sum of coefficients squared excluding intercept for L2 regularization.
     // TODO: double check this
@@ -1388,7 +1377,7 @@ private class LogisticCostFun(
       0.0
     } else {
       var sum = 0.0
-      (0 until numClasses - 1).foreach { i =>
+      (0 until numClasses).foreach { i =>
         (0 until numFeatures).foreach { index =>
           val value = coeffs(i * dataSize + index)
           sum += {
