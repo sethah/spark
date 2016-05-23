@@ -277,9 +277,17 @@ object LBFGS extends Logging {
       // Will add the gradientSum computed from the data with weights in the next step.
       val gradientTotal = w.copy
       axpy(-1.0, updater.compute(w, Vectors.zeros(n), 1, 1, regParam)._1, gradientTotal)
+//      val numFeatures = data.first()._2.size - 1
+//      val numClasses = w.size / numFeatures + 1
+//      println(gradientTotal.toArray.mkString(","))
+//      (0 until numClasses - 1).foreach { i =>
+//        gradientTotal.toArray(i * (numFeatures + 1) + numFeatures) = 0.0
+//      }
+
 
       // gradientTotal = gradientSum / numExamples + gradientTotal
       axpy(1.0 / numExamples, gradientSum, gradientTotal)
+      println(gradientTotal.toArray.mkString(","))
 
       (loss, gradientTotal.toBreeze.asInstanceOf[BDV[Double]])
     }

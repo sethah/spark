@@ -299,6 +299,7 @@ class LogisticRegression @Since("1.2.0") (
     }
 
     val histogram = labelSummarizer.histogram
+    println(histogram.mkString("::"))
     val numInvalid = labelSummarizer.countInvalid
     val numClasses = MetadataUtils.getNumClasses(dataset.schema($(labelCol))) match {
       case Some(n: Int) => n
@@ -319,23 +320,62 @@ class LogisticRegression @Since("1.2.0") (
         throw new SparkException(msg)
       }
 
-      if ($(fitIntercept) && numClasses == 2 && histogram(0) == 0.0) {
-        logWarning(s"All labels are one and fitIntercept=true, so the coefficients will be " +
-          s"zeros and the intercept will be positive infinity; as a result, " +
-          s"training is not needed.")
-        (Vectors.sparse(numFeatures, Seq()), Double.PositiveInfinity, Array.empty[Double])
-      } else if ($(fitIntercept) && numClasses == 1) {
-        logWarning(s"All labels are zero and fitIntercept=true, so the coefficients will be " +
-          s"zeros and the intercept will be negative infinity; as a result, " +
-          s"training is not needed.")
-        (Vectors.sparse(numFeatures, Seq()), Double.NegativeInfinity, Array.empty[Double])
+      val nonZeroLabels = histogram.zipWithIndex.filter(_._1 != 0.0)
+      val labelIsConstant = nonZeroLabels.length == 1
+//      if ($(fitIntercept) && labelIsConstant) {
+//        // we want to produce a model that will always predict the constant label
+//        if (numClasses == 1) {
+//          (Vectors.sparse(numFeatures, Seq()), Double.NegativeInfinity, Array.empty[Double])
+//        } else if (numClasses == 2) {
+//          (Vectors.sparse(numFeatures, Seq()), Double.PositiveInfinity, Array.empty[Double])
+//        } else {
+//          val totalCoefSize = coefWithInterceptLength * (numClasses - 1)
+//          println(totalCoefSize)
+//          (Vectors.sparse(totalCoefSize, Seq((totalCoefSize - 1, Double.PositiveInfinity))),
+//            0.0, Array.empty[Double])
+//        }
+//      } else {
+//        if (!$(fitIntercept) && labelIsConstant) {
+//          logWarning(s"All labels belong to a single class and fitIntercept=false. It's" +
+//            s"a dangerous ground, so the algorithm may not converge.")
+//        }
+//      }
+
+//      if ($(fitIntercept) && numClasses == 2 && histogram(0) == 0.0) {
+//        logWarning(s"All labels are one and fitIntercept=true, so the coefficients will be " +
+//          s"zeros and the intercept will be positive infinity; as a result, " +
+//          s"training is not needed.")
+//        (Vectors.sparse(numFeatures, Seq()), Double.PositiveInfinity, Array.empty[Double])
+//      } else if ($(fitIntercept) && numClasses == 1) {
+//        logWarning(s"All labels are zero and fitIntercept=true, so the coefficients will be " +
+//          s"zeros and the intercept will be negative infinity; as a result, " +
+//          s"training is not needed.")
+//        (Vectors.sparse(numFeatures, Seq()), Double.NegativeInfinity, Array.empty[Double])
+//      }
+
+      if ($(fitIntercept) && labelIsConstant) {
+        // we want to produce a model that will always predict the constant label
+        if (numClasses == 1) {
+          (Vectors.sparse(numFeatures, Seq()), Double.NegativeInfinity, Array.empty[Double])
+        } else if (numClasses == 2) {
+          (Vectors.sparse(numFeatures, Seq()), Double.PositiveInfinity, Array.empty[Double])
+        } else {
+          val totalCoefSize = coefWithInterceptLength * (numClasses - 1)
+          (Vectors.sparse(totalCoefSize, Seq((totalCoefSize - 1, Double.PositiveInfinity))),
+            0.0, Array.empty[Double])
+        }
       } else {
-        if (!$(fitIntercept) && numClasses == 2 && histogram(0) == 0.0) {
-          logWarning(s"All labels are one and fitIntercept=false. It's a dangerous ground, " +
-            s"so the algorithm may not converge.")
-        } else if (!$(fitIntercept) && numClasses == 1) {
-          logWarning(s"All labels are zero and fitIntercept=false. It's a dangerous ground, " +
-            s"so the algorithm may not converge.")
+//        if (!$(fitIntercept) && numClasses == 2 && histogram(0) == 0.0) {
+//          logWarning(s"All labels are one and fitIntercept=false. It's a dangerous ground, " +
+//            s"so the algorithm may not converge.")
+//        } else if (!$(fitIntercept) && numClasses == 1) {
+//          logWarning(s"All labels are zero and fitIntercept=false. It's a dangerous ground, " +
+//            s"so the algorithm may not converge.")
+//        }
+
+        if (!$(fitIntercept) && labelIsConstant) {
+          logWarning(s"All labels belong to a single class and fitIntercept=false. It's" +
+            s"a dangerous ground, so the algorithm may not converge.")
         }
 
         val featuresMean = summarizer.mean.toArray
@@ -698,31 +738,41 @@ class LogisticRegressionModel private[spark] (
           i += 1
         }
 
-        // adjust margins for overflow
-        val sum = {
-          var temp = 0.0
-          if (maxMargin > 0) {
-            for (j <- 0 until numClasses) {
-              dv.values(j) -= maxMargin
-              if (j == maxMarginIndex) {
-                temp += math.exp(-maxMargin)
-              } else if (j != 0) {
+        if (maxMargin == Double.PositiveInfinity) {
+          (0 until size).foreach { j =>
+            if (j == maxMarginIndex) {
+              dv.values(j) = 1.0
+            } else {
+              dv.values(j) = 0.0
+            }
+          }
+        } else {
+          // adjust margins for overflow
+          val sum = {
+            var temp = 0.0
+            if (maxMargin > 0) {
+              for (j <- 0 until numClasses) {
+                dv.values(j) -= maxMargin
+                if (j == maxMarginIndex) {
+                  temp += math.exp(-maxMargin)
+                } else if (j != 0) {
+                  temp += math.exp(dv.values(j))
+                }
+              }
+            } else {
+              for (j <- 1 until numClasses) {
                 temp += math.exp(dv.values(j))
               }
             }
-          } else {
-            for (j <- 1 until numClasses) {
-              temp += math.exp(dv.values(j))
-            }
+            temp
           }
-          temp
-        }
 
-        // update in place
-        i = 0
-        while (i < size) {
-          dv.values(i) = math.exp(dv.values(i)) / (1 + sum)
-          i += 1
+          // update in place
+          i = 0
+          while (i < size) {
+            dv.values(i) = math.exp(dv.values(i)) / (1 + sum)
+            i += 1
+          }
         }
         dv
       case sv: SparseVector =>

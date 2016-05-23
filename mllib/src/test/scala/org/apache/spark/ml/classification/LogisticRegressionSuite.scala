@@ -1082,6 +1082,7 @@ class LogisticRegressionSuite
   }
 
   test("logistic regression with all labels the same") {
+    // TODO: expand this test
     val sameLabels = dataset
       .withColumn("zeroLabel", lit(0.0))
       .withColumn("oneLabel", lit(1.0))
