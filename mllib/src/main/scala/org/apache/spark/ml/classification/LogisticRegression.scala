@@ -259,6 +259,9 @@ class LogisticRegression @Since("1.2.0") (
 
   private var optInitialModel: Option[LogisticRegressionModel] = None
 
+  var startingIntercepts: Array[Double] = Array.empty[Double]
+  var whichOptimizer = "LBFGS"
+
   /** @group setParam */
   private[spark] def setInitialModel(model: LogisticRegressionModel): this.type = {
     this.optInitialModel = Some(model)
@@ -321,36 +324,6 @@ class LogisticRegression @Since("1.2.0") (
 
       val nonZeroLabels = histogram.zipWithIndex.filter(_._1 != 0.0)
       val labelIsConstant = nonZeroLabels.length == 1
-//      if ($(fitIntercept) && labelIsConstant) {
-//        // we want to produce a model that will always predict the constant label
-//        if (numClasses == 1) {
-//          (Vectors.sparse(numFeatures, Seq()), Double.NegativeInfinity, Array.empty[Double])
-//        } else if (numClasses == 2) {
-//          (Vectors.sparse(numFeatures, Seq()), Double.PositiveInfinity, Array.empty[Double])
-//        } else {
-//          val totalCoefSize = coefWithInterceptLength * (numClasses - 1)
-//          println(totalCoefSize)
-//          (Vectors.sparse(totalCoefSize, Seq((totalCoefSize - 1, Double.PositiveInfinity))),
-//            0.0, Array.empty[Double])
-//        }
-//      } else {
-//        if (!$(fitIntercept) && labelIsConstant) {
-//          logWarning(s"All labels belong to a single class and fitIntercept=false. It's" +
-//            s"a dangerous ground, so the algorithm may not converge.")
-//        }
-//      }
-
-//      if ($(fitIntercept) && numClasses == 2 && histogram(0) == 0.0) {
-//        logWarning(s"All labels are one and fitIntercept=true, so the coefficients will be " +
-//          s"zeros and the intercept will be positive infinity; as a result, " +
-//          s"training is not needed.")
-//        (Vectors.sparse(numFeatures, Seq()), Double.PositiveInfinity, Array.empty[Double])
-//      } else if ($(fitIntercept) && numClasses == 1) {
-//        logWarning(s"All labels are zero and fitIntercept=true, so the coefficients will be " +
-//          s"zeros and the intercept will be negative infinity; as a result, " +
-//          s"training is not needed.")
-//        (Vectors.sparse(numFeatures, Seq()), Double.NegativeInfinity, Array.empty[Double])
-//      }
 
       if ($(fitIntercept) && labelIsConstant) {
         // we want to produce a model that will always predict the constant label
@@ -364,14 +337,6 @@ class LogisticRegression @Since("1.2.0") (
             0.0, Array.empty[Double])
         }
       } else {
-//        if (!$(fitIntercept) && numClasses == 2 && histogram(0) == 0.0) {
-//          logWarning(s"All labels are one and fitIntercept=false. It's a dangerous ground, " +
-//            s"so the algorithm may not converge.")
-//        } else if (!$(fitIntercept) && numClasses == 1) {
-//          logWarning(s"All labels are zero and fitIntercept=false. It's a dangerous ground, " +
-//            s"so the algorithm may not converge.")
-//        }
-
         if (!$(fitIntercept) && labelIsConstant) {
           logWarning(s"All labels belong to a single class and fitIntercept=false. It's" +
             s"a dangerous ground, so the algorithm may not converge.")
@@ -386,13 +351,17 @@ class LogisticRegression @Since("1.2.0") (
         val costFun = new LogisticCostFun(instances, numClasses, $(fitIntercept),
           $(standardization), featuresStd, featuresMean, regParamL2)
 
-        val optimizer = if ($(elasticNetParam) == 0.0 || $(regParam) == 0.0) {
+//        val optimizer = if ($(elasticNetParam) == 0.0 || $(regParam) == 0.0) {
+        val optimizer =  if (whichOptimizer == "LBFGS") {
+          println("Optimizer: LBFGS")
           new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
         } else {
+          println("Optimizer: OWLQN")
           val standardizationParam = $(standardization)
           def regParamL1Fun = (index: Int) => {
             // Remove the L1 penalization on the intercept
-            if ((index + 1) % (numFeatures + 1) == 0) {
+            // TODO: handle without intercept case
+            if (((index + 1) % coefWithInterceptLength == 0) && $(fitIntercept)) {
               0.0
             } else {
               if (standardizationParam) {
@@ -403,8 +372,9 @@ class LogisticRegression @Since("1.2.0") (
                 // perform this reverse standardization by penalizing each component
                 // differently to get effectively the same objective function when
                 // the training dataset is not standardized.
-                if (featuresStd(index % (numFeatures + 1)) != 0.0) {
-                  regParamL1 / featuresStd(index % (numFeatures + 1))
+                val idx = if ($(fitIntercept)) index % coefWithInterceptLength else index
+                if (featuresStd(idx) != 0.0) {
+                  regParamL1 / featuresStd(idx)
                 } else {
                   0.0
                 }
@@ -458,11 +428,25 @@ class LogisticRegression @Since("1.2.0") (
           // TODO
           val numInstances = histogram.sum
           histogram.indices.foreach { i =>
-            initialCoefficientsWithIntercept.toArray(i * coefWithInterceptLength + numFeatures) =
-              0 * math.log(histogram(i) / numInstances.toDouble)
+            if (startingIntercepts.nonEmpty) {
+              initialCoefficientsWithIntercept.toArray(i * coefWithInterceptLength + numFeatures) =
+                0 * math.log(histogram(i) / numInstances.toDouble)
+            } else {
+              initialCoefficientsWithIntercept.toArray(i * coefWithInterceptLength + numFeatures) =
+                math.log(histogram(i) / numInstances.toDouble)
+            }
+
+//          histogram.indices.foreach { i =>
+//            val _intercept = if (i == 0) {
+//              0.0
+//            } else {
+//              math.log(histogram(i) / histogram(0))
+//            }
+//            initialCoefficientsWithIntercept.toArray(i * coefWithInterceptLength + numFeatures) =
+//              _intercept
           }
         }
-
+        println(initialCoefficientsWithIntercept.toArray.mkString("^"))
         val states = optimizer.iterations(new CachedDiffFunction(costFun),
           initialCoefficientsWithIntercept.toBreeze.toDenseVector)
 
@@ -491,7 +475,6 @@ class LogisticRegression @Since("1.2.0") (
            as a result, no scaling is needed.
          */
         val rawCoefficients = state.x.toArray.clone()
-//        println("raw coef", rawCoefficients.mkString(","))
         (0 until numClasses).foreach { k =>
           val dataSize = if ($(fitIntercept)) numFeatures + 1 else numFeatures
           var i = 0
@@ -510,7 +493,7 @@ class LogisticRegression @Since("1.2.0") (
         }
       }
     }
-
+    println("niters: ", objectiveHistory.length)
     if (handlePersistence) instances.unpersist()
 
     val model = copyValues(new LogisticRegressionModel(uid, coefficients, intercept, numClasses))
@@ -525,6 +508,7 @@ class LogisticRegression @Since("1.2.0") (
       model.setSummary(logRegSummary)
     } else {
       // TODO: set multiclass training summary when it is added
+      model.history = objectiveHistory
       model
     }
     instr.logSuccess(m)
@@ -567,6 +551,59 @@ class LogisticRegressionModel private[spark] (
 
   @Since("1.5.0")
   override def getThresholds: Array[Double] = super.getThresholds
+
+  def getCoefficients(i: Int): Array[Double] = {
+    coefficients.toArray.slice(i * coefWithInterceptLength,
+      i * coefWithInterceptLength + coefWithInterceptLength)
+  }
+
+  var history: Array[Double] = null
+
+  def blasMargin(features: Vector): Vector = {
+    val matrix = new DenseMatrix(numClasses, coefWithInterceptLength, coefficients.toArray,
+      isTransposed = true)
+    println(matrix)
+    val result = Vectors.zeros(numClasses).toDense
+    BLAS.gemv(1.0, matrix, features, 0.0, result)
+    result
+  }
+
+  lazy val coefArray = if (getFitIntercept) {
+      coefficients.toArray.zipWithIndex.filter { case (c, i) =>
+        !((i + 1) % coefWithInterceptLength == 0)
+      }.map(_._1)
+    } else {
+      coefficients.toArray
+    }
+
+  def interceptArray(centered: Boolean = false) = {
+    val i = if (getFitIntercept) {
+      coefficients.toArray.zipWithIndex.filter { case (c, i) =>
+        (i + 1) % coefWithInterceptLength == 0
+      }.map(_._1)
+    } else {
+      Array.empty[Double]
+    }
+    if (centered) {
+      val mean = i.sum / i.length.toDouble
+      i.map(_-mean)
+    } else {
+      i
+    }
+  }
+
+  def coefMat(centered: Boolean = false): Matrix = {
+    if (centered) {
+      val mean = coefArray.sum / coefArray.length.toDouble
+      val centeredCoefs = coefArray.map(_ - mean)
+      new DenseMatrix(numClasses, numFeatures, centeredCoefs,
+        isTransposed = true)
+    } else {
+      new DenseMatrix(numClasses, numFeatures, coefArray,
+        isTransposed = true)
+    }
+
+  }
 
   /** Margin (rawPrediction) for class label 1.  For binary classification only. */
   private val margin: Vector => Double = (features) => {
@@ -636,14 +673,13 @@ class LogisticRegressionModel private[spark] (
   }
 
   @Since("1.6.0")
-  override val numFeatures: Int = if (numClasses == 1 || numClasses == 2) {
+  override lazy val numFeatures: Int = if (numClasses == 1 || numClasses == 2) {
     coefficients.size
   } else {
-    // TODO: this correct?
-    coefficients.size / numClasses - 1
+    coefficients.size / numClasses - (if (getFitIntercept) 1 else 0)
   }
 
-  private val coefWithInterceptLength = if (getFitIntercept) numFeatures + 1 else numFeatures
+  private lazy val coefWithInterceptLength = if (getFitIntercept) numFeatures + 1 else numFeatures
 
   private var trainingSummary: Option[LogisticRegressionTrainingSummary] = None
 
