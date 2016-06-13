@@ -964,6 +964,8 @@ private class LogisticAggregator(
   private val dim = if (fitIntercept) coefficientsArray.length - 1 else coefficientsArray.length
 
   private val gradientSumArray = Array.ofDim[Double](coefficientsArray.length)
+  var time = 0.0
+  var count = 0
 
   /**
    * Add a new training instance to this LogisticAggregator, and update the loss and gradient
@@ -985,6 +987,7 @@ private class LogisticAggregator(
 
       numClasses match {
         case 2 =>
+          val t0 = System.nanoTime()
           // For Binary Logistic Regression.
           val margin = - {
             var sum = 0.0
@@ -1016,6 +1019,9 @@ private class LogisticAggregator(
           } else {
             lossSum += weight * (MLUtils.log1pExp(margin) - margin)
           }
+          val t1 = System.nanoTime()
+          time += (t1 - t0) / 1e6
+          count += 1
         case _ =>
           new NotImplementedError("LogisticRegression with ElasticNet in ML package " +
             "only supports binary classification for now.")
@@ -1040,6 +1046,8 @@ private class LogisticAggregator(
     if (other.weightSum != 0.0) {
       weightSum += other.weightSum
       lossSum += other.lossSum
+      time += other.time
+      count += other.count
 
       var i = 0
       val localThisGradientSumArray = this.gradientSumArray
@@ -1095,6 +1103,7 @@ private class LogisticCostFun(
         new LogisticAggregator(coeffs, numClasses, fitIntercept, featuresStd, featuresMean)
       )(seqOp, combOp)
     }
+    println(logisticAggregator.time, logisticAggregator.count)
 
     val totalGradientArray = logisticAggregator.gradient.toArray
 

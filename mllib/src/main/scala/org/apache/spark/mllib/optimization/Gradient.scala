@@ -147,10 +147,20 @@ class LogisticGradient(numClasses: Int) extends Gradient {
   def this() = this(2)
 
   override def compute(
+                        data: Vector,
+                        label: Double,
+                        weights: Vector,
+                        cumGradient: Vector
+                      ): Double = {
+    val (l, t) = compute2(data, label, weights, cumGradient)
+    l
+  }
+
+  def compute2(
       data: Vector,
       label: Double,
       weights: Vector,
-      cumGradient: Vector): Double = {
+      cumGradient: Vector): (Double, Double) = {
     val dataSize = data.size
 
     // (weights.size / dataSize + 1) is number of classes
@@ -164,15 +174,18 @@ class LogisticGradient(numClasses: Int) extends Gradient {
          * and multinomial one can also be used in binary case, we still implement a specialized
          * binary version for performance reason.
          */
+        val t0 = System.nanoTime()
         val margin = -1.0 * dot(data, weights)
         val multiplier = (1.0 / (1.0 + math.exp(margin))) - label
         axpy(multiplier, data, cumGradient)
-        if (label > 0) {
+        val tmp = if (label > 0) {
           // The following is equivalent to log(1 + exp(margin)) but more numerically stable.
           MLUtils.log1pExp(margin)
         } else {
           MLUtils.log1pExp(margin) - margin
         }
+        val t1 = System.nanoTime()
+        (tmp, (t1 - t0) / 1e6)
       case _ =>
         /**
          * For Multinomial Logistic Regression.
@@ -244,11 +257,12 @@ class LogisticGradient(numClasses: Int) extends Gradient {
 
         val loss = if (label > 0.0) math.log1p(sum) - marginY else math.log1p(sum)
 
-        if (maxMargin > 0) {
+        val tmp = if (maxMargin > 0) {
           loss + maxMargin
         } else {
           loss
         }
+        (tmp, 0.0)
     }
   }
 }
