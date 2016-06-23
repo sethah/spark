@@ -21,7 +21,7 @@ import scala.collection.mutable
 import scala.util.Try
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.ml.feature.LabeledPoint
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.tree.RandomForestParams
 import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.configuration.QuantileStrategy._
@@ -42,6 +42,7 @@ import org.apache.spark.rdd.RDD
 private[spark] class DecisionTreeMetadata(
     val numFeatures: Int,
     val numExamples: Long,
+    val weightedNumExamples: Double,
     val numClasses: Int,
     val maxBins: Int,
     val featureArity: Map[Int, Int],
@@ -104,7 +105,7 @@ private[spark] object DecisionTreeMetadata extends Logging {
    * as well as the number of splits and bins for each feature.
    */
   def buildMetadata(
-      input: RDD[LabeledPoint],
+      input: RDD[Instance],
       strategy: Strategy,
       numTrees: Int,
       featureSubsetStrategy: String): DecisionTreeMetadata = {
@@ -113,7 +114,9 @@ private[spark] object DecisionTreeMetadata extends Logging {
       throw new IllegalArgumentException(s"DecisionTree requires size of input RDD > 0, " +
         s"but was given by empty one.")
     }
-    val numExamples = input.count()
+    val (numExamples, weightSum) = input.aggregate((0, 0.0))(
+      (acc, x) => (acc._1 + 1, acc._2 + x.weight),
+      (acc1, acc2) => (acc1._1 + acc2._1, acc1._2 + acc2._2))
     val numClasses = strategy.algo match {
       case Classification => strategy.numClasses
       case Regression => 0
@@ -204,7 +207,7 @@ private[spark] object DecisionTreeMetadata extends Logging {
         }
     }
 
-    new DecisionTreeMetadata(numFeatures, numExamples, numClasses, numBins.max,
+    new DecisionTreeMetadata(numFeatures, numExamples, weightSum, numClasses, numBins.max,
       strategy.categoricalFeaturesInfo, unorderedFeatures.toSet, numBins,
       strategy.impurity, strategy.quantileCalculationStrategy, strategy.maxDepth,
       strategy.minInstancesPerNode, strategy.minInfoGain, numTrees, numFeaturesPerNode)
@@ -214,7 +217,7 @@ private[spark] object DecisionTreeMetadata extends Logging {
    * Version of [[DecisionTreeMetadata#buildMetadata]] for DecisionTree.
    */
   def buildMetadata(
-      input: RDD[LabeledPoint],
+      input: RDD[Instance],
       strategy: Strategy): DecisionTreeMetadata = {
     buildMetadata(input, strategy, numTrees = 1, featureSubsetStrategy = "all")
   }

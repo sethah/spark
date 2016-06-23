@@ -18,6 +18,8 @@
 package org.apache.spark.ml.tree.impl
 
 import org.apache.commons.math3.distribution.PoissonDistribution
+import org.apache.spark.mllib.random.RandomDataGenerator
+import org.apache.spark.util.random.StratifiedSamplingUtils.{RandomDataGenerator => SSRandom}
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.Utils
@@ -48,6 +50,7 @@ private[spark] object BaggedPoint {
    * choosing subsamplingRate counts for each instance.
    * Each subsamplingRate has the same number of instances as the original dataset,
    * and is created by subsampling without replacement.
+ *
    * @param input Input dataset.
    * @param subsamplingRate Fraction of the training data used for learning decision tree.
    * @param numSubsamples Number of subsamples of this RDD to take.
@@ -60,20 +63,24 @@ private[spark] object BaggedPoint {
       subsamplingRate: Double,
       numSubsamples: Int,
       withReplacement: Boolean,
+      extractSampleWeight: (Datum => Double) = (_: Datum) => 1.0,
       seed: Long = Utils.random.nextLong()): RDD[BaggedPoint[Datum]] = {
     if (withReplacement) {
-      convertToBaggedRDDSamplingWithReplacement(input, subsamplingRate, numSubsamples, seed)
+      convertToBaggedRDDSamplingWithReplacement(input, extractSampleWeight,
+        subsamplingRate, numSubsamples, seed)
     } else {
       if (numSubsamples == 1 && subsamplingRate == 1.0) {
         convertToBaggedRDDWithoutSampling(input)
       } else {
-        convertToBaggedRDDSamplingWithoutReplacement(input, subsamplingRate, numSubsamples, seed)
+        convertToBaggedRDDSamplingWithoutReplacement(input, extractSampleWeight,
+          subsamplingRate, numSubsamples, seed)
       }
     }
   }
 
   private def convertToBaggedRDDSamplingWithoutReplacement[Datum] (
       input: RDD[Datum],
+      extractSampleWeight: (Datum => Double),
       subsamplingRate: Double,
       numSubsamples: Int,
       seed: Long): RDD[BaggedPoint[Datum]] = {
@@ -87,7 +94,7 @@ private[spark] object BaggedPoint {
         while (subsampleIndex < numSubsamples) {
           val x = rng.nextDouble()
           subsampleWeights(subsampleIndex) = {
-            if (x < subsamplingRate) 1.0 else 0.0
+            if (x < subsamplingRate * extractSampleWeight(instance)) 1.0 else 0.0
           }
           subsampleIndex += 1
         }
@@ -98,18 +105,21 @@ private[spark] object BaggedPoint {
 
   private def convertToBaggedRDDSamplingWithReplacement[Datum] (
       input: RDD[Datum],
+      extractSampleWeight: (Datum => Double),
       subsample: Double,
       numSubsamples: Int,
       seed: Long): RDD[BaggedPoint[Datum]] = {
     input.mapPartitionsWithIndex { (partitionIndex, instances) =>
       // Use random seed = seed + partitionIndex + 1 to make generation reproducible.
-      val poisson = new PoissonDistribution(subsample)
-      poisson.reseedRandomGenerator(seed + partitionIndex + 1)
+      val poisson = new SSRandom()
+//      val poisson = new PoissonDistribution(subsample)
+      poisson.reSeed(seed + partitionIndex + 1)
       instances.map { instance =>
         val subsampleWeights = new Array[Double](numSubsamples)
         var subsampleIndex = 0
         while (subsampleIndex < numSubsamples) {
-          subsampleWeights(subsampleIndex) = poisson.sample()
+          subsampleWeights(subsampleIndex) =
+            poisson.nextPoisson(subsample * extractSampleWeight(instance))
           subsampleIndex += 1
         }
         new BaggedPoint(instance, subsampleWeights)

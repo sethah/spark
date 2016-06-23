@@ -270,7 +270,7 @@ private[spark] object StratifiedSamplingUtils extends Logging {
   }
 
   /** A random data generator that generates both uniform values and Poisson values. */
-  private class RandomDataGenerator {
+  private[spark] class RandomDataGenerator {
     val uniform = new XORShiftRandom()
     // commons-math3 doesn't have a method to generate Poisson from an arbitrary mean;
     // maintain a cache of Poisson(m) distributions for various m
