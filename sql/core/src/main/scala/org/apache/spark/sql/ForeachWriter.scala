@@ -90,7 +90,7 @@ abstract class ForeachWriter[T] extends Serializable {
    * Called to process the data in the executor side. This method will be called only when `open`
    * returns `true`.
    */
-  def process(value: T): Unit
+  def process(value: T, partitionId: Long, version: Long): Unit
 
   /**
    * Called when stopping to process one partition of new data in the executor side. This is

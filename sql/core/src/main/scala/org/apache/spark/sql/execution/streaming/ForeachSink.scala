@@ -68,10 +68,15 @@ class ForeachSink[T : Encoder](writer: ForeachWriter[T]) extends Sink with Seria
       }
     datasetWithIncrementalExecution.foreachPartition { iter =>
       if (writer.open(TaskContext.getPartitionId(), batchId)) {
+        if (!iter.hasNext) {
+          println(s"empty partition: (${TaskContext.getPartitionId()}, $batchId)")
+        } else {
+          println(s"found partition: (${TaskContext.getPartitionId()}, $batchId)")
+        }
         var isFailed = false
         try {
           while (iter.hasNext) {
-            writer.process(iter.next())
+            writer.process(iter.next(), TaskContext.getPartitionId(), batchId)
           }
         } catch {
           case e: Throwable =>

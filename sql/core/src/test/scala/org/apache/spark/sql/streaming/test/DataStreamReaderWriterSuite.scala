@@ -420,7 +420,7 @@ class DataStreamReaderWriterSuite extends StreamTest with BeforeAndAfter {
       .load()
     val foreachWriter = new ForeachWriter[Row] {
       override def open(partitionId: Long, version: Long): Boolean = false
-      override def process(value: Row): Unit = {}
+      override def process(value: Row, partitionId: Long, version: Long): Unit = {}
       override def close(errorOrNull: Throwable): Unit = {}
     }
     var w = df.writeStream.partitionBy("value")

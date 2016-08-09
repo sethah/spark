@@ -142,8 +142,8 @@ class ForeachSinkSuite extends StreamTest with SharedSQLContext with BeforeAndAf
       val query = input.toDS().repartition(1).writeStream
         .option("checkpointLocation", checkpointDir.getCanonicalPath)
         .foreach(new TestForeachWriter() {
-          override def process(value: Int): Unit = {
-            super.process(value)
+          override def process(value: Int, partitionId: Long, version: Long): Unit = {
+            super.process(value, 1L, 2L)
             throw new RuntimeException("error")
           }
         }).start()
@@ -199,7 +199,7 @@ class TestForeachWriter extends ForeachWriter[Int] {
     true
   }
 
-  override def process(value: Int): Unit = {
+  override def process(value: Int, partitionId: Long, version: Long): Unit = {
     events += ForeachSinkSuite.Process(value)
   }
 
