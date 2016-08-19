@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.streaming
 
+import org.apache.spark.sql.sources.StreamSinkProvider
+
 import scala.collection.JavaConverters._
 
 import org.apache.spark.annotation.Experimental
@@ -129,6 +131,22 @@ final class DataStreamWriter[T] private[sql](ds: Dataset[T]) {
   @Experimental
   def format(source: String): DataStreamWriter[T] = {
     this.source = source
+    this.sinkProvider = null
+    this
+  }
+
+  /**
+   * :: Experimental ::
+   * Specifies the underlying output data source using a StreamSinkProvider. This is useful for
+   * sinks which are constructed with user specified functions (such as a user specified version of
+   * ForeachSink).
+   *
+   * @since 2.1.0
+   */
+  @Experimental
+  def format(sinkProvider: StreamSinkProvider): DataStreamWriter[T] = {
+    this.source = null
+    this.sinkProvider = sinkProvider
     this
   }
 
@@ -260,6 +278,20 @@ final class DataStreamWriter[T] private[sql](ds: Dataset[T]) {
         trigger = trigger)
       resultDf.createOrReplaceTempView(query.name)
       query
+    } else if (sinkProvider != null) {
+      val sink = sinkProvider.createSink(df.sparkSession.sqlContext,
+        parameters = extraOptions.toMap,
+        partitionColumns = normalizedParCols.getOrElse(Nil),
+        outputMode = outputMode)
+      df.sparkSession.sessionState.streamingQueryManager.startQuery(
+        extraOptions.get("queryName"),
+        extraOptions.get("checkpointLocation"),
+        df,
+        sink,
+        outputMode,
+        useTempCheckpointLocation = false,
+        recoverFromCheckpointLocation = false,
+        trigger = trigger)
     } else if (source == "foreach") {
       assertNotPartitioned("foreach")
       val sink = new ForeachSink[T](foreachWriter)(ds.exprEnc)
@@ -381,6 +413,8 @@ final class DataStreamWriter[T] private[sql](ds: Dataset[T]) {
   ///////////////////////////////////////////////////////////////////////////////////////
 
   private var source: String = df.sparkSession.sessionState.conf.defaultDataSourceName
+
+  private var sinkProvider: StreamSinkProvider = null
 
   private var outputMode: OutputMode = OutputMode.Append
 

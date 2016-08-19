@@ -19,8 +19,12 @@ package org.apache.spark.ml
 
 import org.apache.spark.ml.linalg.{Vectors, BLAS, Vector}
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.ml.regression.LinearRegression
 import org.apache.spark.mllib.util.MLlibTestSparkContext
-import org.apache.spark.sql.{ForeachWriter, Row}
+import org.apache.spark.sql.execution.streaming.Sink
+import org.apache.spark.sql.sources.StreamSinkProvider
+import org.apache.spark.sql.streaming.OutputMode
+import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.{GenericMutableRow, SpecificMutableRow}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.{MutableAggregationBuffer,
@@ -56,6 +60,44 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    val query = q0.writeStream.outputMode("complete").foreach(new MyForeachWriter()).start()
 //    query.awaitTermination()
 //  }
+  class MLSink extends Sink {
+    val lr = new LinearRegression()
+    def addBatch(batchId: Long, df: DataFrame): Unit = {
+      val model = lr.fit(df)
+      println(model.coefficients)
+    }
+  }
+
+  class MySinkProvider extends StreamSinkProvider {
+    def createSink(
+        sqlContext: SQLContext,
+        parameters: Map[String, String],
+        partitionColumns: Seq[String],
+        outputMode: OutputMode): Sink = {
+      new MLSink
+    }
+  }
+
+  test("sink pipeline") {
+    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
+    val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
+    val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
+    val static = spark.read.format("csv").option("inferSchema", "true").csv(dataTmpDir)
+    val schema = static.schema
+    val df = spark
+      .readStream
+      .format("csv")
+      .schema(schema)
+      .option("inferSchema", "true")
+      .csv(dataDir)
+    val inputCols = Array.tabulate(10) { i => s"_c${i + 1}"}
+    val vecAssembler = new VectorAssembler().setInputCols(inputCols).setOutputCol("features")
+    val assembled = vecAssembler.transform(df).select("_c0", "features").toDF("label", "features")
+    val query = assembled.writeStream.outputMode("append")
+      .option("checkpointLocation", checkpointDir).format(new MySinkProvider()).start()
+    query.awaitTermination()
+  }
+
   test("query order") {
     val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
     val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
