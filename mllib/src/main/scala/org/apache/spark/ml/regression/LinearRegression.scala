@@ -404,10 +404,14 @@ object LinearRegression extends DefaultParamsReadable[LinearRegression] {
 @Since("1.3.0")
 class LinearRegressionModel private[ml] (
     @Since("1.4.0") override val uid: String,
-    @Since("2.0.0") val coefficients: Vector,
-    @Since("1.3.0") val intercept: Double)
+    @Since("2.0.0") private[ml] var _coefficients: Vector,
+    @Since("1.3.0") private[ml] var _intercept: Double)
   extends RegressionModel[Vector, LinearRegressionModel]
   with LinearRegressionParams with MLWritable {
+
+  def coefficients: Vector = _coefficients
+
+  def intercept: Double = _intercept
 
   private var trainingSummary: Option[LinearRegressionTrainingSummary] = None
 

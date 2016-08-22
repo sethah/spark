@@ -20,6 +20,7 @@ package org.apache.spark.ml
 import org.apache.spark.ml.linalg.{Vectors, BLAS, Vector}
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.regression.LinearRegression
+import org.apache.spark.ml.streaming.{StreamingMinMaxScaler, StreamingPipeline}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.execution.streaming.Sink
 import org.apache.spark.sql.sources.StreamSinkProvider
@@ -34,6 +35,25 @@ import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.sql.functions._
 
 class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
+
+  test("streaming pipeline") {
+    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
+    val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
+    val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
+    val static = spark.read.format("csv").option("inferSchema", "true").csv(dataTmpDir)
+    val schema = static.schema
+    val df = spark
+      .readStream
+      .format("csv")
+      .schema(schema)
+      .option("inferSchema", "true")
+      .csv(dataDir)
+    val df1 = df.select(col("_c0").as("label"))
+    val pipeline = new StreamingPipeline
+    pipeline.stages = Array(new StreamingMinMaxScaler)
+    val query = pipeline.fitTransformStreaming(df1)
+    query.awaitTermination()
+  }
 
 //  test("foreach") {
 //    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
@@ -60,71 +80,71 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    val query = q0.writeStream.outputMode("complete").foreach(new MyForeachWriter()).start()
 //    query.awaitTermination()
 //  }
-  class MLSink extends Sink {
-    val lr = new LinearRegression()
-    def addBatch(batchId: Long, df: DataFrame): Unit = {
-      val model = lr.fit(df)
-      println(model.coefficients)
-    }
-  }
-
-  class MySinkProvider extends StreamSinkProvider {
-    def createSink(
-        sqlContext: SQLContext,
-        parameters: Map[String, String],
-        partitionColumns: Seq[String],
-        outputMode: OutputMode): Sink = {
-      new MLSink
-    }
-  }
-
-  test("sink pipeline") {
-    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
-    val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
-    val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
-    val static = spark.read.format("csv").option("inferSchema", "true").csv(dataTmpDir)
-    val schema = static.schema
-    val df = spark
-      .readStream
-      .format("csv")
-      .schema(schema)
-      .option("inferSchema", "true")
-      .csv(dataDir)
-    val inputCols = Array.tabulate(10) { i => s"_c${i + 1}"}
-    val vecAssembler = new VectorAssembler().setInputCols(inputCols).setOutputCol("features")
-    val assembled = vecAssembler.transform(df).select("_c0", "features").toDF("label", "features")
-    val query = assembled.writeStream.outputMode("append")
-      .option("checkpointLocation", checkpointDir).format(new MySinkProvider()).start()
-    query.awaitTermination()
-  }
-
-  test("query order") {
-    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
-    val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
-    val static = spark.read.format("csv").option("inferSchema", "true").csv(dataDir)
-    val schema = static.schema
-    val df = spark
-      .readStream
-      .format("com.sethah.mysource")
-      .schema(schema)
-      .option("inferSchema", "true")
-      .csv(dataDir)
-    df.createOrReplaceTempView("df")
-    val inputCols = Array.tabulate(10) { i => s"_c$i"}
-    val vecAssembler = new VectorAssembler().setInputCols(inputCols).setOutputCol("vec")
-    val assembled = vecAssembler.transform(df).select("_c0", "vec")
-    val arrUDF = udf((vec: Vector) => vec.toArray)
-    val weights = Array.fill(10)(math.random)
-    val q0 = assembled.select(col("_c0"), arrUDF(col("vec")).as("arr"))
-      .agg(new VectorSum(weights)(col("_c0"), col("arr")))
-    val q1 = df.agg(sum("_c0"), sum("_c1"))
-    val q2 = df.agg(sum("_c2"))
-//    val q3 = spark.sql("SELECT * FROM ")
-//    val q2 = spark.sql("SELECT _c0, SUM(_c1) FROM df GROUP BY _c0")
-    val query = q1.writeStream.outputMode("complete").foreach(new MyForeachWriter()).start()
-    val query2 = q2.writeStream.outputMode("complete").foreach(new MyForeachWriter()).start()
-    query.awaitTermination()
-  }
+//  class MLSink extends Sink {
+//    val lr = new LinearRegression()
+//    def addBatch(batchId: Long, df: DataFrame): Unit = {
+//      val model = lr.fit(df)
+//      println(model.coefficients)
+//    }
+//  }
+//
+//  class MySinkProvider extends StreamSinkProvider {
+//    def createSink(
+//        sqlContext: SQLContext,
+//        parameters: Map[String, String],
+//        partitionColumns: Seq[String],
+//        outputMode: OutputMode): Sink = {
+//      new MLSink
+//    }
+//  }
+//
+//  test("sink pipeline") {
+//    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
+//    val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
+//    val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
+//    val static = spark.read.format("csv").option("inferSchema", "true").csv(dataTmpDir)
+//    val schema = static.schema
+//    val df = spark
+//      .readStream
+//      .format("csv")
+//      .schema(schema)
+//      .option("inferSchema", "true")
+//      .csv(dataDir)
+//    val inputCols = Array.tabulate(10) { i => s"_c${i + 1}"}
+//    val vecAssembler = new VectorAssembler().setInputCols(inputCols).setOutputCol("features")
+//    val assembled = vecAssembler.transform(df).select("_c0", "features").toDF("label", "features")
+//    val query = assembled.writeStream.outputMode("append")
+//      .option("checkpointLocation", checkpointDir).format(new MySinkProvider()).start()
+//    query.awaitTermination()
+//  }
+//
+//  test("query order") {
+//    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
+//    val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
+//    val static = spark.read.format("csv").option("inferSchema", "true").csv(dataDir)
+//    val schema = static.schema
+//    val df = spark
+//      .readStream
+//      .format("com.sethah.mysource")
+//      .schema(schema)
+//      .option("inferSchema", "true")
+//      .csv(dataDir)
+//    df.createOrReplaceTempView("df")
+//    val inputCols = Array.tabulate(10) { i => s"_c$i"}
+//    val vecAssembler = new VectorAssembler().setInputCols(inputCols).setOutputCol("vec")
+//    val assembled = vecAssembler.transform(df).select("_c0", "vec")
+//    val arrUDF = udf((vec: Vector) => vec.toArray)
+//    val weights = Array.fill(10)(math.random)
+//    val q0 = assembled.select(col("_c0"), arrUDF(col("vec")).as("arr"))
+//      .agg(new VectorSum(weights)(col("_c0"), col("arr")))
+//    val q1 = df.agg(sum("_c0"), sum("_c1"))
+//    val q2 = df.agg(sum("_c2"))
+////    val q3 = spark.sql("SELECT * FROM ")
+////    val q2 = spark.sql("SELECT _c0, SUM(_c1) FROM df GROUP BY _c0")
+//    val query = q1.writeStream.outputMode("complete").foreach(new MyForeachWriter()).start()
+//    val query2 = q2.writeStream.outputMode("complete").foreach(new MyForeachWriter()).start()
+//    query.awaitTermination()
+//  }
 
 //  test("pipeline") {
 //    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
