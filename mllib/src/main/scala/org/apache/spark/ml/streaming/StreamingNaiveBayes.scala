@@ -70,7 +70,8 @@ class StreamingNaiveBayesModel(
   }
 
   private def updateModel: Unit = {
-    val lambda = getSmoothing
+    // TODO: fix this to getSmoothing
+    val lambda = 1.0
     val numLabels = countsByClass.size
     var numDocuments = 0L
     countsByClass.foreach { case (_, (n, _)) =>
@@ -168,6 +169,11 @@ class StreamingNaiveBayes (override val uid: String)
   def setSmoothing(value: Double): this.type = set(smoothing, value)
   setDefault(smoothing -> 1.0)
 
+  // this should copy all the params here to the model
+  // what if someone updates these? How to make them take effect in the model?
+  // params should not be used in the model?
+  // probably should not be able to set params once model has started streaming
+  // or we could bake them into the sufficient stats, but gets messy fast
   var model: StreamingNaiveBayesModel = new StreamingNaiveBayesModel(uid)
   def getModel: StreamingNaiveBayesModel = model
 
@@ -195,7 +201,7 @@ class StreamingNaiveBayes (override val uid: String)
    * Get class counts for a new chunk of data.
    * The logic for aggregating a new batch of data.
    */
-  def add(data: RDD[LabeledPoint]): Array[(Double, (Long, DenseVector))] = {
+  private def add(data: RDD[LabeledPoint]): Array[(Double, (Long, DenseVector))] = {
     data.map(lp => (lp.label, lp.features)).combineByKey[(Long, DenseVector)](
       createCombiner = (v: Vector) => {
         (1L, v.copy.toDense)

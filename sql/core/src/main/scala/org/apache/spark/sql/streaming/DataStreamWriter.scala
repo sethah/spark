@@ -290,7 +290,7 @@ final class DataStreamWriter[T] private[sql](ds: Dataset[T]) {
         sink,
         outputMode,
         useTempCheckpointLocation = false,
-        recoverFromCheckpointLocation = false,
+        recoverFromCheckpointLocation = true,
         trigger = trigger)
     } else if (source == "foreach") {
       assertNotPartitioned("foreach")

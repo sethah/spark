@@ -34,7 +34,7 @@ import org.apache.spark.util.collection.OpenHashMap
 /**
  * Base trait for [[StringIndexer]] and [[StringIndexerModel]].
  */
-private[feature] trait StringIndexerBase extends Params with HasInputCol with HasOutputCol
+private[ml] trait StringIndexerBase extends Params with HasInputCol with HasOutputCol
     with HasHandleInvalid {
 
   /** Validates and transforms the input schema. */

@@ -17,41 +17,85 @@
 package org.apache.spark.ml
 
 
+import org.apache.spark.ml.classification.{NaiveBayesSuite, LogisticRegressionSuite}
 import org.apache.spark.ml.linalg.{Vectors, BLAS, Vector}
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.ml.regression.LinearRegression
-import org.apache.spark.ml.streaming.{StreamingMinMaxScaler, StreamingPipeline}
+import org.apache.spark.ml.streaming.{StreamingStringIndexer, StreamingNaiveBayes, StreamingPipeline}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
-import org.apache.spark.sql.execution.streaming.Sink
-import org.apache.spark.sql.sources.StreamSinkProvider
-import org.apache.spark.sql.streaming.OutputMode
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.expressions.{GenericMutableRow, SpecificMutableRow}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.{MutableAggregationBuffer,
 UserDefinedAggregateFunction}
 import scala.collection.mutable.WrappedArray
-import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.feature.{LabeledPoint, VectorAssembler}
 import org.apache.spark.sql.functions._
 
 class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
 
+  @transient var dataset: DataFrame = _
+  private val eps: Double = 1e-5
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+
+    val pi = Array(0.5, 0.1, 0.4).map(math.log)
+    val theta = Array(
+      Array(0.70, 0.10, 0.10, 0.10), // label 0
+      Array(0.10, 0.70, 0.10, 0.10), // label 1
+      Array(0.10, 0.10, 0.70, 0.10) // label 2
+    ).map(_.map(math.log))
+    val stringMap = Map(0.0 -> "class0", 1.0 -> "class1", 2.0 -> "class2")
+    val df1 = spark.createDataFrame(NaiveBayesSuite.generateNaiveBayesInput(pi, theta, 100, 42))
+    val stringUDF = udf((cls: Double) => stringMap.getOrElse(cls, "unknown"))
+    val df = df1.withColumn("stringLabel", stringUDF(df1("label")))
+
+    dataset = df.cache()
+  }
+
+  /**
+   * Enable the ignored test to export the dataset into CSV format,
+   * so we can validate the training accuracy compared with R's glmnet package.
+   */
+  ignore("export test data into CSV format") {
+    val rdd = dataset.rdd.map {
+      case Row(label: Double, features: Vector, stringLabel: String) =>
+        label + "," + features.toArray.mkString(",") + "," + stringLabel
+    }.repartition(10)
+    rdd.saveAsTextFile("/Users/sethhendrickson/StreamingSandbox/nb_dataset")
+//    rdd.saveAsTextFile("target/tmp/MultinomialLogisticRegressionSuite/multinomialDataset")
+  }
+
   test("streaming pipeline") {
-    val checkpointDir = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
     val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
     val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
-    val static = spark.read.format("csv").option("inferSchema", "true").csv(dataTmpDir)
-    val schema = static.schema
+    val schema = StructType(Seq(
+      StructField("label", DoubleType),
+      StructField("feature1", DoubleType),
+      StructField("feature2", DoubleType),
+      StructField("feature3", DoubleType),
+      StructField("feature4", DoubleType),
+      StructField("stringLabel", StringType)
+    ))
     val df = spark
       .readStream
       .format("csv")
       .schema(schema)
       .option("inferSchema", "true")
       .csv(dataDir)
-    val df1 = df.select(col("_c0").as("label"))
-    val pipeline = new StreamingPipeline
-    pipeline.stages = Array(new StreamingMinMaxScaler)
-    val query = pipeline.fitTransformStreaming(df1)
+    val inputCols = Array.tabulate(4) { i => s"feature${i + 1}"}
+    val vecAssembler = new VectorAssembler()
+      .setInputCols(inputCols)
+      .setOutputCol("features")
+    val assembled = vecAssembler.transform(df).select("stringLabel", "features")
+    val indexer = new StreamingStringIndexer()
+      .setInputCol("stringLabel")
+      .setOutputCol("indexedLabel")
+    val snb = new StreamingNaiveBayes()
+      .setFeaturesCol("features")
+      .setLabelCol("indexedLabel")
+    val pipeline = new StreamingPipeline()
+      .setStages(Array(indexer, snb))
+    val query = pipeline.fitTransformStreaming(assembled)
     query.awaitTermination()
   }
 
