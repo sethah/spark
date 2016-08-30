@@ -58,7 +58,15 @@ class StreamingPipeline(override val uid: String) extends Params {
     set(stages, value.asInstanceOf[Array[PipelineStage]])
   }
 
+  val checkpointLocation: Param[String] = new Param[String](this, "checkpointLocation",
+    "the checkpoint directory to use for this stream")
+
+  def getCheckpointLocation: String = $(checkpointLocation)
+
+  def setCheckpointLocation(value: String): this.type = set(checkpointLocation, value)
+
   def update(dataset: Dataset[_]): Dataset[_] = {
+    // TODO: we could return unit here, and not pipe df through to the end
     var curDataset = dataset
     $(stages).foreach {
       case streamingEstimator: StreamingEstimator[_] =>
@@ -70,13 +78,18 @@ class StreamingPipeline(override val uid: String) extends Params {
     curDataset
   }
 
-  def fitTransformStreaming(dataset: Dataset[_]): StreamingQuery = {
+  def fitStreaming(dataset: Dataset[_]): StreamingQuery = {
     require(dataset.isStreaming, "need a streaming dataset")
+
+    val transformerStages = $(stages).map {
+      case streamingEstimator: StreamingEstimator[_] => streamingEstimator.getModel
+      case transformer: Transformer => transformer
+    }
 
     query = Some(dataset
       .writeStream
       .outputMode("append")
-      .option("checkpointLocation", "/Users/sethhendrickson/StreamingSandbox/checkpoint")
+      .option("checkpointLocation", getCheckpointLocation)
       .format(new StreamingPipelineSinkProvider(this))
       .start()
     )
@@ -103,7 +116,7 @@ class StreamingPipelineModel(val stages: Array[Transformer]) {
       .writeStream
       .outputMode("append")
       .option("checkpointLocation", "/Users/sethhendrickson/StreamingSandbox/checkpoint")
-      .format(new StreamingPipelineSinkModelProvider(this))
+      .format(new StreamingPipelineModelSinkProvider(this))
       .start()
     query = Some(q)
     this
@@ -126,12 +139,13 @@ class StreamingPipelineSinkProvider(pipeline: StreamingPipeline) extends StreamS
 class StreamingPipelineSink(pipeline: StreamingPipeline) extends Sink {
   def addBatch(batchId: Long, df: DataFrame): Unit = {
     df.show()
+    println(s"Dataset is streaming? ${df.isStreaming}")
     val transformed = pipeline.update(df)
     transformed.show()
   }
 }
 
-class StreamingPipelineSinkModelProvider(pipelineModel: StreamingPipelineModel)
+class StreamingPipelineModelSinkProvider(pipelineModel: StreamingPipelineModel)
   extends StreamSinkProvider {
   def createSink(
       sqlContext: SQLContext,

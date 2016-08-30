@@ -80,13 +80,14 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
       .readStream
       .format("csv")
       .schema(schema)
-      .option("inferSchema", "true")
       .csv(dataDir)
     val inputCols = Array.tabulate(4) { i => s"feature${i + 1}"}
     val vecAssembler = new VectorAssembler()
       .setInputCols(inputCols)
       .setOutputCol("features")
-    val assembled = vecAssembler.transform(df).select("stringLabel", "features")
+    val assembled = vecAssembler
+      .transform(df)
+      .select("stringLabel", "features")
     val indexer = new StreamingStringIndexer()
       .setInputCol("stringLabel")
       .setOutputCol("indexedLabel")
@@ -95,7 +96,8 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
       .setLabelCol("indexedLabel")
     val pipeline = new StreamingPipeline()
       .setStages(Array(indexer, snb))
-    val query = pipeline.fitTransformStreaming(assembled)
+      .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpoint")
+    val query = pipeline.fitStreaming(assembled)
     query.awaitTermination()
   }
 

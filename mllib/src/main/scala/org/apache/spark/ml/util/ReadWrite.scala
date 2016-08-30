@@ -284,6 +284,7 @@ private[ml] object DefaultParamsWriter {
       paramMap: Option[JValue] = None): Unit = {
     val metadataPath = new Path(path, "metadata").toString
     val metadataJson = getMetadataToSave(instance, sc, extraMetadata, paramMap)
+    println(metadataJson)
     sc.parallelize(Seq(metadataJson), 1).saveAsTextFile(metadataPath)
   }
 

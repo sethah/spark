@@ -119,6 +119,7 @@ private[state] class HDFSBackedStateStoreProvider(
           val update = if (isNewKey) ValueAdded(key, value) else ValueUpdated(key, value)
           allUpdates.put(key, update)
       }
+      println(s"Map to update: $mapToUpdate")
       writeToDeltaFile(tempDeltaFileStream, ValueUpdated(key, value))
     }
 
@@ -213,7 +214,7 @@ private[state] class HDFSBackedStateStoreProvider(
       newMap.putAll(loadMap(version))
     }
     val store = new HDFSBackedStateStore(version, newMap)
-    logInfo(s"Retrieved version $version of $this for update")
+    println(s"Retrieved version $version of $this for update")
     store
   }
 
