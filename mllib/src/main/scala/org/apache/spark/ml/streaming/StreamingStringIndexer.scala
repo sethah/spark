@@ -37,7 +37,7 @@ class StreamingStringIndexer(
 
   def getModel: StreamingStringIndexerModel = model
 
-  def update(batch: Dataset[_]): Unit = {
+  def update(batchId: Long, batch: Dataset[_]): Unit = {
     val counts = batch.select(col($(inputCol)).cast(StringType))
       .rdd
       .map(_.getString(0))

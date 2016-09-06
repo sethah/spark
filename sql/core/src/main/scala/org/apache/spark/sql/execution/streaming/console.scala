@@ -33,6 +33,7 @@ class ConsoleSink(options: Map[String, String]) extends Sink with Logging {
   private var lastBatchId = -1L
 
   override def addBatch(batchId: Long, data: DataFrame): Unit = synchronized {
+    println("ADDING CONSOLE BATCH")
     val batchIdStr = if (batchId <= lastBatchId) {
       s"Rerun batch: $batchId"
     } else {
