@@ -27,11 +27,6 @@ import org.apache.spark.sql.execution.streaming.Sink
 import org.apache.spark.sql.streaming.{OutputMode, StreamingQuery}
 import org.apache.spark.sql.types.StructType
 
-abstract class StreamingTransformer extends Transformer {
-
-
-}
-
 trait StreamingModel[S] extends Transformer {
   def update(updates: S): Unit
 }
@@ -57,7 +52,12 @@ class StreamingPipeline(override val uid: String) extends Params {
   val stages: Param[Array[PipelineStage]] = new Param(this, "stages",
     "stages of the streaming pipeline")
 
-  var model: StreamingPipelineModel = null
+  private var model: Option[StreamingPipelineModel] = None
+
+  def getModel: StreamingPipelineModel = model match {
+    case Some(m) => m
+    case None => throw new IllegalStateException("Pipeline must be fit before calling getModel")
+  }
 
   def setStages(value: Array[_ <: PipelineStage]): this.type = {
     set(stages, value.asInstanceOf[Array[PipelineStage]])
@@ -70,7 +70,7 @@ class StreamingPipeline(override val uid: String) extends Params {
 
   def setCheckpointLocation(value: String): this.type = set(checkpointLocation, value)
 
-  // TODO: this should be synchronized so that we cannot grab the model while updating.
+  // TODO: this should be threadsafe
   def update(batchId: Long, dataset: Dataset[_]): Dataset[_] = {
     // TODO: we could return unit here, and not pipe df through to the end
     var curDataset = dataset
@@ -87,14 +87,11 @@ class StreamingPipeline(override val uid: String) extends Params {
   def fitStreaming(dataset: Dataset[_]): StreamingQuery = {
     require(dataset.isStreaming, "need a streaming dataset")
 
-    // TODO: need to initialize the model here
-
     val transformerStages = $(stages).map {
       case streamingEstimator: StreamingEstimator[_] => streamingEstimator.getModel
       case transformer: Transformer => transformer
     }
-
-    model = new StreamingPipelineModel(uid, transformerStages)
+    model = Some(new StreamingPipelineModel(uid, transformerStages))
 
     query = Some(dataset
       .writeStream
@@ -149,9 +146,6 @@ class StreamingPipelineModel(
   }
 }
 
-// if we have a streaming pipeline model then we'll have a transform method which starts the
-// query, then calls transform batch in the sink.
-
 class StreamingPipelineSinkProvider(pipeline: StreamingPipeline) extends StreamSinkProvider {
   def createSink(
       sqlContext: SQLContext,
@@ -187,26 +181,3 @@ class StreamingPipelineModelSink(pipelineModel: StreamingPipelineModel) extends 
     transformed.show()
   }
 }
-
-//class TempTableSinkProvider(tableName: String, spark: SparkSession, schema: StructType)
-//  extends StreamSinkProvider {
-//  def createSink(
-//                  sqlContext: SQLContext,
-//                  parameters: Map[String, String],
-//                  partitionColumns: Seq[String],
-//                  outputMode: OutputMode): Sink = {
-//    new TempTableSink(tableName, schema, spark)
-//  }
-//}
-//
-//class TempTableSink(tableName: String, schema: StructType, spark: SparkSession) extends Sink {
-//  val empty = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], schema)
-//  empty.createOrReplaceTempView(tableName)
-//
-//  def addBatch(batchId: Long, df: DataFrame): Unit = {
-//    println("batch being added now!")
-////    println("adding batch")
-//    Thread.sleep(1000)
-//    df.createOrReplaceTempView(tableName)
-//  }
-//}

@@ -18,7 +18,7 @@ package org.apache.spark.ml
 
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.ml.classification.{NaiveBayesSuite, LogisticRegressionSuite}
+import org.apache.spark.ml.classification.{NaiveBayes, NaiveBayesSuite, LogisticRegressionSuite}
 
 import org.apache.spark.ml.linalg.{Vectors, BLAS, Vector}
 import org.apache.spark.ml.streaming.{StreamingStringIndexer, StreamingNaiveBayes, StreamingPipeline}
@@ -27,7 +27,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.{MutableAggregationBuffer,
 UserDefinedAggregateFunction}
 import scala.collection.mutable.WrappedArray
-import org.apache.spark.ml.feature.{StringIndexerModel, LabeledPoint, VectorAssembler}
+import org.apache.spark.ml.feature._
 import org.apache.spark.sql.functions._
 
 class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
@@ -88,7 +88,7 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    q.awaitTermination()
 //  }
 
-  test("streaming pipeline") {
+  ignore("streaming pipeline") {
     val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
     val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
     val checkpoint = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
@@ -125,10 +125,64 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
       .setStages(Array(indexer2, snb))
       .setCheckpointLocation(checkpoint)
     val query = pipeline.fitStreaming(assembled)
-    val pipelineModel = pipeline.model
+    val pipelineModel = pipeline.getModel
       .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpointPredict")
     val predictQuery = pipelineModel.transformStreaming(assembled)
     query.awaitTermination()
+    predictQuery.awaitTermination()
+  }
+
+  test("20news") {
+//    import org.apache.spark.ml.feature._
+//    import org.apache.spark.ml.classification.NaiveBayes
+    val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
+    val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
+    val checkpoint = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
+    val path = "/Users/sethhendrickson/StreamingSandbox/20newssample"
+    val ds = spark.read.parquet(path)
+//    ds.cache()
+    val getClassFunc = (path: String) => {
+      val splits = path.split("/")
+      splits(splits.length - 2)
+    }
+    val schema = StructType(Seq(
+      StructField("path", StringType),
+      StructField("text", StringType)
+    ))
+    val df = spark
+      .readStream
+      .schema(schema)
+      .parquet(dataDir)
+//    val query = df.writeStream.format("console").start()
+//    query.awaitTermination()
+    val getClassUDF = udf(getClassFunc)
+    val withLabel = df.withColumn("stringLabel", getClassUDF(col("path")))
+//    val allLabels = withLabel.select("stringLabel").as[String].rdd.distinct().collect()
+    val allLabels = Array("alt.atheism", "rec.autos", "sci.med", "rec.sport.hockey")
+    val tokenizer = new RegexTokenizer().setInputCol("text").setOutputCol("tokenized")
+    val tokenized = tokenizer.transform(withLabel)
+    val indexerModel = new StringIndexerModel(allLabels)
+      .setInputCol("stringLabel")
+      .setOutputCol("label")
+//    val indexed = indexerModel.transform(tokenized)
+    val hashingTF = new HashingTF().setInputCol("tokenized").setOutputCol("features")
+//    val hashed = hashingTF.transform(indexed)
+    val snb = new StreamingNaiveBayes(4, 2 << 17)
+      .setFeaturesCol("features")
+      .setLabelCol("label")
+    val pipeline = new StreamingPipeline()
+      .setStages(Array(tokenizer, indexerModel, hashingTF, snb))
+      .setCheckpointLocation(checkpoint)
+    val query = pipeline.fitStreaming(withLabel)
+    val pipelineModel = pipeline.getModel
+      .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpointPredict")
+    val predictQuery = pipelineModel
+      .transformStreaming(withLabel)
+    query.awaitTermination()
+    predictQuery.awaitTermination()
+//    val nb = new NaiveBayes()
+//    val nbModel = nb.fit(hashed)
+//    val predictions = nbModel.transform(hashed)
   }
 
 //  test("foreach") {

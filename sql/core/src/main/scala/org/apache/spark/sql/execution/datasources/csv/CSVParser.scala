@@ -34,6 +34,7 @@ private[csv] class CsvReader(params: CSVOptions) {
     val settings = new CsvParserSettings()
     val format = settings.getFormat
     format.setDelimiter(params.delimiter)
+    println(params.rowSeparator, params.quote, params.escape, params.escapeQuotes)
     format.setLineSeparator(params.rowSeparator)
     format.setQuote(params.quote)
     format.setQuoteEscape(params.escape)
@@ -70,6 +71,7 @@ private[csv] class LineCsvWriter(params: CSVOptions, headers: Seq[String]) exten
   private val format = writerSettings.getFormat
 
   format.setDelimiter(params.delimiter)
+  println(params.rowSeparator, params.quote, params.escape, params.escapeQuotes)
   format.setLineSeparator(params.rowSeparator)
   format.setQuote(params.quote)
   format.setQuoteEscape(params.escape)
