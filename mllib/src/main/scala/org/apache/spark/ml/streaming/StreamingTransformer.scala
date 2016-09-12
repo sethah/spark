@@ -16,16 +16,13 @@
  */
 package org.apache.spark.ml.streaming
 
-
-import org.apache.hadoop.fs.Path
 import org.apache.spark.ml.param.{ParamMap, Param, Params}
-import org.apache.spark.ml.util.{MLWritable, Identifiable}
+import org.apache.spark.ml.util.Identifiable
 import org.apache.spark.ml.{PipelineStage, Estimator, Transformer}
 import org.apache.spark.sql.sources.StreamSinkProvider
-import org.apache.spark.sql._
+import org.apache.spark.sql.{SQLContext, DataFrame, Dataset}
 import org.apache.spark.sql.execution.streaming.Sink
 import org.apache.spark.sql.streaming.{OutputMode, StreamingQuery}
-import org.apache.spark.sql.types.StructType
 
 trait StreamingModel[S] extends Transformer {
   def update(updates: S): Unit
@@ -38,7 +35,7 @@ trait StreamingEstimator[S] extends PipelineStage {
 
   def getModel: StreamingModel[S]
 
-  def update(batchId: Long, batch: Dataset[_]): Unit
+  def update(batch: Dataset[_]): Unit
 
 }
 
@@ -71,12 +68,12 @@ class StreamingPipeline(override val uid: String) extends Params {
   def setCheckpointLocation(value: String): this.type = set(checkpointLocation, value)
 
   // TODO: this should be threadsafe
-  def update(batchId: Long, dataset: Dataset[_]): Dataset[_] = {
+  def update(dataset: Dataset[_]): Dataset[_] = {
     // TODO: we could return unit here, and not pipe df through to the end
     var curDataset = dataset
     $(stages).foreach {
       case streamingEstimator: StreamingEstimator[_] =>
-        streamingEstimator.update(batchId, curDataset)
+        streamingEstimator.update(curDataset)
         curDataset = streamingEstimator.model.transform(curDataset)
       case transformer: Transformer =>
         curDataset = transformer.transform(curDataset)
@@ -91,7 +88,6 @@ class StreamingPipeline(override val uid: String) extends Params {
       case streamingEstimator: StreamingEstimator[_] => streamingEstimator.getModel
       case transformer: Transformer => transformer
     }
-    model = Some(new StreamingPipelineModel(uid, transformerStages))
 
     query = Some(dataset
       .writeStream
@@ -104,23 +100,13 @@ class StreamingPipeline(override val uid: String) extends Params {
   }
 
   override def copy(extra: ParamMap): StreamingPipeline = {
-    // TODO: copy checkpoint location
     val map = extractParamMap(extra)
     val newStages = map(stages).map(_.copy(extra))
     new StreamingPipeline().setStages(newStages)
   }
 }
 
-class StreamingPipelineModel(
-    override val uid: String,
-    val stages: Array[Transformer]) extends Params {
-
-  val checkpointLocation: Param[String] = new Param[String](this, "checkpointLocation",
-    "the checkpoint directory to use for this stream")
-
-  def getCheckpointLocation: String = $(checkpointLocation)
-
-  def setCheckpointLocation(value: String): this.type = set(checkpointLocation, value)
+class StreamingPipelineModel(val stages: Array[Transformer]) {
 
   var query: Option[StreamingQuery] = None
 
@@ -128,21 +114,15 @@ class StreamingPipelineModel(
     stages.foldLeft(df)((cur, transformer) => transformer.transform(cur))
   }
 
-  def transformStreaming(dataset: Dataset[_]): StreamingQuery = {
+  def transformStreaming(dataset: Dataset[_]): this.type = {
     val q = dataset
       .writeStream
       .outputMode("append")
-      .option("checkpointLocation", getCheckpointLocation)
+      .option("checkpointLocation", "/Users/sethhendrickson/StreamingSandbox/checkpoint")
       .format(new StreamingPipelineModelSinkProvider(this))
       .start()
     query = Some(q)
-    q
-  }
-
-  def copy(extra: ParamMap): StreamingPipelineModel = {
-    // TODO: shallow or deep?
-    val map = extractParamMap(extra)
-    new StreamingPipelineModel(uid, stages)
+    this
   }
 }
 
@@ -159,7 +139,8 @@ class StreamingPipelineSinkProvider(pipeline: StreamingPipeline) extends StreamS
 class StreamingPipelineSink(pipeline: StreamingPipeline) extends Sink {
   def addBatch(batchId: Long, df: DataFrame): Unit = {
     df.show()
-    val transformed = pipeline.update(batchId, df)
+    println(s"Dataset is streaming? ${df.isStreaming}")
+    val transformed = pipeline.update(df)
     transformed.show()
   }
 }

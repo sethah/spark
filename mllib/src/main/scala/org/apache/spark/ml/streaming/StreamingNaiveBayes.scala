@@ -47,9 +47,7 @@ trait StreamingNaiveBayesParams extends Params {
 }
 
 class StreamingNaiveBayesModel(
-    val uid: String,
-    override val numFeatures: Int,
-    val numClasses: Int) extends ProbabilisticClassificationModel[Vector, StreamingNaiveBayesModel]
+    val uid: String) extends ProbabilisticClassificationModel[Vector, StreamingNaiveBayesModel]
   with StreamingNaiveBayesParams with StreamingModel[Array[(Double, (Long, DenseVector))]] {
 
   def update(updates: Array[(Double, (Long, DenseVector))]): Unit = {
@@ -66,7 +64,7 @@ class StreamingNaiveBayesModel(
           countsByClass(label) = (n + numDocs, c)
         case None =>
           // new label encountered
-          throw new SparkException("nb encountered a class label outside its range")
+          countsByClass += (label -> (numDocs, termCounts))
       }
     }
   }
@@ -74,17 +72,18 @@ class StreamingNaiveBayesModel(
   private def updateModel: Unit = {
     // TODO: fix this to getSmoothing
     val lambda = 1.0
+    val numLabels = countsByClass.size
     var numDocuments = 0L
     countsByClass.foreach { case (_, (n, _)) =>
       numDocuments += n
     }
     val numFeatures = countsByClass.head match { case (_, (_, v)) => v.size }
 
-    val labels = new Array[Double](numClasses)
-    val pi = new Array[Double](numClasses)
-    val theta = Array.fill(numClasses)(new Array[Double](numFeatures))
+    val labels = new Array[Double](numLabels)
+    val pi = new Array[Double](numLabels)
+    val theta = Array.fill(numLabels)(new Array[Double](numFeatures))
 
-    val piLogDenom = math.log(numDocuments + numClasses * lambda)
+    val piLogDenom = math.log(numDocuments + numLabels * lambda)
     var i = 0
     countsByClass.toArray.sortBy(_._1).foreach { case (label, (n, sumTermFreqs)) =>
       labels(i) = label
@@ -98,30 +97,21 @@ class StreamingNaiveBayesModel(
       i += 1
     }
     _pi = Vectors.dense(pi)
-    _theta = new DenseMatrix(numClasses, numFeatures, theta.flatten, true)
+    _theta = new DenseMatrix(numLabels, numFeatures, theta.flatten, true)
   }
 
-  private val countsByClass = {
-    val mp = new collection.mutable.HashMap[Double, (Long, DenseVector)]
-    (0 until numClasses).foreach { c =>
-      mp.put(c.toDouble, (0L, Vectors.zeros(numFeatures).toDense))
-    }
-    mp
-  }
+  private var countsByClass =
+    new collection.mutable.HashMap[Double, (Long, DenseVector)]
 
-
-  private val dataSize = numClasses * numFeatures
-
-  private var _theta: Matrix =
-    new DenseMatrix(numClasses, numFeatures, Array.fill(dataSize)(0.0), true)
+  private var _theta: Matrix = null
   def theta: Matrix = _theta
 
-  private var _pi: Vector = Vectors.dense(Array.fill(numClasses)(0.0))
+  private var _pi: Vector = null
   def pi: Vector = _pi
 
-//  override def numFeatures: Int = theta.numCols // this is not safe
-//
-//  override def numClasses: Int = pi.size // this is not safe
+  override def numFeatures: Int = theta.numCols // this is not safe
+
+  override def numClasses: Int = pi.size // this is not safe
 
   private def multinomialCalculation(features: Vector) = {
     val prob = theta.multiply(features)
@@ -158,19 +148,17 @@ class StreamingNaiveBayesModel(
 
   override def copy(extra: ParamMap): StreamingNaiveBayesModel = {
     // TODO: not correct
-    copyValues(new StreamingNaiveBayesModel(uid, numFeatures, numClasses)
-      .setParent(this.parent), extra)
+    copyValues(new StreamingNaiveBayesModel(uid).setParent(this.parent), extra)
   }
 
 }
 
-class StreamingNaiveBayes (override val uid: String, numClasses: Int, numFeatures: Int)
+class StreamingNaiveBayes (override val uid: String)
   extends ProbabilisticClassifier[Vector, StreamingNaiveBayes, StreamingNaiveBayesModel]
     with StreamingNaiveBayesParams with StreamingEstimator[Array[(Double, (Long, DenseVector))]]
     with Serializable {
 
-  def this(numClasses: Int, numFeatures: Int) =
-    this(Identifiable.randomUID("snb"), numClasses, numFeatures)
+  def this() = this(Identifiable.randomUID("snb"))
 
   /**
    * Set the smoothing parameter.
@@ -186,7 +174,7 @@ class StreamingNaiveBayes (override val uid: String, numClasses: Int, numFeature
   // params should not be used in the model?
   // probably should not be able to set params once model has started streaming
   // or we could bake them into the sufficient stats, but gets messy fast
-  var model: StreamingNaiveBayesModel = new StreamingNaiveBayesModel(uid, numFeatures, numClasses)
+  var model: StreamingNaiveBayesModel = new StreamingNaiveBayesModel(uid)
   def getModel: StreamingNaiveBayesModel = model
 
   override protected def train(dataset: Dataset[_]): StreamingNaiveBayesModel = {
@@ -199,7 +187,7 @@ class StreamingNaiveBayes (override val uid: String, numClasses: Int, numFeature
    *
    * @param ds Dataframe to add
    */
-  def update(batchId: Long, ds: Dataset[_]): Unit = {
+  def update(ds: Dataset[_]): Unit = {
     import ds.sparkSession.implicits._
     val data = ds.select(
       col($(labelCol)).cast(DoubleType), col($(featuresCol))).rdd.map {

@@ -20,14 +20,18 @@ import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.classification.{NaiveBayes, NaiveBayesSuite, LogisticRegressionSuite}
 
+import org.apache.spark.ml.classification.{NaiveBayesSuite, LogisticRegressionSuite}
 import org.apache.spark.ml.linalg.{Vectors, BLAS, Vector}
+import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.streaming.{StreamingStringIndexer, StreamingNaiveBayes, StreamingPipeline}
+import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.{MutableAggregationBuffer,
 UserDefinedAggregateFunction}
 import scala.collection.mutable.WrappedArray
 import org.apache.spark.ml.feature._
+import org.apache.spark.ml.feature.{LabeledPoint, VectorAssembler}
 import org.apache.spark.sql.functions._
 
 class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
@@ -88,10 +92,9 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    q.awaitTermination()
 //  }
 
-  ignore("streaming pipeline") {
+  test("streaming pipeline") {
     val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
     val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
-    val checkpoint = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
     val schema = StructType(Seq(
       StructField("label", DoubleType),
       StructField("feature1", DoubleType),
@@ -115,19 +118,15 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
     val indexer = new StreamingStringIndexer()
       .setInputCol("stringLabel")
       .setOutputCol("indexedLabel")
-    val indexer2 = new StringIndexerModel("si", Array("class0", "class1", "class2"))
-      .setInputCol("stringLabel")
-      .setOutputCol("indexedLabel")
-    val snb = new StreamingNaiveBayes(3, 4)
+    val snb = new StreamingNaiveBayes()
       .setFeaturesCol("features")
       .setLabelCol("indexedLabel")
     val pipeline = new StreamingPipeline()
-      .setStages(Array(indexer2, snb))
-      .setCheckpointLocation(checkpoint)
+      .setStages(Array(indexer, snb))
+      .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpoint")
     val query = pipeline.fitStreaming(assembled)
     val pipelineModel = pipeline.getModel
       .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpointPredict")
-    val predictQuery = pipelineModel.transformStreaming(assembled)
     query.awaitTermination()
     predictQuery.awaitTermination()
   }

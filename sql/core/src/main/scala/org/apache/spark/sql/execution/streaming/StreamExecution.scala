@@ -214,7 +214,7 @@ class StreamExecution(
           s"Query $name terminated with exception: ${e.getMessage}",
           e,
           Some(committedOffsets.toCompositeOffset(sources)))
-        println(s"Query $name terminated with error", e)
+        logError(s"Query $name terminated with error", e)
     } finally {
       state = TERMINATED
       sparkSession.streams.notifyQueryTermination(StreamExecution.this)
@@ -354,7 +354,6 @@ class StreamExecution(
     lastExecution.executedPlan
     val optimizerTime = (System.nanoTime() - optimizerStart).toDouble / 1000000
     logDebug(s"Optimized batch in ${optimizerTime}ms")
-    println(s"Thread priority: ${Thread.currentThread().getPriority()}")
 
     val nextBatch =
       new Dataset(sparkSession, lastExecution, RowEncoder(lastExecution.analyzed.schema))

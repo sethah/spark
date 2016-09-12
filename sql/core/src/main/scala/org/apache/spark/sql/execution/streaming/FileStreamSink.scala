@@ -68,7 +68,7 @@ class FileStreamSink(
         data, fileFormat, path, partitionColumnNames, hadoopConf, options)
       val fileStatuses = writer.write()
       if (fileLog.add(batchId, fileStatuses)) {
-        println(s"Committed batch $batchId")
+        logInfo(s"Committed batch $batchId")
       } else {
         throw new IllegalStateException(s"Race while writing batch $batchId")
       }
@@ -151,10 +151,8 @@ class FileStreamSinkWriter(
       data.queryExecution.toRdd,
       (taskContext: TaskContext, iterator: Iterator[InternalRow]) => {
         if (partitionColumns.isEmpty) {
-          println("no partitions")
           Seq(writePartitionToSingleFile(iterator))
         } else {
-          println(partitionColumnNames.mkString(","))
           writePartitionToPartitionedFiles(iterator)
         }
       }).flatten
@@ -168,7 +166,6 @@ class FileStreamSinkWriter(
     var writer: OutputWriter = null
     try {
       val path = new Path(basePath, UUID.randomUUID.toString)
-      println(path.toString)
       val fs = path.getFileSystem(serializableConf.value)
       writer = newOutputWriter(path)
       while (iterator.hasNext) {
