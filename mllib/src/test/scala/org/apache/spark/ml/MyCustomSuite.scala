@@ -92,7 +92,7 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    q.awaitTermination()
 //  }
 
-  test("streaming pipeline") {
+  ignore("streaming pipeline") {
     val dataDir = "/Users/sethhendrickson/StreamingSandbox/data2"
     val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
     val schema = StructType(Seq(
@@ -128,7 +128,6 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
     val pipelineModel = pipeline.getModel
       .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpointPredict")
     query.awaitTermination()
-    predictQuery.awaitTermination()
   }
 
   test("20news") {
@@ -138,7 +137,7 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
     val dataTmpDir = "/Users/sethhendrickson/StreamingSandbox/data1"
     val checkpoint = "/Users/sethhendrickson/StreamingSandbox/checkpoint"
     val path = "/Users/sethhendrickson/StreamingSandbox/20newssample"
-    val ds = spark.read.parquet(path)
+//    val ds = spark.read.parquet(path)
 //    ds.cache()
     val getClassFunc = (path: String) => {
       val splits = path.split("/")
@@ -166,19 +165,16 @@ class MyCustomSuite extends SparkFunSuite with MLlibTestSparkContext {
 //    val indexed = indexerModel.transform(tokenized)
     val hashingTF = new HashingTF().setInputCol("tokenized").setOutputCol("features")
 //    val hashed = hashingTF.transform(indexed)
-    val snb = new StreamingNaiveBayes(4, 2 << 17)
+    val snb = new StreamingNaiveBayes()
       .setFeaturesCol("features")
       .setLabelCol("label")
     val pipeline = new StreamingPipeline()
       .setStages(Array(tokenizer, indexerModel, hashingTF, snb))
       .setCheckpointLocation(checkpoint)
     val query = pipeline.fitStreaming(withLabel)
-    val pipelineModel = pipeline.getModel
-      .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpointPredict")
-    val predictQuery = pipelineModel
-      .transformStreaming(withLabel)
+//    val pipelineModel = pipeline.getModel
+//      .setCheckpointLocation("/Users/sethhendrickson/StreamingSandbox/checkpointPredict")
     query.awaitTermination()
-    predictQuery.awaitTermination()
 //    val nb = new NaiveBayes()
 //    val nbModel = nb.fit(hashed)
 //    val predictions = nbModel.transform(hashed)

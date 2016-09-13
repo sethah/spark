@@ -16,9 +16,10 @@
  */
 package org.apache.spark.ml.streaming
 
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.param.{ParamMap, Param, Params}
 import org.apache.spark.ml.util.Identifiable
-import org.apache.spark.ml.{PipelineStage, Estimator, Transformer}
+import org.apache.spark.ml.{PipelineModel, PipelineStage, Estimator, Transformer}
 import org.apache.spark.sql.sources.StreamSinkProvider
 import org.apache.spark.sql.{SQLContext, DataFrame, Dataset}
 import org.apache.spark.sql.execution.streaming.Sink
@@ -33,8 +34,6 @@ trait StreamingEstimator[S] extends PipelineStage {
 
   def model: StreamingModel[S]
 
-  def getModel: StreamingModel[S]
-
   def update(batch: Dataset[_]): Unit
 
 }
@@ -44,17 +43,10 @@ class StreamingPipeline(override val uid: String) extends Params {
 
   def this() = this(Identifiable.randomUID("streamingPipeline"))
 
-  var query: Option[StreamingQuery] = None
-
   val stages: Param[Array[PipelineStage]] = new Param(this, "stages",
     "stages of the streaming pipeline")
 
-  private var model: Option[StreamingPipelineModel] = None
-
-  def getModel: StreamingPipelineModel = model match {
-    case Some(m) => m
-    case None => throw new IllegalStateException("Pipeline must be fit before calling getModel")
-  }
+  def getStages: Array[PipelineStage] = $(stages)
 
   def setStages(value: Array[_ <: PipelineStage]): this.type = {
     set(stages, value.asInstanceOf[Array[PipelineStage]])
@@ -67,9 +59,26 @@ class StreamingPipeline(override val uid: String) extends Params {
 
   def setCheckpointLocation(value: String): this.type = set(checkpointLocation, value)
 
+  var query: Option[StreamingQuery] = None
+  private var model: Option[StreamingPipelineModel] = None
+
+  def getStaticModel: PipelineModel = {
+    val transformerStages = $(stages).map {
+      case streamingEstimator: StreamingEstimator[_] => streamingEstimator.model
+      case transformer: Transformer => transformer
+    }
+    new PipelineModel(uid, transformerStages)
+  }
+
+  def getModel: StreamingPipelineModel = model match {
+    case Some(m) => m
+    case None => throw new IllegalStateException("Pipeline must be fit before calling getModel")
+  }
+
+  private val evaluator = new MulticlassClassificationEvaluator().setMetricName("accuracy")
+
   // TODO: this should be threadsafe
   def update(dataset: Dataset[_]): Dataset[_] = {
-    // TODO: we could return unit here, and not pipe df through to the end
     var curDataset = dataset
     $(stages).foreach {
       case streamingEstimator: StreamingEstimator[_] =>
@@ -78,16 +87,19 @@ class StreamingPipeline(override val uid: String) extends Params {
       case transformer: Transformer =>
         curDataset = transformer.transform(curDataset)
     }
+    println(s"Accuracy: ${evaluator.evaluate(curDataset)}")
     curDataset
   }
 
   def fitStreaming(dataset: Dataset[_]): StreamingQuery = {
-    require(dataset.isStreaming, "need a streaming dataset")
+    require(dataset.isStreaming, "fitStreaming must be fit with a streaming dataset.")
 
     val transformerStages = $(stages).map {
-      case streamingEstimator: StreamingEstimator[_] => streamingEstimator.getModel
+      case streamingEstimator: StreamingEstimator[_] => streamingEstimator.model
       case transformer: Transformer => transformer
     }
+
+    model = Some(new StreamingPipelineModel(uid, transformerStages))
 
     query = Some(dataset
       .writeStream
@@ -106,15 +118,23 @@ class StreamingPipeline(override val uid: String) extends Params {
   }
 }
 
-class StreamingPipelineModel(val stages: Array[Transformer]) {
+class StreamingPipelineModel(override val uid: String,
+                             val stages: Array[Transformer]) extends Params {
 
   var query: Option[StreamingQuery] = None
+
+  val checkpointLocation: Param[String] = new Param[String](this, "checkpointLocation",
+    "the checkpoint directory to use for this stream")
+
+  def getCheckpointLocation: String = $(checkpointLocation)
+
+  def setCheckpointLocation(value: String): this.type = set(checkpointLocation, value)
 
   def transform(df: DataFrame): DataFrame = {
     stages.foldLeft(df)((cur, transformer) => transformer.transform(cur))
   }
 
-  def transformStreaming(dataset: Dataset[_]): this.type = {
+  def transformStreaming(dataset: Dataset[_]): StreamingQuery = {
     val q = dataset
       .writeStream
       .outputMode("append")
@@ -122,7 +142,13 @@ class StreamingPipelineModel(val stages: Array[Transformer]) {
       .format(new StreamingPipelineModelSinkProvider(this))
       .start()
     query = Some(q)
-    this
+    q
+  }
+
+  def copy(extra: ParamMap): StreamingPipelineModel = {
+    // TODO: shallow or deep?
+    val map = extractParamMap(extra)
+    new StreamingPipelineModel(uid, stages)
   }
 }
 
@@ -139,7 +165,6 @@ class StreamingPipelineSinkProvider(pipeline: StreamingPipeline) extends StreamS
 class StreamingPipelineSink(pipeline: StreamingPipeline) extends Sink {
   def addBatch(batchId: Long, df: DataFrame): Unit = {
     df.show()
-    println(s"Dataset is streaming? ${df.isStreaming}")
     val transformed = pipeline.update(df)
     transformed.show()
   }

@@ -37,7 +37,7 @@ import org.apache.spark.sql.types.{StructField, StructType}
 /**
  * Params for [[MinMaxScaler]] and [[MinMaxScalerModel]].
  */
-private[ml] trait MinMaxScalerParams extends Params with HasInputCol with HasOutputCol {
+private[feature] trait MinMaxScalerParams extends Params with HasInputCol with HasOutputCol {
 
   /**
    * lower bound after transformation, shared by all features

@@ -35,7 +35,7 @@ import org.apache.spark.sql.types.{StructField, StructType}
 /**
  * Params for [[MaxAbsScaler]] and [[MaxAbsScalerModel]].
  */
-private[ml] trait MaxAbsScalerParams extends Params with HasInputCol with HasOutputCol {
+private[feature] trait MaxAbsScalerParams extends Params with HasInputCol with HasOutputCol {
 
    /** Validates and transforms the input schema. */
   protected def validateAndTransformSchema(schema: StructType): StructType = {

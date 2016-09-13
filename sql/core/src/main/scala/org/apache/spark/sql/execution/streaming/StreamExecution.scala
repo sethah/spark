@@ -59,7 +59,6 @@ class StreamExecution(
   import org.apache.spark.sql.streaming.StreamingQueryListener._
 
   private val pollingDelayMs = sparkSession.conf.get(SQLConf.STREAMING_POLLING_DELAY)
-  println("new Stream Execution")
 
   /**
    * A lock used to wait/notify when batches complete. Use a fair lock to avoid thread starvation.

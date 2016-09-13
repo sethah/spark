@@ -97,7 +97,6 @@ class FileStreamSource(
    * Returns the data that is between the offsets (`start`, `end`].
    */
   override def getBatch(start: Option[Offset], end: Offset): DataFrame = {
-    println(s"Thread is getting batch ${Thread.currentThread().getId()}")
     val startId = start.map(_.asInstanceOf[LongOffset].offset).getOrElse(-1L)
     val endId = end.asInstanceOf[LongOffset].offset
 

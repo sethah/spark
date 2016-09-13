@@ -16,13 +16,7 @@
  */
 package org.apache.spark.ml.streaming
 
-import org.apache.spark.SparkException
-import org.apache.spark.ml.classification.ProbabilisticClassificationModel
 import org.apache.spark.ml.classification.{ProbabilisticClassificationModel, ProbabilisticClassifier}
-import org.apache.spark.sql.sources.StreamSinkProvider
-import org.apache.spark.sql.streaming._
-import org.apache.spark.sql.streaming.OutputMode
-
 import org.apache.spark.ml.util.Identifiable
 import org.apache.spark.ml.linalg._
 import org.apache.spark.ml.feature.LabeledPoint
@@ -70,8 +64,7 @@ class StreamingNaiveBayesModel(
   }
 
   private def updateModel: Unit = {
-    // TODO: fix this to getSmoothing
-    val lambda = 1.0
+    val lambda = getSmoothing
     val numLabels = countsByClass.size
     var numDocuments = 0L
     countsByClass.foreach { case (_, (n, _)) =>
@@ -104,14 +97,30 @@ class StreamingNaiveBayesModel(
     new collection.mutable.HashMap[Double, (Long, DenseVector)]
 
   private var _theta: Matrix = null
-  def theta: Matrix = _theta
+  def theta: Matrix = if (_theta != null) {
+    _theta
+  } else {
+    throw new IllegalStateException("model has not been fit")
+  }
 
   private var _pi: Vector = null
-  def pi: Vector = _pi
+  def pi: Vector = if (_pi != null) {
+    _pi
+  } else {
+    throw new IllegalStateException("model has not been fit")
+  }
 
-  override def numFeatures: Int = theta.numCols // this is not safe
+  override def numFeatures: Int = if (_theta != null) {
+    theta.numCols
+  } else {
+    throw new IllegalStateException("model has not been fit")
+  }
 
-  override def numClasses: Int = pi.size // this is not safe
+  override def numClasses: Int = if (_pi != null) {
+    pi.size
+  } else {
+    throw new IllegalStateException("model has not been fit")
+  }
 
   private def multinomialCalculation(features: Vector) = {
     val prob = theta.multiply(features)
@@ -169,17 +178,12 @@ class StreamingNaiveBayes (override val uid: String)
   def setSmoothing(value: Double): this.type = set(smoothing, value)
   setDefault(smoothing -> 1.0)
 
-  // this should copy all the params here to the model
-  // what if someone updates these? How to make them take effect in the model?
-  // params should not be used in the model?
-  // probably should not be able to set params once model has started streaming
-  // or we could bake them into the sufficient stats, but gets messy fast
-  var model: StreamingNaiveBayesModel = new StreamingNaiveBayesModel(uid)
-  def getModel: StreamingNaiveBayesModel = model
+  // TODO: how to update model params?
+  val model: StreamingNaiveBayesModel = copyValues(new StreamingNaiveBayesModel(uid))
 
   override protected def train(dataset: Dataset[_]): StreamingNaiveBayesModel = {
     // TODO: actually implement this method
-    getModel
+    model
   }
 
   /**
@@ -188,7 +192,6 @@ class StreamingNaiveBayes (override val uid: String)
    * @param ds Dataframe to add
    */
   def update(ds: Dataset[_]): Unit = {
-    import ds.sparkSession.implicits._
     val data = ds.select(
       col($(labelCol)).cast(DoubleType), col($(featuresCol))).rdd.map {
       case Row(label: Double, features: Vector) => LabeledPoint(label, features)
