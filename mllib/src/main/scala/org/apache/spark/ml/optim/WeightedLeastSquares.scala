@@ -20,11 +20,13 @@ package org.apache.spark.ml.optim
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
+import org.apache.spark.ml.param.shared.HasElasticNetParam
 import org.apache.spark.mllib.linalg.CholeskyDecomposition
 import org.apache.spark.rdd.RDD
 
 /**
  * Model fitted by [[WeightedLeastSquares]].
+ *
  * @param coefficients model coefficients
  * @param intercept model intercept
  * @param diagInvAtWA diagonal of matrix (A^T * W * A)^-1
@@ -66,13 +68,16 @@ private[ml] class WeightedLeastSquares(
     val fitIntercept: Boolean,
     val regParam: Double,
     val standardizeFeatures: Boolean,
-    val standardizeLabel: Boolean) extends Logging with Serializable {
+    val standardizeLabel: Boolean,
+    val elasticNetParam: Double = 0.0) extends Logging with Serializable {
   import WeightedLeastSquares._
 
   require(regParam >= 0.0, s"regParam cannot be negative: $regParam")
   if (regParam == 0.0) {
     logWarning("regParam is zero, which might cause numerical instability and overfitting.")
   }
+
+  private val solver = "quasi-newton"
 
   /**
    * Creates a [[WeightedLeastSquaresModel]] from an RDD of [[Instance]]s.
@@ -85,6 +90,7 @@ private[ml] class WeightedLeastSquares(
     val triK = summary.triK
     val wSum = summary.wSum
     val bBar = summary.bBar
+    val bbBar = summary.bbBar
     val bStd = summary.bStd
     val aBar = summary.aBar
     val aVar = summary.aVar
@@ -92,7 +98,7 @@ private[ml] class WeightedLeastSquares(
     val aaBar = summary.aaBar
     val aaValues = aaBar.values
 
-    if (bStd == 0) {
+    if (summary.bStd == 0) {
       if (fitIntercept) {
         logWarning(s"The standard deviation of the label is zero, so the coefficients will be " +
           s"zeros and the intercept will be the mean of the label; as a result, " +
@@ -126,32 +132,53 @@ private[ml] class WeightedLeastSquares(
       j += 1
     }
 
-    val aa = if (fitIntercept) {
-      Array.concat(aaBar.values, aBar.values, Array(1.0))
-    } else {
-      aaBar.values
+
+    // TODO: fix this. Also, should we just always use the standardized version?
+    val (intercept, coefficients, aaInv) = solver match {
+      case "cholesky" =>
+        val _solver = new CholeskySolver(fitIntercept)
+        val aa = if (fitIntercept) {
+          new DenseVector(Array.concat(aaBar.values, aBar.values, Array(1.0)))
+        } else {
+          aaBar
+        }
+        val ab = if (fitIntercept) {
+          new DenseVector(Array.concat(abBar.values, Array(bBar)))
+        } else {
+          abBar
+        }
+        _solver.solve(bBar, bbBar, ab, aa, aBar)
+      case "quasi-newton" =>
+        // TODO: standardize everything
+        val _solver = new QuasiNewtonSolver(standardizeFeatures, standardizeLabel, regParam,
+          elasticNetParam, fitIntercept)
+        val abBarStd = summary.abBarStd
+        val aaBarStd = summary.aaBarStd
+        val aBarStd = summary.aBarStd
+        val aa = if (fitIntercept) {
+          new DenseVector(Array.concat(aaBarStd.values, aBarStd.values, Array(1.0)))
+        } else {
+          aaBarStd
+        }
+        val ab = if (fitIntercept) {
+          new DenseVector(Array.concat(abBarStd.values, Array(bBar / bStd)))
+        } else {
+          abBarStd
+        }
+        _solver.solve(bBar / bStd, bbBar / (bStd * bStd), ab, aa, aBarStd)
     }
-    val ab = if (fitIntercept) {
-      Array.concat(abBar.values, Array(bBar))
-    } else {
-      abBar.values
-    }
 
-    val x = CholeskyDecomposition.solve(aa, ab)
-
-    val aaInv = CholeskyDecomposition.inverse(aa, k)
-
+//    val (intercept, coefficients, aaInv) = optimizer.solve(bBar, bbBar, ab, aa, aBar)
     // aaInv is a packed upper triangular matrix, here we get all elements on diagonal
-    val diagInvAtWA = new DenseVector((1 to k).map { i =>
-      aaInv(i + (i - 1) * i / 2 - 1) / wSum }.toArray)
-
-    val (coefficients, intercept) = if (fitIntercept) {
-      (new DenseVector(x.slice(0, x.length - 1)), x.last)
-    } else {
-      (new DenseVector(x), 0.0)
+    val diagInvAtWA = aaInv.map { inv =>
+      val values = inv.values
+      new DenseVector((1 to k).map { i =>
+        values(i + (i - 1) * i / 2 - 1) / wSum
+      }.toArray)
     }
 
-    new WeightedLeastSquaresModel(coefficients, intercept, diagInvAtWA)
+    new WeightedLeastSquaresModel(coefficients, intercept,
+      diagInvAtWA.getOrElse(new DenseVector(Array.empty[Double])))
   }
 }
 
@@ -167,7 +194,7 @@ private[ml] object WeightedLeastSquares {
    * Aggregator to provide necessary summary statistics for solving [[WeightedLeastSquares]].
    */
   // TODO: consolidate aggregates for summary statistics
-  private class Aggregator extends Serializable {
+  private[ml] class Aggregator extends Serializable {
     var initialized: Boolean = false
     var k: Int = _
     var count: Long = _
@@ -257,6 +284,17 @@ private[ml] object WeightedLeastSquares {
       output
     }
 
+    def aBarStd: DenseVector = {
+      val output = aSum.copy
+      val outputValues = output.toArray
+      var j = 0
+      while (j < k) {
+        outputValues(j) /= (wSum * aVar(j))
+        j += 1
+      }
+      output
+    }
+
     /**
      * Weighted mean of labels.
      */
@@ -267,6 +305,8 @@ private[ml] object WeightedLeastSquares {
      */
     def bStd: Double = math.sqrt(bbSum / wSum - bBar * bBar)
 
+    def bbBar: Double = bbSum / wSum
+
     /**
      * Weighted mean of (label * features).
      */
@@ -276,12 +316,40 @@ private[ml] object WeightedLeastSquares {
       output
     }
 
+    def abBarStd: DenseVector = {
+      val output = abSum.copy
+      val outputValues = output.toArray
+      var j = 0
+      while (j < k) {
+        outputValues(j) /= (wSum * aVar(j))
+        j += 1
+      }
+      output
+    }
+
     /**
      * Weighted mean of (features * features^T^).
      */
     def aaBar: DenseVector = {
       val output = aaSum.copy
       BLAS.scal(1.0 / wSum, output)
+      output
+    }
+
+    def aaBarStd: DenseVector = {
+      val output = aaSum.copy
+      val outputValues = output.toArray
+      var j = 0
+      var kk = 0
+      while (j < k) {
+        var i = 0
+        while (i <= j) {
+          outputValues(kk) /= (wSum * math.sqrt(aVar(i)) * math.sqrt(aVar(j)))
+          kk += 1
+          i += 1
+        }
+        j += 1
+      }
       output
     }
 

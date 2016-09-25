@@ -107,7 +107,7 @@ class LinearRegressionSuite
    * Enable the ignored test to export the dataset into CSV format,
    * so we can validate the training accuracy compared with R's glmnet package.
    */
-  ignore("export test data into CSV format") {
+  test("export test data into CSV format") {
     datasetWithDenseFeature.rdd.map { case Row(label: Double, features: Vector) =>
       label + "," + features.toArray.mkString(",")
     }.repartition(1).saveAsTextFile("target/tmp/LinearRegressionSuite/datasetWithDenseFeature")

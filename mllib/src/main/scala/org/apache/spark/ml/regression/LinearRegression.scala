@@ -359,6 +359,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
          the original space.
        */
       val rawCoefficients = state.x.toArray.clone()
+      println(rawCoefficients.mkString("&&"))
       var i = 0
       val len = rawCoefficients.length
       while (i < len) {
@@ -1075,6 +1076,7 @@ private class LeastSquaresCostFun(
       }
       0.5 * effectiveL2regParam * sum
     }
+//    println("lr", leastSquaresAggregator.loss, coeffs, Vectors.dense(totalGradientArray))
 
     (leastSquaresAggregator.loss + regVal, new BDV(totalGradientArray))
   }

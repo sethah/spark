@@ -36,6 +36,12 @@ private[spark] object BLAS extends Serializable {
     _f2jBLAS
   }
 
+  // TODO: handle sparse
+  def dspmv(uplo: String, n: Int, alpha: Double, ap: DenseVector, x: DenseVector,
+            beta: Double, y: DenseVector): Unit = {
+    f2jBLAS.dspmv(uplo, n, alpha, ap.values, x.values, 1, beta, y.values, 1)
+  }
+
   /**
    * y += a * x
    */
