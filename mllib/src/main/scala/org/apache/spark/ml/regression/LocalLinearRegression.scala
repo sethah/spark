@@ -145,7 +145,7 @@ private class LocalLinearCostFun(
       sparkCoefficients.toArray(numFeatures - 1) = intercept
     }
     // loss = Y^T W Y - 2 beta^T X^T W Y + beta^T X^T W X beta
-//    println(bbBar, ab, aa, sparkCoefficients)
+    println(bbBar, ab, aa, sparkCoefficients)
     val loss1 = bbBar
     val loss2 = 2.0 * BLAS.dot(ab, sparkCoefficients.copy)
 //    println(loss1, loss2, coefficients)

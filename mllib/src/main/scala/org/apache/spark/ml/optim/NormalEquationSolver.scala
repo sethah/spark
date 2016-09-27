@@ -27,14 +27,14 @@ import scala.collection.mutable
 abstract class NormalEquationSolver {
 
   def solve(bBar: Double, bbBar: Double, abBar: DenseVector,
-            aaBar: DenseVector, aBar: DenseVector): (Double, DenseVector, Option[DenseVector])
+            aaBar: DenseVector, aBar: DenseVector, aVar: DenseVector): (Double, DenseVector, Option[DenseVector])
 
 }
 
 class CholeskySolver(val fitIntercept: Boolean) extends NormalEquationSolver {
 
   def solve(bBar: Double, bbBar: Double, abBar: DenseVector,
-            aaBar: DenseVector, aBar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
+            aaBar: DenseVector, aBar: DenseVector, aVar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
     val k = abBar.size
     val x = CholeskyDecomposition.solve(aaBar.values, abBar.values)
 
@@ -58,7 +58,7 @@ class QuasiNewtonSolver(
     val fitIntercept: Boolean) extends NormalEquationSolver {
 
   def solve(bBar: Double, bbBar: Double, abBar: DenseVector,
-            aaBar: DenseVector, aBar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
+            aaBar: DenseVector, aBar: DenseVector, aVar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
     val numFeatures = aBar.size
     val numFeaturesPlusIntercept = abBar.size
     val initialCoefficientsWithIntercept = Vectors.zeros(numFeaturesPlusIntercept)
@@ -71,18 +71,22 @@ class QuasiNewtonSolver(
     val effectiveRegParam = regParam
     val effectiveL1RegParam = elasticNetParam * effectiveRegParam
     val effectiveL2RegParam = (1.0 - elasticNetParam) * effectiveRegParam
-    val standardizationParam = false
-    // TODO: handle standardization
     val optimizer = if (effectiveRegParam != 0.0) {
       def effectiveL1RegFun = (index: Int) => {
         val isIntercept = fitIntercept && index == numFeatures
         if (isIntercept) {
           0.0
-        } else effectiveL1RegParam
+        } else {
+          if (standardizeFeatures) {
+            effectiveL1RegParam
+          } else {
+            effectiveL1RegParam / math.sqrt(aVar(index))
+          }
+        }
       }
-      new BreezeOWLQN[Int, BDV[Double]](10, 10, effectiveL1RegFun, 1e-6)
+      new BreezeOWLQN[Int, BDV[Double]](100, 10, effectiveL1RegFun, 1e-6)
     } else {
-      new BreezeLBFGS[BDV[Double]](10, 10, 1e-6)
+      new BreezeLBFGS[BDV[Double]](100, 10, 1e-6)
     }
     val states = optimizer.iterations(new CachedDiffFunction(costFun),
       initialCoefficientsWithIntercept.asBreeze.toDenseVector)
@@ -114,13 +118,15 @@ class QuasiNewtonSolver(
 
     override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
       val sparkCoefficients = Vectors.fromBreeze(coefficients).toDense
-      val onlyCoef = new DenseVector(sparkCoefficients.toArray.init)
+      val onlyCoef = if (fitIntercept) {
+        new DenseVector(sparkCoefficients.toArray.init)
+      } else sparkCoefficients
       val intercept = bBar - BLAS.dot(onlyCoef, abar)
       if (fitIntercept) {
         sparkCoefficients.toArray(numFeatures - 1) = intercept
       }
       // loss = Y^T W Y - 2 beta^T X^T W Y + beta^T X^T W X beta
-      //    println(bbBar, ab, aa, sparkCoefficients)
+//      println(bbBar, ab, aa, sparkCoefficients)
       val loss1 = bbBar
       val loss2 = 2.0 * BLAS.dot(ab, sparkCoefficients.copy)
       //    println(loss1, loss2, coefficients)
@@ -131,7 +137,7 @@ class QuasiNewtonSolver(
       val loss3 = BLAS.dot(sparkCoefficients, xxb)
       val loss = 0.5 * (loss1 - loss2 + loss3)
       BLAS.axpy(-1.0, ab, xxb)
-      //    println("coef", loss, loss1, loss2, loss3, sparkCoefficients, xxb)
+//      println("coef", loss, loss1, loss2, loss3, sparkCoefficients, xxb)
       (loss, xxb.asBreeze.toDenseVector)
     }
   }

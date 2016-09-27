@@ -1029,6 +1029,7 @@ private class LeastSquaresCostFun(
     bcFeaturesMean: Broadcast[Array[Double]],
     effectiveL2regParam: Double,
     aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
+  println("regParam", effectiveL2regParam)
 
   override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
     val coeffs = Vectors.fromBreeze(coefficients)

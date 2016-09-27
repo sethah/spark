@@ -128,12 +128,21 @@ class LocalLinearRegressionSuite
     val rdd = datasetWithDenseFeature.as[LabeledPoint].rdd.map { lp =>
       Instance(lp.label, 1.0, lp.features)
     }
-    val wls = new WeightedLeastSquares(true, 0.0, true, true, 1.0)
+    val solver = "quasi-newton"
+//    val solver = "cholesky"
+    val regParam = 0.1
+    val fitIntercept = true
+    val standardize = false
+    val elasticNetParam = 0.5
+    val wls = new WeightedLeastSquares(fitIntercept, regParam, standardize, true, elasticNetParam, solver)
     val wlsModel = wls.fit(rdd)
-    val lr = new LinearRegression().setSolver("L-BFGS")
+    val lr = new LinearRegression().setSolver("L-BFGS").setRegParam(regParam)
+      .setStandardization(standardize)
+      .setFitIntercept(fitIntercept)
+      .setElasticNetParam(elasticNetParam)
     val lrModel = lr.fit(datasetWithDenseFeature)
-    println(wlsModel.coefficients)
-    println(lrModel.coefficients)
+    println(wlsModel.coefficients, wlsModel.intercept)
+    println(lrModel.coefficients, lrModel.intercept)
   }
 
   test("local linear regression") {
