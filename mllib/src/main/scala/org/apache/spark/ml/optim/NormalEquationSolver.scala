@@ -24,17 +24,27 @@ import org.apache.spark.mllib.linalg.CholeskyDecomposition
 
 import scala.collection.mutable
 
-abstract class NormalEquationSolver {
+private[ml] abstract class NormalEquationSolver {
 
-  def solve(bBar: Double, bbBar: Double, abBar: DenseVector,
-            aaBar: DenseVector, aBar: DenseVector, aVar: DenseVector): (Double, DenseVector, Option[DenseVector])
+  def solve(
+      bBar: Double,
+      bbBar: Double,
+      abBar: DenseVector,
+      aaBar: DenseVector,
+      aBar: DenseVector,
+      aVar: DenseVector): (Double, DenseVector, Option[DenseVector])
 
 }
 
-class CholeskySolver(val fitIntercept: Boolean) extends NormalEquationSolver {
+private[ml] class CholeskySolver(val fitIntercept: Boolean) extends NormalEquationSolver {
 
-  def solve(bBar: Double, bbBar: Double, abBar: DenseVector,
-            aaBar: DenseVector, aBar: DenseVector, aVar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
+  def solve(
+      bBar: Double,
+      bbBar: Double,
+      abBar: DenseVector,
+      aaBar: DenseVector,
+      aBar: DenseVector,
+      aVar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
     val k = abBar.size
     val x = CholeskyDecomposition.solve(aaBar.values, abBar.values)
 
@@ -50,28 +60,34 @@ class CholeskySolver(val fitIntercept: Boolean) extends NormalEquationSolver {
   }
 }
 
-class QuasiNewtonSolver(
+private[ml] class QuasiNewtonSolver(
     standardizeFeatures: Boolean,
     standardizeLabel: Boolean,
     regParam: Double,
     elasticNetParam: Double,
     val fitIntercept: Boolean) extends NormalEquationSolver {
 
-  def solve(bBar: Double, bbBar: Double, abBar: DenseVector,
-            aaBar: DenseVector, aBar: DenseVector, aVar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
+  def solve(
+      bBar: Double,
+      bbBar: Double,
+      abBar: DenseVector,
+      aaBar: DenseVector,
+      aBar: DenseVector,
+      aVar: DenseVector): (Double, DenseVector, Option[DenseVector]) = {
     val numFeatures = aBar.size
     val numFeaturesPlusIntercept = abBar.size
     val initialCoefficientsWithIntercept = Vectors.zeros(numFeaturesPlusIntercept)
     if (fitIntercept) {
+      // TODO: this correct?
       initialCoefficientsWithIntercept.toArray(numFeaturesPlusIntercept - 1) = bBar
     }
 
-    val costFun = new LocalLinearCostFun(bBar, bbBar,
-      abBar, aaBar, aBar, fitIntercept, numFeaturesPlusIntercept)
+    val costFun = new NormalEquationCostFun(bBar, bbBar,
+      abBar, aaBar, aBar, fitIntercept, numFeatures)
     val effectiveRegParam = regParam
     val effectiveL1RegParam = elasticNetParam * effectiveRegParam
-    val effectiveL2RegParam = (1.0 - elasticNetParam) * effectiveRegParam
-    val optimizer = if (effectiveRegParam != 0.0) {
+    val optimizer = if (effectiveL1RegParam != 0.0) {
+      // TODO: pass this in as argument
       def effectiveL1RegFun = (index: Int) => {
         val isIntercept = fitIntercept && index == numFeatures
         if (isIntercept) {
@@ -84,8 +100,10 @@ class QuasiNewtonSolver(
           }
         }
       }
+      println("OWLQN")
       new BreezeOWLQN[Int, BDV[Double]](100, 10, effectiveL1RegFun, 1e-6)
     } else {
+      println("LBFGS")
       new BreezeLBFGS[BDV[Double]](100, 10, 1e-6)
     }
     val states = optimizer.iterations(new CachedDiffFunction(costFun),
@@ -107,37 +125,32 @@ class QuasiNewtonSolver(
   }
 
 
-  private class LocalLinearCostFun(
+  private class NormalEquationCostFun(
       bBar: Double,
       bbBar: Double,
       ab: DenseVector,
       aa: DenseVector,
-      abar: DenseVector,
+      aBar: DenseVector,
       fitIntercept: Boolean,
       numFeatures: Int) extends DiffFunction[BDV[Double]] {
 
+    private val numFeaturesPlusIntercept = if (fitIntercept) numFeatures + 1 else numFeatures
+
     override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
-      val sparkCoefficients = Vectors.fromBreeze(coefficients).toDense
-      val onlyCoef = if (fitIntercept) {
-        new DenseVector(sparkCoefficients.toArray.init)
-      } else sparkCoefficients
-      val intercept = bBar - BLAS.dot(onlyCoef, abar)
+      val coef = Vectors.fromBreeze(coefficients).toDense
       if (fitIntercept) {
-        sparkCoefficients.toArray(numFeatures - 1) = intercept
+        // TODO: check this
+        val coefArray = coef.toArray
+        val interceptIndex = numFeaturesPlusIntercept - 1
+        val coefWithoutIntercept = coefArray.init
+        coefArray(interceptIndex) = bBar - BLAS.dot(Vectors.dense(coefWithoutIntercept), aBar)
       }
+      val xxb = Vectors.zeros(numFeaturesPlusIntercept).toDense
+      BLAS.dspmv("U", numFeaturesPlusIntercept, 1.0, aa, coef, 1.0, xxb)
       // loss = Y^T W Y - 2 beta^T X^T W Y + beta^T X^T W X beta
-//      println(bbBar, ab, aa, sparkCoefficients)
-      val loss1 = bbBar
-      val loss2 = 2.0 * BLAS.dot(ab, sparkCoefficients.copy)
-      //    println(loss1, loss2, coefficients)
-      val xxb = Vectors.zeros(numFeatures).toDense
-      //    println("aabar", aa)
-      BLAS.dspmv("U", numFeatures, 1.0, aa, sparkCoefficients, 1.0, xxb)
-      //    println("xxb", xxb)
-      val loss3 = BLAS.dot(sparkCoefficients, xxb)
-      val loss = 0.5 * (loss1 - loss2 + loss3)
+      val loss = 0.5 * bbBar - BLAS.dot(ab, coef) + 0.5 * BLAS.dot(coef, xxb)
+      // -gradient = X^T W X beta - X^T W Y
       BLAS.axpy(-1.0, ab, xxb)
-//      println("coef", loss, loss1, loss2, loss3, sparkCoefficients, xxb)
       (loss, xxb.asBreeze.toDenseVector)
     }
   }

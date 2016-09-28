@@ -114,7 +114,7 @@ private[ml] class WeightedLeastSquares(
           "Consider setting fitIntercept=true.")
       }
     }
-    println("regParam wls", regParam)
+
     val abBarStd = summary.abBarStd
     val aaBarStd = summary.aaBarStd
     val aBarStd = summary.aBarStd
@@ -152,7 +152,6 @@ private[ml] class WeightedLeastSquares(
     }
 
 
-    // TODO: fix this. Also, should we just always use the standardized version?
     val (intercept, coefficients, aaInv) = solver match {
       case "cholesky" =>
         val _solver = new CholeskySolver(fitIntercept)
@@ -171,7 +170,6 @@ private[ml] class WeightedLeastSquares(
 
     val _intercept = intercept * bStd
 
-//    val (intercept, coefficients, aaInv) = optimizer.solve(bBar, bbBar, ab, aa, aBar)
     // aaInv is a packed upper triangular matrix, here we get all elements on diagonal
     val diagInvAtWA = aaInv.map { inv =>
       val values = inv.values
