@@ -128,36 +128,37 @@ private[ml] class WeightedLeastSquares(
     val bbBarStd = bbBar / (bStd * bStd)
     println(abBarStd, aaBarStd, aBarStd)
 
-    val effectiveRegParam = regParam / bStd
+    val effectiveRegParam = regParam
     val effectiveL1RegParam = elasticNetParam * effectiveRegParam
     val effectiveL2RegParam = (1.0 - elasticNetParam) * effectiveRegParam
 
-    // remove regularization to diagonals
+    // add regularization to diagonals
     var i = 0
     var j = 2
     while (i < triK) {
       var lambda = effectiveL2RegParam
-      if (!standardizeFeatures) {
+      if (standardizeFeatures) {
         val std = aStd(j - 2)
-        lambda /= (std * std)
+        lambda *= (std * std)
       }
-      if (!standardizeLabel) {
-        lambda *= bStd
+      if (standardizeLabel && bStd != 0.0) {
+        lambda /= bStd
       }
-      aaBarStdValues(i) += lambda
+      println(lambda)
+      aaValues(i) += lambda
       i += j
       j += 1
     }
 
     val aa = if (fitIntercept) {
-      new DenseVector(Array.concat(aaBarStd.values, aBarStd.values, Array(1.0)))
+      new DenseVector(Array.concat(aaBar.values, aBar.values, Array(1.0)))
     } else {
-      aaBarStd
+      aaBar
     }
     val ab = if (fitIntercept) {
-      new DenseVector(Array.concat(abBarStd.values, Array(bBar / bStd)))
+      new DenseVector(Array.concat(abBar.values, Array(bBar)))
     } else {
-      abBarStd
+      abBar
     }
 
     // TODO
@@ -173,9 +174,9 @@ private[ml] class WeightedLeastSquares(
               0.0
             } else {
               if (standardizeFeatures) {
-                effectiveL1RegParam
+                effectiveL1RegParam * aStd(index)
               } else {
-                effectiveL1RegParam / aStd(index)
+                effectiveL1RegParam // aStd(index)
               }
             }
           }
@@ -186,23 +187,25 @@ private[ml] class WeightedLeastSquares(
       // TODO: where to define these
       val maxIter = 100
       val tol = 1e-6
+      println("QN Solver")
       new QuasiNewtonSolver(standardizeFeatures, standardizeLabel, fitIntercept,
         maxIter, tol, effectiveL1RegFun)
     } else {
+      println("Cholesky solver")
       new CholeskySolver(fitIntercept)
     }
 
-    val solution = _solver.solve(bBarStd, bbBarStd, ab, aa, aBarStd)
-    val intercept = solution.intercept * bStd
+    val solution = _solver.solve(bBar, bbBar, ab, aa, aBar)
+    val intercept = solution.intercept
     val coefficients = solution.coefficients
 
-    var ii = 0
-    val coefficientArray = coefficients.toArray
-    val len = coefficientArray.length
-    while (ii < len) {
-      coefficientArray(ii) *= { if (aStd(ii) != 0.0) bStd / aStd(ii) else 0.0 }
-      ii += 1
-    }
+//    var ii = 0
+//    val coefficientArray = coefficients.toArray
+//    val len = coefficientArray.length
+//    while (ii < len) {
+//      coefficientArray(ii) *= { if (aStd(ii) != 0.0) bStd / aStd(ii) else 0.0 }
+//      ii += 1
+//    }
 
     // aaInv is a packed upper triangular matrix, here we get all elements on diagonal
     val diagInvAtWA = solution.aaInv.map { inv =>
