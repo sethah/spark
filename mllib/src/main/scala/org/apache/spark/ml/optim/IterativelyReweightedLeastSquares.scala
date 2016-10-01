@@ -81,7 +81,7 @@ private[ml] class IterativelyReweightedLeastSquares(
       }
 
       // Estimate new model
-      model = new WeightedLeastSquares(fitIntercept, regParam, standardizeFeatures = false,
+      model = new WeightedLeastSquares(fitIntercept, regParam, 0.0, standardizeFeatures = false,
         standardizeLabel = false).fit(newInstances)
 
       // Check convergence

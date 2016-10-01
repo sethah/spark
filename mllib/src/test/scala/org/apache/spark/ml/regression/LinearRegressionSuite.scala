@@ -57,7 +57,7 @@ class LinearRegressionSuite
         xVariance = Array(0.7, 1.2), nPoints = 10000, seed, eps = 0.1), 2).map(_.asML).toDF()
 
     val r = new Random(seed)
-    // When feature size is larger than 4096, normal optimizer is choosed
+    // When feature size is larger than 4096, normal optimizer is chosen
     // as the solver of linear regression in the case of "auto" mode.
     val featureSize = 4100
     datasetWithSparseFeature = sc.parallelize(LinearDataGenerator.generateLinearInput(
@@ -249,55 +249,47 @@ class LinearRegressionSuite
       val trainer2 = (new LinearRegression).setElasticNetParam(1.0).setRegParam(0.57)
         .setSolver(solver).setStandardization(false)
 
-      // Normal optimizer is not supported with only L1 regularization case.
-      if (solver == "normal") {
-        intercept[IllegalArgumentException] {
-            trainer1.fit(datasetWithDenseFeature)
-            trainer2.fit(datasetWithDenseFeature)
-          }
-      } else {
-        val model1 = trainer1.fit(datasetWithDenseFeature)
-        val model2 = trainer2.fit(datasetWithDenseFeature)
+      val model1 = trainer1.fit(datasetWithDenseFeature)
+      val model2 = trainer2.fit(datasetWithDenseFeature)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian",
-             alpha = 1.0, lambda = 0.57 ))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                    s0
-           (Intercept)       6.242284
-           as.numeric.d1.V2. 4.019605
-           as.numeric.d1.V3. 6.679538
-         */
-        val interceptR1 = 6.242284
-        val coefficientsR1 = Vectors.dense(4.019605, 6.679538)
-        assert(model1.intercept ~== interceptR1 relTol 1E-2)
-        assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian",
+           alpha = 1.0, lambda = 0.57 ))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                  s0
+         (Intercept)       6.242284
+         as.numeric.d1.V2. 4.019605
+         as.numeric.d1.V3. 6.679538
+       */
+      val interceptR1 = 6.242284
+      val coefficientsR1 = Vectors.dense(4.019605, 6.679538)
+      assert(model1.intercept ~== interceptR1 relTol 1E-2)
+      assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 1.0,
-             lambda = 0.57, standardize=FALSE ))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                    s0
-           (Intercept)         6.416948
-           as.numeric.data.V2. 3.893869
-           as.numeric.data.V3. 6.724286
-         */
-        val interceptR2 = 6.416948
-        val coefficientsR2 = Vectors.dense(3.893869, 6.724286)
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 1.0,
+           lambda = 0.57, standardize=FALSE ))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                  s0
+         (Intercept)         6.416948
+         as.numeric.data.V2. 3.893869
+         as.numeric.data.V3. 6.724286
+       */
+      val interceptR2 = 6.416948
+      val coefficientsR2 = Vectors.dense(3.893869, 6.724286)
 
-        assert(model2.intercept ~== interceptR2 relTol 1E-3)
-        assert(model2.coefficients ~= coefficientsR2 relTol 1E-3)
+      assert(model2.intercept ~== interceptR2 relTol 1E-3)
+      assert(model2.coefficients ~= coefficientsR2 relTol 1E-3)
 
-        model1.transform(datasetWithDenseFeature).select("features", "prediction")
-          .collect().foreach {
-            case Row(features: DenseVector, prediction1: Double) =>
-              val prediction2 =
-                features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
-                  model1.intercept
-              assert(prediction1 ~== prediction2 relTol 1E-5)
-        }
+      model1.transform(datasetWithDenseFeature).select("features", "prediction")
+        .collect().foreach {
+          case Row(features: DenseVector, prediction1: Double) =>
+            val prediction2 =
+              features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
+                model1.intercept
+            assert(prediction1 ~== prediction2 relTol 1E-5)
       }
     }
   }
@@ -309,56 +301,48 @@ class LinearRegressionSuite
       val trainer2 = (new LinearRegression).setElasticNetParam(1.0).setRegParam(0.57)
         .setFitIntercept(false).setStandardization(false).setSolver(solver)
 
-      // Normal optimizer is not supported with only L1 regularization case.
-      if (solver == "normal") {
-        intercept[IllegalArgumentException] {
-            trainer1.fit(datasetWithDenseFeature)
-            trainer2.fit(datasetWithDenseFeature)
-          }
-      } else {
-        val model1 = trainer1.fit(datasetWithDenseFeature)
-        val model2 = trainer2.fit(datasetWithDenseFeature)
+      val model1 = trainer1.fit(datasetWithDenseFeature)
+      val model2 = trainer2.fit(datasetWithDenseFeature)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 1.0,
-             lambda = 0.57, intercept=FALSE ))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                     s0
-           (Intercept)          .
-           as.numeric.data.V2. 6.272927
-           as.numeric.data.V3. 4.782604
-         */
-        val interceptR1 = 0.0
-        val coefficientsR1 = Vectors.dense(6.272927, 4.782604)
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 1.0,
+           lambda = 0.57, intercept=FALSE ))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                   s0
+         (Intercept)          .
+         as.numeric.data.V2. 6.272927
+         as.numeric.data.V3. 4.782604
+       */
+      val interceptR1 = 0.0
+      val coefficientsR1 = Vectors.dense(6.272927, 4.782604)
 
-        assert(model1.intercept ~== interceptR1 absTol 1E-2)
-        assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
+      assert(model1.intercept ~== interceptR1 absTol 1E-2)
+      assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 1.0,
-             lambda = 0.57, intercept=FALSE, standardize=FALSE ))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                     s0
-           (Intercept)         .
-           as.numeric.data.V2. 6.207817
-           as.numeric.data.V3. 4.775780
-         */
-        val interceptR2 = 0.0
-        val coefficientsR2 = Vectors.dense(6.207817, 4.775780)
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 1.0,
+           lambda = 0.57, intercept=FALSE, standardize=FALSE ))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                   s0
+         (Intercept)         .
+         as.numeric.data.V2. 6.207817
+         as.numeric.data.V3. 4.775780
+       */
+      val interceptR2 = 0.0
+      val coefficientsR2 = Vectors.dense(6.207817, 4.775780)
 
-        assert(model2.intercept ~== interceptR2 absTol 1E-2)
-        assert(model2.coefficients ~= coefficientsR2 relTol 1E-2)
+      assert(model2.intercept ~== interceptR2 absTol 1E-2)
+      assert(model2.coefficients ~= coefficientsR2 relTol 1E-2)
 
-        model1.transform(datasetWithDenseFeature).select("features", "prediction")
-          .collect().foreach {
-            case Row(features: DenseVector, prediction1: Double) =>
-              val prediction2 =
-                features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
-                  model1.intercept
-              assert(prediction1 ~== prediction2 relTol 1E-5)
-        }
+      model1.transform(datasetWithDenseFeature).select("features", "prediction")
+        .collect().foreach {
+          case Row(features: DenseVector, prediction1: Double) =>
+            val prediction2 =
+              features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
+                model1.intercept
+            assert(prediction1 ~== prediction2 relTol 1E-5)
       }
     }
   }
@@ -471,56 +455,48 @@ class LinearRegressionSuite
       val trainer2 = (new LinearRegression).setElasticNetParam(0.3).setRegParam(1.6)
         .setStandardization(false).setSolver(solver)
 
-      // Normal optimizer is not supported with non-zero elasticnet parameter.
-      if (solver == "normal") {
-        intercept[IllegalArgumentException] {
-            trainer1.fit(datasetWithDenseFeature)
-            trainer2.fit(datasetWithDenseFeature)
-          }
-      } else {
-        val model1 = trainer1.fit(datasetWithDenseFeature)
-        val model2 = trainer2.fit(datasetWithDenseFeature)
+      val model1 = trainer1.fit(datasetWithDenseFeature)
+      val model2 = trainer2.fit(datasetWithDenseFeature)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3,
-             lambda = 1.6 ))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                     s0
-           (Intercept)       5.689855
-           as.numeric.d1.V2. 3.661181
-           as.numeric.d1.V3. 6.000274
-         */
-        val interceptR1 = 5.689855
-        val coefficientsR1 = Vectors.dense(3.661181, 6.000274)
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3,
+           lambda = 1.6 ))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                   s0
+         (Intercept)       5.689855
+         as.numeric.d1.V2. 3.661181
+         as.numeric.d1.V3. 6.000274
+       */
+      val interceptR1 = 5.689855
+      val coefficientsR1 = Vectors.dense(3.661181, 6.000274)
 
-        assert(model1.intercept ~== interceptR1 relTol 1E-2)
-        assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
+      assert(model1.intercept ~== interceptR1 relTol 1E-2)
+      assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3, lambda = 1.6
-             standardize=FALSE))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                     s0
-           (Intercept)       6.113890
-           as.numeric.d1.V2. 3.407021
-           as.numeric.d1.V3. 6.152512
-         */
-        val interceptR2 = 6.113890
-        val coefficientsR2 = Vectors.dense(3.407021, 6.152512)
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3, lambda = 1.6
+           standardize=FALSE))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                   s0
+         (Intercept)       6.113890
+         as.numeric.d1.V2. 3.407021
+         as.numeric.d1.V3. 6.152512
+       */
+      val interceptR2 = 6.113890
+      val coefficientsR2 = Vectors.dense(3.407021, 6.152512)
 
-        assert(model2.intercept ~== interceptR2 relTol 1E-2)
-        assert(model2.coefficients ~= coefficientsR2 relTol 1E-2)
+      assert(model2.intercept ~== interceptR2 relTol 1E-2)
+      assert(model2.coefficients ~= coefficientsR2 relTol 1E-2)
 
-        model1.transform(datasetWithDenseFeature).select("features", "prediction")
-          .collect().foreach {
-          case Row(features: DenseVector, prediction1: Double) =>
-            val prediction2 =
-              features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
-                model1.intercept
-            assert(prediction1 ~== prediction2 relTol 1E-5)
-        }
+      model1.transform(datasetWithDenseFeature).select("features", "prediction")
+        .collect().foreach {
+        case Row(features: DenseVector, prediction1: Double) =>
+          val prediction2 =
+            features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
+              model1.intercept
+          assert(prediction1 ~== prediction2 relTol 1E-5)
       }
     }
   }
@@ -532,57 +508,49 @@ class LinearRegressionSuite
       val trainer2 = (new LinearRegression).setElasticNetParam(0.3).setRegParam(1.6)
         .setFitIntercept(false).setStandardization(false).setSolver(solver)
 
-      // Normal optimizer is not supported with non-zero elasticnet parameter.
-      if (solver == "normal") {
-        intercept[IllegalArgumentException] {
-            trainer1.fit(datasetWithDenseFeature)
-            trainer2.fit(datasetWithDenseFeature)
-          }
-      } else {
-        val model1 = trainer1.fit(datasetWithDenseFeature)
-        val model2 = trainer2.fit(datasetWithDenseFeature)
+      val model1 = trainer1.fit(datasetWithDenseFeature)
+      val model2 = trainer2.fit(datasetWithDenseFeature)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3,
-             lambda = 1.6, intercept=FALSE ))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                      s0
-           (Intercept)       .
-           as.numeric.d1.V2. 5.643748
-           as.numeric.d1.V3. 4.331519
-         */
-        val interceptR1 = 0.0
-        val coefficientsR1 = Vectors.dense(5.643748, 4.331519)
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3,
+           lambda = 1.6, intercept=FALSE ))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                    s0
+         (Intercept)       .
+         as.numeric.d1.V2. 5.643748
+         as.numeric.d1.V3. 4.331519
+       */
+      val interceptR1 = 0.0
+      val coefficientsR1 = Vectors.dense(5.643748, 4.331519)
 
-        assert(model1.intercept ~== interceptR1 absTol 1E-2)
-        assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
+      assert(model1.intercept ~== interceptR1 absTol 1E-2)
+      assert(model1.coefficients ~= coefficientsR1 relTol 1E-2)
 
-        /*
-           coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3,
-             lambda = 1.6, intercept=FALSE, standardize=FALSE ))
-           > coefficients
-            3 x 1 sparse Matrix of class "dgCMatrix"
-                                     s0
-           (Intercept)         .
-           as.numeric.d1.V2. 5.455902
-           as.numeric.d1.V3. 4.312266
+      /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.3,
+           lambda = 1.6, intercept=FALSE, standardize=FALSE ))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                   s0
+         (Intercept)         .
+         as.numeric.d1.V2. 5.455902
+         as.numeric.d1.V3. 4.312266
 
-         */
-        val interceptR2 = 0.0
-        val coefficientsR2 = Vectors.dense(5.455902, 4.312266)
+       */
+      val interceptR2 = 0.0
+      val coefficientsR2 = Vectors.dense(5.455902, 4.312266)
 
-        assert(model2.intercept ~== interceptR2 absTol 1E-2)
-        assert(model2.coefficients ~= coefficientsR2 relTol 1E-2)
+      assert(model2.intercept ~== interceptR2 absTol 1E-2)
+      assert(model2.coefficients ~= coefficientsR2 relTol 1E-2)
 
-        model1.transform(datasetWithDenseFeature).select("features", "prediction")
-          .collect().foreach {
-          case Row(features: DenseVector, prediction1: Double) =>
-            val prediction2 =
-              features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
-                model1.intercept
-            assert(prediction1 ~== prediction2 relTol 1E-5)
-        }
+      model1.transform(datasetWithDenseFeature).select("features", "prediction")
+        .collect().foreach {
+        case Row(features: DenseVector, prediction1: Double) =>
+          val prediction2 =
+            features(0) * model1.coefficients(0) + features(1) * model1.coefficients(1) +
+              model1.intercept
+          assert(prediction1 ~== prediction2 relTol 1E-5)
       }
     }
   }
@@ -757,8 +725,9 @@ class LinearRegressionSuite
       assert(model.summary.meanAbsoluteError ~== 0.07961668 relTol 1E-4)
       assert(model.summary.r2 ~== 0.9998737 relTol 1E-4)
 
-      // Normal solver uses "WeightedLeastSquares". This algorithm does not generate
-      // objective history because it does not run through iterations.
+      // Normal solver uses "WeightedLeastSquares". When no regularization is applied,
+      // this algorithm uses a direct solver and does not generate an objective history because
+      // it does not run through iterations.
       if (solver == "l-bfgs") {
         // Objective function should be monotonically decreasing for linear regression
         assert(

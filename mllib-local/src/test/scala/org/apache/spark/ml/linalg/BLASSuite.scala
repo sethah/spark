@@ -422,4 +422,8 @@ class BLASSuite extends SparkMLFunSuite {
     assert(dATT.multiply(sx) ~== expected absTol 1e-15)
     assert(sATT.multiply(sx) ~== expected absTol 1e-15)
   }
+
+  test("spmv") {
+
+  }
 }
