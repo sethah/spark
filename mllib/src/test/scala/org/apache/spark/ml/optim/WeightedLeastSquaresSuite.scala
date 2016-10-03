@@ -20,6 +20,7 @@ package org.apache.spark.ml.optim
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.feature.{LabeledPoint, Instance}
 import org.apache.spark.ml.linalg.{BLAS, Vectors}
+import org.apache.spark.ml.regression.LinearRegression
 import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.util.{LinearDataGenerator, MLlibTestSparkContext}
 import org.apache.spark.rdd.RDD
@@ -86,7 +87,6 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
       standardizeLabel = false, solver = NormalEquationSolver.Cholesky).fit(singularInstances)
 
     // quasi-newton solvers should handle singular input and make correct predictions
-    // TODO: should we test with regularization? I don't think so
     for (fitIntercept <- Seq(false, true)) {
       for (standardization <- Seq(false, true)) {
         val singularModel = new WeightedLeastSquares(fitIntercept, regParam = 0.0,
@@ -121,17 +121,23 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
       Vectors.dense(0.0, -3.727121, 3.009983),
       Vectors.dense(18.08, 6.08, -0.60))
 
+    import NormalEquationSolver.{Auto, Cholesky, QuasiNewton}
+
     var idx = 0
     for (fitIntercept <- Seq(false, true)) {
       for (standardization <- Seq(false, true)) {
-        val wls = new WeightedLeastSquares(fitIntercept, regParam = 0.0, elasticNetParam = 0.0,
-          standardizeFeatures = standardization, standardizeLabel = standardization).fit(instances)
-        val actual = Vectors.dense(wls.intercept, wls.coefficients(0), wls.coefficients(1))
-        assert(actual ~== expected(idx) absTol 1e-4)
+        for (solver <- Seq(Auto, Cholesky, QuasiNewton)) {
+          val wls = new WeightedLeastSquares(fitIntercept, regParam = 0.0, elasticNetParam = 0.0,
+            standardizeFeatures = standardization, standardizeLabel = standardization,
+            solver = solver).fit(instances)
+          val actual = Vectors.dense(wls.intercept, wls.coefficients(0), wls.coefficients(1))
+          assert(actual ~== expected(idx) absTol 1e-4)
+        }
       }
       idx += 1
     }
   }
+
 
   test("WLS against lm when label is constant and no regularization") {
     /*
@@ -151,6 +157,7 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
       Vectors.dense(0.0, -9.221298, 3.394343),
       Vectors.dense(17.0, 0.0, 0.0))
 
+    // TODO: add other solvers
     var idx = 0
     for (fitIntercept <- Seq(false, true)) {
       for (standardization <- Seq(false, true)) {
@@ -167,7 +174,6 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
   test("WLS with regularization when label is constant") {
     // if regParam is non-zero and standardization is true, the problem is ill-defined and
     // an exception is thrown.
-    // TODO: What about when regularization is zero?
     for (solver <- Seq("auto", "cholesky", "quasi-newton")) {
       val wls = new WeightedLeastSquares(
         fitIntercept = false, regParam = 0.1, elasticNetParam = 0.0, standardizeFeatures = true,
@@ -176,6 +182,60 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
         wls.fit(instancesConstLabel)
       }
     }
+  }
+
+  test("WLS against glmnet with constant features") {
+    /*
+       R code:
+
+       A <- matrix(c(1, 1, 1, 1, 5, 7, 11, 13), 4, 2)
+       b <- c(17, 19, 23, 29)
+       w <- c(1, 2, 3, 4)
+     */
+    val constantFeatures = sc.parallelize(Seq(
+      Instance(17.0, 1.0, Vectors.dense(1.0, 5.0).toSparse),
+      Instance(19.0, 2.0, Vectors.dense(1.0, 7.0)),
+      Instance(23.0, 3.0, Vectors.dense(1.0, 11.0)),
+      Instance(29.0, 4.0, Vectors.dense(1.0, 13.0))
+    ), 2)
+
+    // Cholesky solver does not handle singular input with no regularization
+    for (fitIntercept <- Seq(false, true);
+         standardization <- Seq(false, true)) {
+      val wls = new WeightedLeastSquares(fitIntercept, 0.0, 0.0, standardization, standardization,
+        NormalEquationSolver.Cholesky)
+      intercept[IllegalArgumentException] {
+        wls.fit(constantFeatures)
+      }
+    }
+    // TODO: assertions vs glmnet
+    for (fitIntercept <- Seq(false, true);
+         standardization <- Seq(false, true)) {
+      val wls = new WeightedLeastSquares(fitIntercept, 0.5, 0.0, standardization, standardization,
+        NormalEquationSolver.Cholesky)
+      val model = wls.fit(constantFeatures)
+      println("results", model.coefficients, model.intercept)
+    }
+    /*
+       for (intercept in c(FALSE, TRUE)) {
+         for (standardize in c(FALSE, TRUE)) {
+           for (regParams in list(c(0.0, 0.0), c(0.5, 0.0), c(0.5, 0.5), c(0.5, 1.0))) {
+               model <- glmnet(A, b, weights=w, intercept=intercept, lambda=regParams[1],
+                               standardize=standardize, alpha=regParams[2], thresh=1E-14)
+               print(as.vector(coef(model)))
+           }
+         }
+       }
+     */
+    //    for (fitIntercept <- Seq(false, true);
+    //         standardization <- Seq(false, true);
+    //         (lambda, alpha) <- Seq((0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.5, 1.0))) {
+    //      val wls = new WeightedLeastSquares(fitIntercept, lambda, alpha, standardization,
+    //        standardization, NormalEquationSolver.QuasiNewton)
+    //      val model = wls.fit(constantFeatures)
+    //      println("results", model.coefficients, model.intercept, standardization, fitIntercept)
+    //    }
+
   }
 
   test("WLS against glmnet with L1") {

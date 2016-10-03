@@ -91,18 +91,55 @@ private[ml] class WeightedLeastSquares(
     val wSum = summary.wSum
     val bBar = summary.bBar
     val bbBar = summary.bbBar
-    val bStd = summary.bStd
+    val rawBStd = summary.bStd
     val aBar = summary.aBar
     val aStd = summary.aStd
     val abBar = summary.abBar
     val aaBar = summary.aaBar
     val aaValues = aaBar.values
     val numFeatures = abBar.size
+    val bStd = if (rawBStd == 0.0) math.abs(bBar) else rawBStd
 
-    println("bstd", bStd)
-    println(aStd)
+    val aBarStd = aBar.values.clone()
+    var j = 0
+    while (j < numFeatures) {
+      if (aStd(j) == 0.0) {
+        aBarStd(j) = 0.0
+      } else {
+        aBarStd(j) /= aStd(j)
+      }
+      j += 1
+    }
 
-    if (bStd == 0) {
+    val abBarStd = abBar.values.clone()
+    j = 0
+    while (j < numFeatures) {
+      if (aStd(j) == 0.0) {
+        abBarStd(j) = 0.0
+      } else {
+        abBarStd(j) /= (aStd(j) * bStd)
+      }
+      j += 1
+    }
+
+    val aaBarStd = aaBar.values.clone()
+    j = 0
+    var kk = 0
+    while (j < numFeatures) {
+      var i = 0
+      while (i <= j) {
+        if (aStd(j) == 0.0 || aStd(i) == 0.0) {
+          aaBarStd(kk) = 0.0
+        } else {
+          aaBarStd(kk) /= (aStd(i) * aStd(j))
+        }
+        kk += 1
+        i += 1
+      }
+      j += 1
+    }
+
+    if (rawBStd == 0) {
       if (fitIntercept) {
         logWarning(s"The standard deviation of the label is zero, so the coefficients will be " +
           s"zeros and the intercept will be the mean of the label; as a result, " +
@@ -120,45 +157,41 @@ private[ml] class WeightedLeastSquares(
       }
     }
 
-    val abBarStd = summary.abBarStd
-    val aaBarStd = summary.aaBarStd
-    val aBarStd = summary.aBarStd
-    val aaBarStdValues = aaBarStd.values
-    val bBarStd = bBar / bStd
-    val bbBarStd = bbBar / (bStd * bStd)
-    println(abBarStd, aaBarStd, aBarStd)
+    val aaBarStdValues = aaBarStd
+    val bBarStd = if (bStd != 0.0) bBar / bStd else 0.0
+    val bbBarStd = if (bStd != 0.0) bbBar / (bStd * bStd) else 0.0
 
-    val effectiveRegParam = regParam
+    val effectiveRegParam = if (bStd != 0.0) regParam / bStd else 0.0
     val effectiveL1RegParam = elasticNetParam * effectiveRegParam
     val effectiveL2RegParam = (1.0 - elasticNetParam) * effectiveRegParam
 
-    // add regularization to diagonals
+    // remove regularization to diagonals
     var i = 0
-    var j = 2
+    j = 2
     while (i < triK) {
       var lambda = effectiveL2RegParam
-      if (standardizeFeatures) {
+      if (!standardizeFeatures) {
         val std = aStd(j - 2)
-        lambda *= (std * std)
+        if (std != 0.0) lambda /= (std * std)
       }
-      if (standardizeLabel && bStd != 0.0) {
-        lambda /= bStd
+      if (!standardizeLabel) {
+        lambda *= bStd
       }
-      println(lambda)
-      aaValues(i) += lambda
+      println(lambda, effectiveL2RegParam)
+      aaBarStdValues(i) += lambda
       i += j
       j += 1
     }
 
     val aa = if (fitIntercept) {
-      new DenseVector(Array.concat(aaBar.values, aBar.values, Array(1.0)))
+      new DenseVector(Array.concat(aaBarStd, aBarStd, Array(1.0)))
     } else {
-      aaBar
+      new DenseVector(aaBarStd)
     }
     val ab = if (fitIntercept) {
-      new DenseVector(Array.concat(abBar.values, Array(bBar)))
+      new DenseVector(Array.concat(abBarStd, Array(bBar / bStd)))
     } else {
-      abBar
+      new DenseVector(abBarStd)
     }
 
     // TODO
@@ -174,9 +207,9 @@ private[ml] class WeightedLeastSquares(
               0.0
             } else {
               if (standardizeFeatures) {
-                effectiveL1RegParam * aStd(index)
+                effectiveL1RegParam
               } else {
-                effectiveL1RegParam // aStd(index)
+                effectiveL1RegParam / aStd(index)
               }
             }
           }
@@ -187,25 +220,24 @@ private[ml] class WeightedLeastSquares(
       // TODO: where to define these
       val maxIter = 100
       val tol = 1e-6
-      println("QN Solver")
       new QuasiNewtonSolver(standardizeFeatures, standardizeLabel, fitIntercept,
         maxIter, tol, effectiveL1RegFun)
     } else {
-      println("Cholesky solver")
       new CholeskySolver(fitIntercept)
     }
 
-    val solution = _solver.solve(bBar, bbBar, ab, aa, aBar)
-    val intercept = solution.intercept
+    val solution = _solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+    val intercept = solution.intercept * bStd
     val coefficients = solution.coefficients
+    println(coefficients, "coefs")
 
-//    var ii = 0
-//    val coefficientArray = coefficients.toArray
-//    val len = coefficientArray.length
-//    while (ii < len) {
-//      coefficientArray(ii) *= { if (aStd(ii) != 0.0) bStd / aStd(ii) else 0.0 }
-//      ii += 1
-//    }
+    var ii = 0
+    val coefficientArray = coefficients.toArray
+    val len = coefficientArray.length
+    while (ii < len) {
+      coefficientArray(ii) *= { if (aStd(ii) != 0.0) bStd / aStd(ii) else 0.0 }
+      ii += 1
+    }
 
     // aaInv is a packed upper triangular matrix, here we get all elements on diagonal
     val diagInvAtWA = solution.aaInv.map { inv =>
@@ -327,7 +359,12 @@ private[ml] object WeightedLeastSquares {
       val outputValues = output.toArray
       var j = 0
       while (j < k) {
-        outputValues(j) /= (wSum * math.sqrt(aVar(j)))
+        val aVarJ = aVar(j)
+        if (aVarJ != 0.0) {
+          outputValues(j) /= (wSum * math.sqrt(aVar(j)))
+        } else {
+          outputValues(j) = 0.0
+        }
         j += 1
       }
       output
@@ -359,7 +396,12 @@ private[ml] object WeightedLeastSquares {
       val outputValues = output.toArray
       var j = 0
       while (j < k) {
-        outputValues(j) /= (wSum * math.sqrt(aVar(j)) * bStd)
+        val aVarJ = aVar(j)
+        if (aVarJ != 0.0 && bStd != 0.0) {
+          outputValues(j) /= (wSum * math.sqrt(aVar(j)) * bStd)
+        } else {
+          outputValues(j) = 0.0
+        }
         j += 1
       }
       output
@@ -382,7 +424,13 @@ private[ml] object WeightedLeastSquares {
       while (j < k) {
         var i = 0
         while (i <= j) {
-          outputValues(kk) /= (wSum * math.sqrt(aVar(i) * aVar(j)))
+          val aVarI = aVar(i)
+          val aVarJ = aVar(j)
+          if (aVarI != 0.0 && aVarJ != 0.0) {
+            outputValues(kk) /= (wSum * math.sqrt(aVar(i) * aVar(j)))
+          } else {
+            outputValues(kk) = 0.0
+          }
           kk += 1
           i += 1
         }
