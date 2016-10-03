@@ -151,7 +151,7 @@ private class LocalLinearCostFun(
 //    println(loss1, loss2, coefficients)
     val xxb = Vectors.zeros(numFeatures).toDense
 //    println("aabar", aa)
-    BLAS.dspmv("U", numFeatures, 1.0, aa, sparkCoefficients, 1.0, xxb)
+    BLAS.dspmv(numFeatures, 1.0, aa, sparkCoefficients, xxb)
 //    println("xxb", xxb)
     val loss3 = BLAS.dot(sparkCoefficients, xxb)
     val loss = 0.5 * (loss1 - loss2 + loss3)

@@ -78,6 +78,9 @@ private[ml] class WeightedLeastSquares(
   if (regParam == 0.0) {
     logWarning("regParam is zero, which might cause numerical instability and overfitting.")
   }
+  require(elasticNetParam >= 0.0, s"elasticNetParam cannot be negative: $elasticNetParam")
+  require(supportedSolvers.contains(solver), s"WeightedLeastSquares does not support solver" +
+    s" $solver. Solver must be one of ${supportedSolvers.mkString(", ")}")
 
   /**
    * Creates a [[WeightedLeastSquaresModel]] from an RDD of [[Instance]]s.
@@ -91,47 +94,51 @@ private[ml] class WeightedLeastSquares(
     val wSum = summary.wSum
     val bBar = summary.bBar
     val bbBar = summary.bbBar
-    val rawBStd = summary.bStd
     val aBar = summary.aBar
     val aStd = summary.aStd
     val abBar = summary.abBar
     val aaBar = summary.aaBar
-    val aaValues = aaBar.values
+    val aaBarValues = aaBar.values
     val numFeatures = abBar.size
+    val rawBStd = summary.bStd
     val bStd = if (rawBStd == 0.0) math.abs(bBar) else rawBStd
 
-    val aBarStd = aBar.values.clone()
+    println(aStd, summary.aVar)
+
+    val aBarStd = new Array[Double](numFeatures)
     var j = 0
     while (j < numFeatures) {
       if (aStd(j) == 0.0) {
         aBarStd(j) = 0.0
       } else {
-        aBarStd(j) /= aStd(j)
+        aBarStd(j) = aBar(j) / aStd(j)
       }
       j += 1
     }
 
-    val abBarStd = abBar.values.clone()
+    val abBarStd = new Array[Double](numFeatures)
     j = 0
     while (j < numFeatures) {
       if (aStd(j) == 0.0) {
         abBarStd(j) = 0.0
       } else {
-        abBarStd(j) /= (aStd(j) * bStd)
+        abBarStd(j) = abBar(j) / (aStd(j) * bStd)
       }
       j += 1
     }
 
-    val aaBarStd = aaBar.values.clone()
+    val aaBarStd = new Array[Double](triK)
     j = 0
     var kk = 0
     while (j < numFeatures) {
+      val aStdJ = aStd(j)
       var i = 0
       while (i <= j) {
-        if (aStd(j) == 0.0 || aStd(i) == 0.0) {
+        val aStdI = aStd(i)
+        if (aStdJ == 0.0 || aStdI == 0.0) {
           aaBarStd(kk) = 0.0
         } else {
-          aaBarStd(kk) /= (aStd(i) * aStd(j))
+          aaBarStd(kk) = aaBarValues(kk) / (aStdI * aStdJ)
         }
         kk += 1
         i += 1
@@ -158,14 +165,14 @@ private[ml] class WeightedLeastSquares(
     }
 
     val aaBarStdValues = aaBarStd
-    val bBarStd = if (bStd != 0.0) bBar / bStd else 0.0
-    val bbBarStd = if (bStd != 0.0) bbBar / (bStd * bStd) else 0.0
+    val bBarStd = bBar / bStd
+    val bbBarStd = bbBar / (bStd * bStd)
 
-    val effectiveRegParam = if (bStd != 0.0) regParam / bStd else 0.0
+    val effectiveRegParam = regParam / bStd
     val effectiveL1RegParam = elasticNetParam * effectiveRegParam
     val effectiveL2RegParam = (1.0 - elasticNetParam) * effectiveRegParam
 
-    // remove regularization to diagonals
+    // add regularization to diagonals
     var i = 0
     j = 2
     while (i < triK) {
@@ -177,7 +184,6 @@ private[ml] class WeightedLeastSquares(
       if (!standardizeLabel) {
         lambda *= bStd
       }
-      println(lambda, effectiveL2RegParam)
       aaBarStdValues(i) += lambda
       i += j
       j += 1
@@ -188,15 +194,14 @@ private[ml] class WeightedLeastSquares(
     } else {
       new DenseVector(aaBarStd)
     }
+    println("aastd", aa)
     val ab = if (fitIntercept) {
-      new DenseVector(Array.concat(abBarStd, Array(bBar / bStd)))
+      new DenseVector(Array.concat(abBarStd, Array(bBarStd)))
     } else {
       new DenseVector(abBarStd)
     }
 
-    // TODO
-    val positiveDefinite = true
-
+    // TODO: should we detect if the matrix is singular and run QN instead of Cholesky?
     val _solver = if ((solver == NormalEquationSolver.Auto && elasticNetParam != 0.0) ||
       (solver == NormalEquationSolver.QuasiNewton)) {
       val effectiveL1RegFun: Option[(Int) => Double] = if (effectiveL1RegParam != 0.0) {
@@ -229,7 +234,6 @@ private[ml] class WeightedLeastSquares(
     val solution = _solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
     val intercept = solution.intercept * bStd
     val coefficients = solution.coefficients
-    println(coefficients, "coefs")
 
     var ii = 0
     val coefficientArray = coefficients.toArray
@@ -242,10 +246,14 @@ private[ml] class WeightedLeastSquares(
     // aaInv is a packed upper triangular matrix, here we get all elements on diagonal
     val diagInvAtWA = solution.aaInv.map { inv =>
       val values = inv.values
+      println(inv)
+      println("a;ldjsfal;kfjasdlk;fj", k, aStd.size)
       new DenseVector((1 to k).map { i =>
-        values(i + (i - 1) * i / 2 - 1) / wSum
+        val multiplier = if (i == k) 1.0 else aStd(i - 1) * aStd(i - 1)
+        values(i + (i - 1) * i / 2 - 1) / (wSum * multiplier)
       }.toArray)
     }.getOrElse(new DenseVector(Array(0D)))
+    println(diagInvAtWA)
 
     new WeightedLeastSquaresModel(coefficients, intercept, diagInvAtWA,
       solution.objectiveHistory.getOrElse(Array(0D)))
@@ -259,6 +267,9 @@ private[ml] object WeightedLeastSquares {
    * only supports the number of features is no more than 4096.
    */
   val MAX_NUM_FEATURES: Int = 4096
+
+  val supportedSolvers = Array(NormalEquationSolver.Auto, NormalEquationSolver.Cholesky,
+    NormalEquationSolver.QuasiNewton)
 
   /**
    * Aggregator to provide necessary summary statistics for solving [[WeightedLeastSquares]].
@@ -354,33 +365,20 @@ private[ml] object WeightedLeastSquares {
       output
     }
 
-    def aBarStd: DenseVector = {
-      val output = aSum.copy
-      val outputValues = output.toArray
-      var j = 0
-      while (j < k) {
-        val aVarJ = aVar(j)
-        if (aVarJ != 0.0) {
-          outputValues(j) /= (wSum * math.sqrt(aVar(j)))
-        } else {
-          outputValues(j) = 0.0
-        }
-        j += 1
-      }
-      output
-    }
-
     /**
      * Weighted mean of labels.
      */
     def bBar: Double = bSum / wSum
 
     /**
+     * Weighted mean of squared labels.
+     */
+    def bbBar: Double = bbSum / wSum
+
+    /**
      * Weighted population standard deviation of labels.
      */
     def bStd: Double = math.sqrt(bbSum / wSum - bBar * bBar)
-
-    def bbBar: Double = bbSum / wSum
 
     /**
      * Weighted mean of (label * features).
@@ -388,22 +386,6 @@ private[ml] object WeightedLeastSquares {
     def abBar: DenseVector = {
       val output = abSum.copy
       BLAS.scal(1.0 / wSum, output)
-      output
-    }
-
-    def abBarStd: DenseVector = {
-      val output = abSum.copy
-      val outputValues = output.toArray
-      var j = 0
-      while (j < k) {
-        val aVarJ = aVar(j)
-        if (aVarJ != 0.0 && bStd != 0.0) {
-          outputValues(j) /= (wSum * math.sqrt(aVar(j)) * bStd)
-        } else {
-          outputValues(j) = 0.0
-        }
-        j += 1
-      }
       output
     }
 
@@ -416,31 +398,8 @@ private[ml] object WeightedLeastSquares {
       output
     }
 
-    def aaBarStd: DenseVector = {
-      val output = aaSum.copy
-      val outputValues = output.toArray
-      var j = 0
-      var kk = 0
-      while (j < k) {
-        var i = 0
-        while (i <= j) {
-          val aVarI = aVar(i)
-          val aVarJ = aVar(j)
-          if (aVarI != 0.0 && aVarJ != 0.0) {
-            outputValues(kk) /= (wSum * math.sqrt(aVar(i) * aVar(j)))
-          } else {
-            outputValues(kk) = 0.0
-          }
-          kk += 1
-          i += 1
-        }
-        j += 1
-      }
-      output
-    }
-
     /**
-     * Weighted population variance of features.
+     * Weighted population standard deviation of features.
      */
     def aStd: DenseVector = {
       val std = Array.ofDim[Double](k)

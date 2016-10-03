@@ -36,12 +36,6 @@ private[spark] object BLAS extends Serializable {
     _f2jBLAS
   }
 
-  // TODO: handle sparse
-  def dspmv(uplo: String, n: Int, alpha: Double, ap: DenseVector, x: DenseVector,
-            beta: Double, y: DenseVector): Unit = {
-    f2jBLAS.dspmv(uplo, n, alpha, ap.values, x.values, 1, beta, y.values, 1)
-  }
-
   /**
    * y += a * x
    */
@@ -247,6 +241,15 @@ private[spark] object BLAS extends Serializable {
    */
   def spr(alpha: Double, v: Vector, U: DenseVector): Unit = {
     spr(alpha, v, U.values)
+  }
+
+  /**
+   * y += alpha * A * x
+   *
+   * @param A The upper triangular part of A in a [[DenseVector]] (column major)
+   */
+  def dspmv(n: Int, alpha: Double, A: DenseVector, x: DenseVector, y: DenseVector): Unit = {
+    f2jBLAS.dspmv("U", n, alpha, A.values, x.values, 1, 1.0, y.values, 1)
   }
 
   /**

@@ -50,7 +50,6 @@ private[ml] trait NormalEquationSolver {
       abBar: DenseVector,
       aaBar: DenseVector,
       aBar: DenseVector): NormalEquationSolution
-
 }
 
 private[ml] object NormalEquationSolver {
@@ -69,11 +68,9 @@ private[ml] class CholeskySolver(val fitIntercept: Boolean) extends NormalEquati
       aBar: DenseVector): NormalEquationSolution = {
     val k = abBar.size
     val x = CholeskyDecomposition.solve(aaBar.values, abBar.values)
-
     val aaInv = CholeskyDecomposition.inverse(aaBar.values, k)
 
     new NormalEquationSolution(fitIntercept, new DenseVector(x), Some(new DenseVector(aaInv)), None)
-
   }
 }
 
@@ -99,8 +96,8 @@ private[ml] class QuasiNewtonSolver(
       initialCoefficientsWithIntercept.toArray(numFeaturesPlusIntercept - 1) = bBar
     }
 
-    val costFun = new NormalEquationCostFun(bBar, bbBar,
-      abBar, aaBar, aBar, fitIntercept, numFeatures)
+    val costFun = new NormalEquationCostFun(bBar, bbBar, abBar, aaBar, aBar, fitIntercept,
+      numFeatures)
     val optimizer = l1RegFunc.map { func =>
       new BreezeOWLQN[Int, BDV[Double]](maxIter, 10, func, tol)
     }.getOrElse(new BreezeLBFGS[BDV[Double]](maxIter, 10, tol))
@@ -132,14 +129,14 @@ private[ml] class QuasiNewtonSolver(
     override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
       val coef = Vectors.fromBreeze(coefficients).toDense
       if (fitIntercept) {
-        // TODO: check this
+        // TODO: use while loop here?
         val coefArray = coef.toArray
         val interceptIndex = numFeaturesPlusIntercept - 1
         val coefWithoutIntercept = coefArray.init
         coefArray(interceptIndex) = bBar - BLAS.dot(Vectors.dense(coefWithoutIntercept), aBar)
       }
       val xxb = Vectors.zeros(numFeaturesPlusIntercept).toDense
-      BLAS.dspmv("U", numFeaturesPlusIntercept, 1.0, aa, coef, 1.0, xxb)
+      BLAS.dspmv(numFeaturesPlusIntercept, 1.0, aa, coef, xxb)
       // loss = 1/2 (Y^T W Y - 2 beta^T X^T W Y + beta^T X^T W X beta)
       val loss = 0.5 * bbBar - BLAS.dot(ab, coef) + 0.5 * BLAS.dot(coef, xxb)
       // -gradient = X^T W X beta - X^T W Y

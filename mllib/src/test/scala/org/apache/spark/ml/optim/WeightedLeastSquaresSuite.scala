@@ -66,6 +66,24 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
     ), 2)
   }
 
+  test("diagonal inverse of AtWA") {
+    /*
+      A <- matrix(c(0, 1, 2, 3, 5, 7, 11, 13), 4, 2)
+      w <- c(1, 2, 3, 4)
+      W <- Diagonal(length(w), w)
+      A.intercept <- cbind(A, rep.int(1, length(w)))
+      AtA <- t(A.intercept) %*% W %*% A.intercept
+      inv <- solve(AtA)
+      print(diag(inv))
+      [1]  4.02  0.50 12.02
+     */
+    val expected = Vectors.dense(4.02, 0.50, 12.02)
+    val wls = new WeightedLeastSquares(fitIntercept = true, 0.0, 0.0, standardizeFeatures = true,
+      standardizeLabel = true, NormalEquationSolver.Cholesky)
+    val wlsModel = wls.fit(instances)
+    assert(expected ~== wlsModel.diagInvAtWA relTol 1e-4)
+  }
+
   test("two collinear features ") {
     val singularInstances = sc.parallelize(Seq(
       Instance(1.0, 1.0, Vectors.dense(1.0, 2.0)),
@@ -99,8 +117,6 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
         }
       }
     }
-
-
   }
 
   test("WLS against lm") {
@@ -238,7 +254,7 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
 
   }
 
-  test("WLS against glmnet with L1") {
+  test("WLS against glmnet with L1 regularization") {
     /*
 
        for (intercept in c(FALSE, TRUE)) {
