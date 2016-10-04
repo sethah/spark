@@ -20,6 +20,7 @@ package org.apache.spark.ml.optim
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.feature.{LabeledPoint, Instance}
 import org.apache.spark.ml.linalg.{BLAS, Vectors}
+import org.apache.spark.ml.optim.WeightedLeastSquares.Aggregator
 import org.apache.spark.ml.regression.LinearRegression
 import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.util.{LinearDataGenerator, MLlibTestSparkContext}
@@ -137,12 +138,10 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
       Vectors.dense(0.0, -3.727121, 3.009983),
       Vectors.dense(18.08, 6.08, -0.60))
 
-    import NormalEquationSolver.{Auto, Cholesky, QuasiNewton}
-
     var idx = 0
     for (fitIntercept <- Seq(false, true)) {
       for (standardization <- Seq(false, true)) {
-        for (solver <- Seq(Auto, Cholesky, QuasiNewton)) {
+        for (solver <- WeightedLeastSquares.supportedSolvers) {
           val wls = new WeightedLeastSquares(fitIntercept, regParam = 0.0, elasticNetParam = 0.0,
             standardizeFeatures = standardization, standardizeLabel = standardization,
             solver = solver).fit(instances)
@@ -173,15 +172,16 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
       Vectors.dense(0.0, -9.221298, 3.394343),
       Vectors.dense(17.0, 0.0, 0.0))
 
-    // TODO: add other solvers
     var idx = 0
     for (fitIntercept <- Seq(false, true)) {
       for (standardization <- Seq(false, true)) {
-        val wls = new WeightedLeastSquares(fitIntercept, regParam = 0.0, elasticNetParam = 0.0,
-          standardizeFeatures = standardization,
-          standardizeLabel = standardization).fit(instancesConstLabel)
-        val actual = Vectors.dense(wls.intercept, wls.coefficients(0), wls.coefficients(1))
-        assert(actual ~== expected(idx) absTol 1e-4)
+        for (solver <- WeightedLeastSquares.supportedSolvers) {
+          val wls = new WeightedLeastSquares(fitIntercept, regParam = 0.0, elasticNetParam = 0.0,
+            standardizeFeatures = standardization,
+            standardizeLabel = standardization, solver = solver).fit(instancesConstLabel)
+          val actual = Vectors.dense(wls.intercept, wls.coefficients(0), wls.coefficients(1))
+          assert(actual ~== expected(idx) absTol 1e-4)
+        }
       }
       idx += 1
     }
@@ -209,7 +209,7 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
        w <- c(1, 2, 3, 4)
      */
     val constantFeatures = sc.parallelize(Seq(
-      Instance(17.0, 1.0, Vectors.dense(1.0, 5.0).toSparse),
+      Instance(17.0, 1.0, Vectors.dense(1.0, 5.0)),
       Instance(19.0, 2.0, Vectors.dense(1.0, 7.0)),
       Instance(23.0, 3.0, Vectors.dense(1.0, 11.0)),
       Instance(29.0, 4.0, Vectors.dense(1.0, 13.0))
@@ -224,39 +224,70 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
         wls.fit(constantFeatures)
       }
     }
-    // TODO: assertions vs glmnet
-    for (fitIntercept <- Seq(false, true);
-         standardization <- Seq(false, true)) {
-      val wls = new WeightedLeastSquares(fitIntercept, 0.5, 0.0, standardization, standardization,
-        NormalEquationSolver.Cholesky)
-      val model = wls.fit(constantFeatures)
-      println("results", model.coefficients, model.intercept)
-    }
+
+    // should not fail when regularization is added
+    new WeightedLeastSquares(fitIntercept = true, 0.5, 0.0, standardizeFeatures = true,
+      standardizeLabel = true, NormalEquationSolver.Cholesky)
+
     /*
        for (intercept in c(FALSE, TRUE)) {
          for (standardize in c(FALSE, TRUE)) {
            for (regParams in list(c(0.0, 0.0), c(0.5, 0.0), c(0.5, 0.5), c(0.5, 1.0))) {
-               model <- glmnet(A, b, weights=w, intercept=intercept, lambda=regParams[1],
-                               standardize=standardize, alpha=regParams[2], thresh=1E-14)
-               print(as.vector(coef(model)))
+             model <- glmnet(A, b, weights=w, intercept=intercept, lambda=regParams[1],
+                             standardize=standardize, alpha=regParams[2], thresh=1E-14)
+             print(as.vector(coef(model)))
            }
          }
        }
+       [1] 0.000000 0.000000 2.253012
+      [1] 0.000000 0.000000 2.250857
+      [1] 0.000000 0.000000 2.249784
+      [1] 0.000000 0.000000 2.248709
+      [1] 0.000000 0.000000 2.253012
+      [1] 0.000000 0.000000 2.235802
+      [1] 0.000000 0.000000 2.238297
+      [1] 0.000000 0.000000 2.240811
+      [1] 8.218905 0.000000 1.517413
+      [1] 8.434286 0.000000 1.496703
+      [1] 8.648497 0.000000 1.476106
+      [1] 8.865672 0.000000 1.455224
+      [1] 8.218905 0.000000 1.517413
+      [1] 9.798771 0.000000 1.365503
+      [1] 9.919095 0.000000 1.353933
+      [1] 10.052804  0.000000  1.341077
      */
-    //    for (fitIntercept <- Seq(false, true);
-    //         standardization <- Seq(false, true);
-    //         (lambda, alpha) <- Seq((0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.5, 1.0))) {
-    //      val wls = new WeightedLeastSquares(fitIntercept, lambda, alpha, standardization,
-    //        standardization, NormalEquationSolver.QuasiNewton)
-    //      val model = wls.fit(constantFeatures)
-    //      println("results", model.coefficients, model.intercept, standardization, fitIntercept)
-    //    }
-
+    val expectedQuasiNewton = Seq(
+      Vectors.dense(0.000000, 0.000000, 2.253012),
+      Vectors.dense(0.000000, 0.000000, 2.250857),
+      Vectors.dense(0.000000, 0.000000, 2.249784),
+      Vectors.dense(0.000000, 0.000000, 2.248709),
+      Vectors.dense(0.000000, 0.000000, 2.253012),
+      Vectors.dense(0.000000, 0.000000, 2.235802),
+      Vectors.dense(0.000000, 0.000000, 2.238297),
+      Vectors.dense(0.000000, 0.000000, 2.240811),
+      Vectors.dense(8.218905, 0.000000, 1.517413),
+      Vectors.dense(8.434286, 0.000000, 1.496703),
+      Vectors.dense(8.648497, 0.000000, 1.476106),
+      Vectors.dense(8.865672, 0.000000, 1.455224),
+      Vectors.dense(8.218905, 0.000000, 1.517413),
+      Vectors.dense(9.798771, 0.000000, 1.365503),
+      Vectors.dense(9.919095, 0.000000, 1.353933),
+      Vectors.dense(10.052804, 0.000000, 1.341077))
+    var idx = 0
+    for (fitIntercept <- Seq(false, true);
+         standardization <- Seq(false, true);
+         (lambda, alpha) <- Seq((0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.5, 1.0))) {
+      val wls = new WeightedLeastSquares(fitIntercept, lambda, alpha, standardization, true,
+        NormalEquationSolver.QuasiNewton)
+      val model = wls.fit(constantFeatures)
+      val actual = Vectors.dense(model.intercept, model.coefficients(0), model.coefficients(1))
+      assert(actual ~== expectedQuasiNewton(idx) absTol 1e-6)
+      idx += 1
+    }
   }
 
   test("WLS against glmnet with L1 regularization") {
     /*
-
        for (intercept in c(FALSE, TRUE)) {
          for (lambda in c(0.1, 0.5, 1.0)) {
            for (standardize in c(FALSE, TRUE)) {
