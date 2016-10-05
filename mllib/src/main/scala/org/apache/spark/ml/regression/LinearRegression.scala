@@ -202,7 +202,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
 
       val optimizer = new WeightedLeastSquares($(fitIntercept), $(regParam),
         elasticNetParam = $(elasticNetParam), $(standardization), true,
-        solver = NormalEquationSolver.Auto)
+        solver = NormalEquationSolver.Auto, maxIter = $(maxIter), tol = $(tol))
       val model = optimizer.fit(instances)
       // When it is trained by WeightedLeastSquares, training summary does not
       // attached returned model.
@@ -244,7 +244,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     val yMean = ySummarizer.mean(0)
     val rawYStd = math.sqrt(ySummarizer.variance(0))
     if (rawYStd == 0.0) {
-      if ($(fitIntercept) || yMean==0.0) {
+      if ($(fitIntercept) || yMean == 0.0) {
         // If the rawYStd is zero and fitIntercept=true, then the intercept is yMean with
         // zero coefficient; as a result, training is not needed.
         // Also, if yMean==0 and rawYStd==0, all the coefficients are zero regardless of
@@ -360,7 +360,6 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
          the original space.
        */
       val rawCoefficients = state.x.toArray.clone()
-      println(rawCoefficients.mkString("&&"))
       var i = 0
       val len = rawCoefficients.length
       while (i < len) {

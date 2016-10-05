@@ -75,8 +75,6 @@ private[ml] class CholeskySolver(val fitIntercept: Boolean) extends NormalEquati
 }
 
 private[ml] class QuasiNewtonSolver(
-    standardizeFeatures: Boolean,
-    standardizeLabel: Boolean,
     val fitIntercept: Boolean,
     maxIter: Int,
     tol: Double,
@@ -110,6 +108,7 @@ private[ml] class QuasiNewtonSolver(
       state = states.next()
       arrayBuilder += state.adjustedValue
     }
+    println("num iters", arrayBuilder.result().length)
     val x = state.x.toArray.clone()
     new NormalEquationSolution(fitIntercept, new DenseVector(x), None, Some(arrayBuilder.result()))
   }
@@ -144,5 +143,10 @@ private[ml] class QuasiNewtonSolver(
       (loss, xxb.asBreeze.toDenseVector)
     }
   }
+}
 
+class SingularMatrixException(message: String, cause: Throwable)
+  extends IllegalArgumentException(message, cause) {
+
+  def this(message: String) = this(message, null)
 }

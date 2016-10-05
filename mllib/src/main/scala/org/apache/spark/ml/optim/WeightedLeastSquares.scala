@@ -72,6 +72,8 @@ private[ml] class WeightedLeastSquares(
     val standardizeFeatures: Boolean,
     val standardizeLabel: Boolean,
     val solver: String = NormalEquationSolver.Auto,
+    val maxIter: Int = 100,
+    val tol: Double = 1e-6,
     val trainStandardized: Boolean = true) extends Logging with Serializable {
   import WeightedLeastSquares._
 
@@ -110,11 +112,16 @@ private[ml] class WeightedLeastSquares(
     val bStd = if (rawBStd == 0.0) math.abs(bBar) else rawBStd
 
     if (rawBStd == 0) {
-      if (fitIntercept) {
-        logWarning(s"The standard deviation of the label is zero, so the coefficients will be " +
-          s"zeros and the intercept will be the mean of the label; as a result, " +
-          s"training is not needed.")
-        val coefficients = new DenseVector(Array.ofDim(k - 1))
+      if (fitIntercept || bBar == 0.0) {
+        if (bBar == 0.0) {
+          logWarning(s"Mean and standard deviation of the label are zero, so the coefficients " +
+            s"and the intercept will all be zero; as a result, training is not needed.")
+        } else {
+          logWarning(s"The standard deviation of the label is zero, so the coefficients will be " +
+            s"zeros and the intercept will be the mean of the label; as a result, " +
+            s"training is not needed.")
+        }
+        val coefficients = new DenseVector(Array.ofDim(numFeatures))
         val intercept = bBar
         val diagInvAtWA = new DenseVector(Array(0D))
         return new WeightedLeastSquaresModel(coefficients, intercept, diagInvAtWA, Array(0D))
@@ -182,7 +189,11 @@ private[ml] class WeightedLeastSquares(
       var lambda = effectiveL2RegParam
       if (!standardizeFeatures) {
         val std = aStd(j - 2)
-        if (std != 0.0) lambda /= (std * std)
+        if (std != 0.0) {
+          lambda /= (std * std)
+        } else {
+          lambda = 0.0
+        }
       }
       if (!standardizeLabel) {
         lambda *= bStd
@@ -191,8 +202,9 @@ private[ml] class WeightedLeastSquares(
       i += j
       j += 1
     }
-    println(aBar, aBarStd.mkString("%"), aStd)
-    println(aaBar.values.mkString("&"))
+//    println(aBar, aBarStd.mkString("%"), aStd)
+//    println(aaBarStd.mkString("&"))
+//    println(abBarStd.mkString(","))
 
     val aa = if (fitIntercept) {
       new DenseVector(Array.concat(aaBarStd, aBarStd, Array(1.0)))
@@ -204,11 +216,10 @@ private[ml] class WeightedLeastSquares(
     } else {
       new DenseVector(abBarStd)
     }
-    println("-------")
-    println(aa)
-    println(ab)
+//    println("-------")
+//    println(aa)
+//    println(ab)
 
-    // TODO: should we detect if the matrix is singular and run QN instead of Cholesky?
     val _solver = if ((solver == NormalEquationSolver.Auto && elasticNetParam != 0.0) ||
       (solver == NormalEquationSolver.QuasiNewton)) {
       val effectiveL1RegFun: Option[(Int) => Double] = if (effectiveL1RegParam != 0.0) {
@@ -221,7 +232,7 @@ private[ml] class WeightedLeastSquares(
               if (standardizeFeatures) {
                 effectiveL1RegParam
               } else {
-                effectiveL1RegParam / aStd(index)
+                if (aStd(index) != 0.0) effectiveL1RegParam / aStd(index) else 0.0
               }
             }
           }
@@ -229,20 +240,31 @@ private[ml] class WeightedLeastSquares(
       } else {
         None
       }
-      // TODO: where to define these
-      val maxIter = 100
-      val tol = 1e-6
-      new QuasiNewtonSolver(standardizeFeatures, standardizeLabel, fitIntercept,
-        maxIter, tol, effectiveL1RegFun)
+      println("QUASINEWTON!")
+      new QuasiNewtonSolver(fitIntercept, maxIter, tol, effectiveL1RegFun)
     } else {
       println("CHOLESKY")
       new CholeskySolver(fitIntercept)
     }
 
-    val solution = _solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+    val t0 = System.currentTimeMillis()
+    val solution = _solver match {
+      case cholesky: CholeskySolver =>
+        try {
+          _solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+        } catch {
+          case _: SingularMatrixException if solver == NormalEquationSolver.Auto =>
+            val newSolver = new QuasiNewtonSolver(fitIntercept, maxIter, tol, None)
+            newSolver.solve(bbBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+        }
+      case qn: QuasiNewtonSolver =>
+        _solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+    }
+    val t1 = System.currentTimeMillis()
+    println(s"solving time for solver $solver: ${t1 - t0}")
     val intercept = solution.intercept * bStd
     val coefficients = solution.coefficients
-    println("coef", coefficients)
+//    println("coef", coefficients)
 
     var ii = 0
     val coefficientArray = coefficients.toArray
@@ -256,10 +278,11 @@ private[ml] class WeightedLeastSquares(
     val diagInvAtWA = solution.aaInv.map { inv =>
       val values = inv.values
       new DenseVector((1 to k).map { i =>
-        val multiplier = if (i == k) 1.0 else aStd(i - 1) * aStd(i - 1)
+        val multiplier = if (i == k && fitIntercept) 1.0 else aStd(i - 1) * aStd(i - 1)
         values(i + (i - 1) * i / 2 - 1) / (wSum * multiplier)
       }.toArray)
     }.getOrElse(new DenseVector(Array(0D)))
+    println("diag ATA", diagInvAtWA)
 
     new WeightedLeastSquaresModel(coefficients, intercept, diagInvAtWA,
       solution.objectiveHistory.getOrElse(Array(0D)))
@@ -357,8 +380,7 @@ private[ml] class WeightedLeastSquares(
       // TODO: where to define these
       val maxIter = 100
       val tol = 1e-6
-      new QuasiNewtonSolver(standardizeFeatures, standardizeLabel, fitIntercept,
-        maxIter, tol, effectiveL1RegFun)
+      new QuasiNewtonSolver(fitIntercept, maxIter, tol, effectiveL1RegFun)
     } else {
       println("CHOLESKY")
       new CholeskySolver(fitIntercept)
@@ -369,22 +391,14 @@ private[ml] class WeightedLeastSquares(
     val coefficients = solution.coefficients
     println("coef", coefficients)
 
-    var ii = 0
-    val coefficientArray = coefficients.toArray
-    val len = coefficientArray.length
-    while (ii < len) {
-      coefficientArray(ii) *= { if (aStd(ii) != 0.0) bStd / aStd(ii) else 0.0 }
-      ii += 1
-    }
-
     // aaInv is a packed upper triangular matrix, here we get all elements on diagonal
     val diagInvAtWA = solution.aaInv.map { inv =>
       val values = inv.values
       new DenseVector((1 to k).map { i =>
-        val multiplier = if (i == k) 1.0 else aStd(i - 1) * aStd(i - 1)
-        values(i + (i - 1) * i / 2 - 1) / (wSum * multiplier)
+        values(i + (i - 1) * i / 2 - 1) / wSum
       }.toArray)
     }.getOrElse(new DenseVector(Array(0D)))
+    println("diag ATA", diagInvAtWA)
 
     new WeightedLeastSquaresModel(coefficients, intercept, diagInvAtWA,
       solution.objectiveHistory.getOrElse(Array(0D)))
