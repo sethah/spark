@@ -202,14 +202,11 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
 
       val optimizer = new WeightedLeastSquares($(fitIntercept), $(regParam),
         elasticNetParam = $(elasticNetParam), $(standardization), true,
-        solver = NormalEquationSolver.Auto, maxIter = $(maxIter), tol = $(tol))
+        solver = WeightedLeastSquares.Auto, maxIter = $(maxIter), tol = $(tol))
       val model = optimizer.fit(instances)
       // When it is trained by WeightedLeastSquares, training summary does not
       // attached returned model.
       val lrModel = copyValues(new LinearRegressionModel(uid, model.coefficients, model.intercept))
-      // WeightedLeastSquares does not run through iterations. So it does not generate
-      // an objective history.
-      // TODO: change to return objective history and accept maxIter and tol?
       val (summaryModel, predictionColName) = lrModel.findSummaryModelAndPredictionCol()
       val trainingSummary = new LinearRegressionTrainingSummary(
         summaryModel.transform(dataset),

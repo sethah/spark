@@ -71,7 +71,7 @@ private[ml] class WeightedLeastSquares(
     val elasticNetParam: Double,
     val standardizeFeatures: Boolean,
     val standardizeLabel: Boolean,
-    val solver: String = NormalEquationSolver.Auto,
+    val solver: WeightedLeastSquares.Solver = WeightedLeastSquares.Auto,
     val maxIter: Int = 100,
     val tol: Double = 1e-6,
     val trainStandardized: Boolean = true) extends Logging with Serializable {
@@ -220,8 +220,8 @@ private[ml] class WeightedLeastSquares(
 //    println(aa)
 //    println(ab)
 
-    val _solver = if ((solver == NormalEquationSolver.Auto && elasticNetParam != 0.0) ||
-      (solver == NormalEquationSolver.QuasiNewton)) {
+    val _solver = if ((solver == WeightedLeastSquares.Auto && elasticNetParam != 0.0) ||
+      (solver == WeightedLeastSquares.QuasiNewton)) {
       val effectiveL1RegFun: Option[(Int) => Double] = if (effectiveL1RegParam != 0.0) {
         Some(
           (index: Int) => {
@@ -253,7 +253,7 @@ private[ml] class WeightedLeastSquares(
         try {
           _solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
         } catch {
-          case _: SingularMatrixException if solver == NormalEquationSolver.Auto =>
+          case _: SingularMatrixException if solver == WeightedLeastSquares.Auto =>
             val newSolver = new QuasiNewtonSolver(fitIntercept, maxIter, tol, None)
             newSolver.solve(bbBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
         }
@@ -357,8 +357,8 @@ private[ml] class WeightedLeastSquares(
     println(ab)
 
     // TODO: should we detect if the matrix is singular and run QN instead of Cholesky?
-    val _solver = if ((solver == NormalEquationSolver.Auto && elasticNetParam != 0.0) ||
-      (solver == NormalEquationSolver.QuasiNewton)) {
+    val _solver = if ((solver == WeightedLeastSquares.Auto && elasticNetParam != 0.0) ||
+      (solver == WeightedLeastSquares.QuasiNewton)) {
       val effectiveL1RegFun: Option[(Int) => Double] = if (effectiveL1RegParam != 0.0) {
         Some(
           (index: Int) => {
@@ -413,8 +413,14 @@ private[ml] object WeightedLeastSquares {
    */
   val MAX_NUM_FEATURES: Int = 4096
 
-  val supportedSolvers = Array(NormalEquationSolver.Auto, NormalEquationSolver.Cholesky,
-    NormalEquationSolver.QuasiNewton)
+  sealed trait Solver
+  case object Auto extends Solver
+  case object Cholesky extends Solver
+  case object QuasiNewton extends Solver
+
+//  val supportedSolvers = Array(NormalEquationSolver.Auto, NormalEquationSolver.Cholesky,
+//    NormalEquationSolver.QuasiNewton)
+  val supportedSolvers = Array(Auto, Cholesky, QuasiNewton)
 
   /**
    * Aggregator to provide necessary summary statistics for solving [[WeightedLeastSquares]].

@@ -42,7 +42,7 @@ private[ml] class NormalEquationSolution(
 /**
  * Interface for classes that solve the normal equations.
  */
-private[ml] trait NormalEquationSolver {
+private[ml] sealed trait NormalEquationSolver {
 
   def solve(
       bBar: Double,
@@ -50,12 +50,6 @@ private[ml] trait NormalEquationSolver {
       abBar: DenseVector,
       aaBar: DenseVector,
       aBar: DenseVector): NormalEquationSolution
-}
-
-private[ml] object NormalEquationSolver {
-  val Cholesky: String = "cholesky"
-  val QuasiNewton: String = "quasi-newton"
-  val Auto: String = "auto"
 }
 
 private[ml] class CholeskySolver(val fitIntercept: Boolean) extends NormalEquationSolver {
