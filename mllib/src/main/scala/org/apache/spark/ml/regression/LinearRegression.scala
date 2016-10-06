@@ -202,7 +202,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
 
       val optimizer = new WeightedLeastSquares($(fitIntercept), $(regParam),
         elasticNetParam = $(elasticNetParam), $(standardization), true,
-        solver = WeightedLeastSquares.Auto, maxIter = $(maxIter), tol = $(tol))
+        solverType = WeightedLeastSquares.Auto, maxIter = $(maxIter), tol = $(tol))
       val model = optimizer.fit(instances)
       // When it is trained by WeightedLeastSquares, training summary does not
       // attach returned model.

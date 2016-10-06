@@ -41,6 +41,7 @@ private[ml] class WeightedLeastSquaresModel(
 }
 
 /**
+ * TODO: update doc here
  * Weighted least squares solver via normal equation.
  * Given weighted observations (w,,i,,, a,,i,,, b,,i,,), we use the following weighted least squares
  * formulation:
@@ -56,12 +57,16 @@ private[ml] class WeightedLeastSquaresModel(
  * Turn on [[standardizeLabel]] to match R's `glmnet`.
  *
  * @param fitIntercept whether to fit intercept. If false, z is 0.0.
- * @param regParam L2 regularization parameter (lambda)
+ * @param regParam L2 regularization parameter (lambda).
+ * @param elasticNetParam the ElasticNet mixing parameter.
  * @param standardizeFeatures whether to standardize features. If true, sigma_,,j,, is the
  *                            population standard deviation of the j-th column of A. Otherwise,
  *                            sigma,,j,, is 1.0.
  * @param standardizeLabel whether to standardize label. If true, delta is the population standard
  *                         deviation of the label column b. Otherwise, delta is 1.0.
+ * @param solverType the type of solver to use for optimization.
+ * @param maxIter maximum number of iterations when stochastic optimization is used.
+ * @param tol the convergence tolerance of the iterations when stochastic optimization is used.
  */
 private[ml] class WeightedLeastSquares(
     val fitIntercept: Boolean,
@@ -69,7 +74,7 @@ private[ml] class WeightedLeastSquares(
     val elasticNetParam: Double,
     val standardizeFeatures: Boolean,
     val standardizeLabel: Boolean,
-    val solver: WeightedLeastSquares.Solver = WeightedLeastSquares.Auto,
+    val solverType: WeightedLeastSquares.Solver = WeightedLeastSquares.Auto,
     val maxIter: Int = 100,
     val tol: Double = 1e-6) extends Logging with Serializable {
   import WeightedLeastSquares._
@@ -192,20 +197,11 @@ private[ml] class WeightedLeastSquares(
       i += j
       j += 1
     }
+    val aa = getAtA(aaBarStd, aBarStd)
+    val ab = getAtB(abBarStd, bBarStd)
 
-    val aa = if (fitIntercept) {
-      new DenseVector(Array.concat(aaBarStd, aBarStd, Array(1.0)))
-    } else {
-      new DenseVector(aaBarStd)
-    }
-    val ab = if (fitIntercept) {
-      new DenseVector(Array.concat(abBarStd, Array(bBarStd)))
-    } else {
-      new DenseVector(abBarStd)
-    }
-
-    val _solver = if ((solver == WeightedLeastSquares.Auto && elasticNetParam != 0.0) ||
-      (solver == WeightedLeastSquares.QuasiNewton)) {
+    val solver = if ((solverType == WeightedLeastSquares.Auto && elasticNetParam != 0.0) ||
+      (solverType == WeightedLeastSquares.QuasiNewton)) {
       val effectiveL1RegFun: Option[(Int) => Double] = if (effectiveL1RegParam != 0.0) {
         Some(
           (index: Int) => {
@@ -229,22 +225,24 @@ private[ml] class WeightedLeastSquares(
       new CholeskySolver(fitIntercept)
     }
 
-    val solution = _solver match {
+    val solution = solver match {
       case cholesky: CholeskySolver =>
         try {
-          // TODO: have to make copy here because Cholesky modifies in place. How to get around?
-          _solver.solve(bBarStd, bbBarStd, ab.copy, aa.copy, new DenseVector(aBarStd))
+          cholesky.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
         } catch {
           // if Auto solver is used and Cholesky fails due to singular AtA, then fall back to
           // quasi-newton solver
-          case _: SingularMatrixException if solver == WeightedLeastSquares.Auto =>
+          case _: SingularMatrixException if solverType == WeightedLeastSquares.Auto =>
             logWarning("Cholesky solver failed due to singular covariance matrix. " +
               "Retrying with Quasi-Newton solver.")
+            // ab and aa were modified in place, so reconstruct them
+            val _aa = getAtA(aaBarStd, aBarStd)
+            val _ab = getAtB(abBarStd, bBarStd)
             val newSolver = new QuasiNewtonSolver(fitIntercept, maxIter, tol, None)
-            newSolver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+            newSolver.solve(bBarStd, bbBarStd, _ab, _aa, new DenseVector(aBarStd))
         }
       case qn: QuasiNewtonSolver =>
-        _solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+        solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
     }
     val intercept = solution.intercept * bStd
     val coefficients = solution.coefficients
@@ -269,6 +267,24 @@ private[ml] class WeightedLeastSquares(
 
     new WeightedLeastSquaresModel(coefficients, intercept, diagInvAtWA,
       solution.objectiveHistory.getOrElse(Array(0D)))
+  }
+
+  /** Construct A^T^ A from summary statistics. */
+  private def getAtA(aaBar: Array[Double], aBar: Array[Double]): DenseVector = {
+    if (fitIntercept) {
+      new DenseVector(Array.concat(aaBar, aBar, Array(1.0)))
+    } else {
+      new DenseVector(aaBar.clone())
+    }
+  }
+
+  /** Construct A^T^ B from summary statistics. */
+  private def getAtB(abBar: Array[Double], bBar: Double): DenseVector = {
+    if (fitIntercept) {
+      new DenseVector(Array.concat(abBar, Array(bBar)))
+    } else {
+      new DenseVector(abBar.clone())
+    }
   }
 }
 

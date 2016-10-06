@@ -23,7 +23,7 @@ import scala.collection.mutable
 import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vectors}
 import org.apache.spark.mllib.linalg.CholeskyDecomposition
 
-
+/** Class that holds the solution to the normal equations. */
 private[ml] class NormalEquationSolution(
     val fitIntercept: Boolean,
     private val _coefficients: DenseVector,
@@ -41,10 +41,11 @@ private[ml] class NormalEquationSolution(
 }
 
 /**
- * Interface for classes that solve the normal equations.
+ * Interface for classes that solve the normal equations locally.
  */
 private[ml] sealed trait NormalEquationSolver {
 
+  /** Solve the normal equations from summary statistics. */
   def solve(
       bBar: Double,
       bbBar: Double,
@@ -107,7 +108,11 @@ private[ml] class QuasiNewtonSolver(
     new NormalEquationSolution(fitIntercept, new DenseVector(x), None, Some(arrayBuilder.result()))
   }
 
-
+  /**
+   * NormalEquationCostFun implements Breeze's DiffFunction[T] for the normal equation.
+   * It returns the loss and gradient with L2 regularization at a particular point (coefficients).
+   * It's used in Breeze's convex optimization routines.
+   */
   private class NormalEquationCostFun(
       bBar: Double,
       bbBar: Double,

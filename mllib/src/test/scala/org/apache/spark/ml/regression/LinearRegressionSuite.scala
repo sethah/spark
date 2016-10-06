@@ -107,7 +107,7 @@ class LinearRegressionSuite
    * Enable the ignored test to export the dataset into CSV format,
    * so we can validate the training accuracy compared with R's glmnet package.
    */
-  test("export test data into CSV format") {
+  ignore("export test data into CSV format") {
     datasetWithDenseFeature.rdd.map { case Row(label: Double, features: Vector) =>
       label + "," + features.toArray.mkString(",")
     }.repartition(1).saveAsTextFile("target/tmp/LinearRegressionSuite/datasetWithDenseFeature")
@@ -167,6 +167,7 @@ class LinearRegressionSuite
     Seq("auto", "l-bfgs", "normal").foreach { solver =>
       val trainer = new LinearRegression().setSolver(solver).setFitIntercept(true)
       val model = trainer.fit(singularDataConstantColumn)
+      // to make it clear that WLS did not solve analytically
       intercept[UnsupportedOperationException] {
         model.summary.coefficientStandardErrors
       }
@@ -954,6 +955,21 @@ class LinearRegressionSuite
       assert(x._1 ~== x._2 absTol 1E-3) }
     model.summary.tValues.zip(tValsR).foreach{ x => assert(x._1 ~== x._2 absTol 1E-3) }
     model.summary.pValues.zip(pValsR).foreach{ x => assert(x._1 ~== x._2 absTol 1E-3) }
+
+
+    val modelWithL1 = new LinearRegression()
+      .setWeightCol("weight")
+      .setSolver("normal")
+      .setRegParam(0.5)
+      .setElasticNetParam(1.0)
+      .fit(datasetWithWeight)
+
+    assert(modelWithL1.summary.objectiveHistory !== Array(0.0))
+    assert(
+      modelWithL1.summary
+        .objectiveHistory
+        .sliding(2)
+        .forall(x => x(0) >= x(1)))
   }
 
   test("linear regression summary with weighted samples and w/o intercept by normal solver") {
