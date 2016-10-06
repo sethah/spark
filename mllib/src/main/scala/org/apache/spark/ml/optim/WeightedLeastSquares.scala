@@ -78,9 +78,8 @@ private[ml] class WeightedLeastSquares(
   if (regParam == 0.0) {
     logWarning("regParam is zero, which might cause numerical instability and overfitting.")
   }
-  require(elasticNetParam >= 0.0, s"elasticNetParam cannot be negative: $elasticNetParam")
-  require(supportedSolvers.contains(solver), s"WeightedLeastSquares does not support solver" +
-    s" $solver. Solver must be one of ${supportedSolvers.mkString(", ")}")
+  require(elasticNetParam >= 0.0 && elasticNetParam <= 1.0,
+    s"elasticNetParam must be in [0, 1]: $elasticNetParam")
 
   /**
    * Creates a [[WeightedLeastSquaresModel]] from an RDD of [[Instance]]s.
@@ -292,7 +291,7 @@ private[ml] object WeightedLeastSquares {
    * Aggregator to provide necessary summary statistics for solving [[WeightedLeastSquares]].
    */
   // TODO: consolidate aggregates for summary statistics
-  private[ml] class Aggregator extends Serializable {
+  private class Aggregator extends Serializable {
     var initialized: Boolean = false
     var k: Int = _
     var count: Long = _
@@ -303,7 +302,7 @@ private[ml] object WeightedLeastSquares {
     private var bbSum: Double = _
     private var aSum: DenseVector = _
     private var abSum: DenseVector = _
-    var aaSum: DenseVector = _
+    private var aaSum: DenseVector = _
 
     private def init(k: Int): Unit = {
       require(k <= MAX_NUM_FEATURES, "In order to take the normal equation approach efficiently, " +

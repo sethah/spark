@@ -177,7 +177,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
    * If the dimensions of features or the number of partitions are large,
    * this param could be adjusted to a larger size.
    * Default is 2.
- *
+   *
    * @group expertSetParam
    */
   @Since("2.1.0")
@@ -205,7 +205,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
         solver = WeightedLeastSquares.Auto, maxIter = $(maxIter), tol = $(tol))
       val model = optimizer.fit(instances)
       // When it is trained by WeightedLeastSquares, training summary does not
-      // attached returned model.
+      // attach returned model.
       val lrModel = copyValues(new LinearRegressionModel(uid, model.coefficients, model.intercept))
       val (summaryModel, predictionColName) = lrModel.findSummaryModelAndPredictionCol()
       val trainingSummary = new LinearRegressionTrainingSummary(
@@ -1026,7 +1026,6 @@ private class LeastSquaresCostFun(
     bcFeaturesMean: Broadcast[Array[Double]],
     effectiveL2regParam: Double,
     aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
-  println("regParam", effectiveL2regParam)
 
   override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
     val coeffs = Vectors.fromBreeze(coefficients)
@@ -1074,7 +1073,6 @@ private class LeastSquaresCostFun(
       }
       0.5 * effectiveL2regParam * sum
     }
-//    println("lr", leastSquaresAggregator.loss, coeffs, Vectors.dense(totalGradientArray))
 
     (leastSquaresAggregator.loss + regVal, new BDV(totalGradientArray))
   }
