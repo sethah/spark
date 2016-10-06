@@ -107,7 +107,7 @@ class LinearRegressionSuite
    * Enable the ignored test to export the dataset into CSV format,
    * so we can validate the training accuracy compared with R's glmnet package.
    */
-  ignore("export test data into CSV format") {
+  test("export test data into CSV format") {
     datasetWithDenseFeature.rdd.map { case Row(label: Double, features: Vector) =>
       label + "," + features.toArray.mkString(",")
     }.repartition(1).saveAsTextFile("target/tmp/LinearRegressionSuite/datasetWithDenseFeature")
@@ -163,13 +163,14 @@ class LinearRegressionSuite
       Instance(23.0, 3.0, Vectors.dense(1.0, 11.0)),
       Instance(29.0, 4.0, Vectors.dense(1.0, 13.0))
     ), 2).toDF()
+
     Seq("auto", "l-bfgs", "normal").foreach { solver =>
       val trainer = new LinearRegression().setSolver(solver).setFitIntercept(true)
       val model = trainer.fit(singularDataConstantColumn)
       intercept[UnsupportedOperationException] {
         model.summary.coefficientStandardErrors
       }
-      assert(model.summary.objectiveHistory !== Array(0D))
+      assert(model.summary.objectiveHistory !== Array(0.0))
     }
 
     val singularDataCollinearFeatures = sc.parallelize(Seq(
@@ -178,13 +179,14 @@ class LinearRegressionSuite
       Instance(23.0, 3.0, Vectors.dense(22.0, 11.0)),
       Instance(29.0, 4.0, Vectors.dense(26.0, 13.0))
     ), 2).toDF()
+
     Seq("auto", "l-bfgs", "normal").foreach { solver =>
       val trainer = new LinearRegression().setSolver(solver).setFitIntercept(true)
       val model = trainer.fit(singularDataCollinearFeatures)
       intercept[UnsupportedOperationException] {
         model.summary.coefficientStandardErrors
       }
-      assert(model.summary.objectiveHistory !== Array(0D))
+      assert(model.summary.objectiveHistory !== Array(0.0))
     }
   }
 
@@ -1005,65 +1007,6 @@ class LinearRegressionSuite
     model.summary.tValues.zip(tValsR).foreach{ x => assert(x._1 ~== x._2 absTol 1E-3) }
     model.summary.pValues.zip(pValsR).foreach{ x => assert(x._1 ~== x._2 absTol 1E-3) }
   }
-  test("summary l1") {
-    /*
-       R code:
-
-       model <- glm(formula = "b ~ . -1", data = df, weights = w)
-       summary(model)
-
-       Call:
-       glm(formula = "b ~ . -1", data = df, weights = w)
-
-       Deviance Residuals:
-            1       2       3       4
-        1.950   2.344  -4.600   2.103
-
-       Coefficients:
-          Estimate Std. Error t value Pr(>|t|)
-       V1  -3.7271     2.9032  -1.284   0.3279
-       V2   3.0100     0.6022   4.998   0.0378 *
-       ---
-       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-
-       (Dispersion parameter for gaussian family taken to be 17.4376)
-
-           Null deviance: 5962.000  on 4  degrees of freedom
-       Residual deviance:   34.875  on 2  degrees of freedom
-       AIC: 22.835
-
-       Number of Fisher Scoring iterations: 2
-     */
-
-    val model = new LinearRegression()
-      .setWeightCol("weight")
-      .setSolver("normal")
-      .setFitIntercept(true)
-        .setRegParam(0.1)
-        .setElasticNetParam(1.0)
-      .fit(datasetWithWeight)
-    val coefficientsR = Vectors.dense(Array(-3.7271, 3.0100))
-    val interceptR = 0.0
-    val devianceResidualsR = Array(-4.600, 2.344)
-    val seCoefR = Array(2.9032, 0.6022)
-    val tValsR = Array(-1.284, 4.998)
-    val pValsR = Array(0.3279, 0.0378)
-//    println(model.summary.coefficientStandardErrors)
-    println(model.summary.r2)
-
-//    assert(model.coefficients ~== coefficientsR absTol 1E-3)
-//    assert(model.intercept === interceptR)
-//    model.summary.devianceResiduals.zip(devianceResidualsR).foreach { x =>
-//      assert(x._1 ~== x._2 absTol 1E-3) }
-//    model.summary.coefficientStandardErrors.zip(seCoefR).foreach{ x =>
-//      assert(x._1 ~== x._2 absTol 1E-3) }
-//    model.summary.tValues.zip(tValsR).foreach{ x => assert(x._1 ~== x._2 absTol 1E-3) }
-//    model.summary.pValues.zip(pValsR).foreach{ x => assert(x._1 ~== x._2 absTol 1E-3) }
-  }
-
-  // TODO: model summary with L1 normal AND lbfgs has objective history and doesn't have diagInv
-  // TODO: model summary with L2 has diagInv and doesn't have objective history
-  // TODO: after singular handling model summary with no reg, but singular, and normal solver has no diagInv but has objective history
 
   test("read/write") {
     def checkModelData(model: LinearRegressionModel, model2: LinearRegressionModel): Unit = {

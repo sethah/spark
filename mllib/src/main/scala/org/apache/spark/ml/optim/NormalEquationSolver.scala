@@ -15,13 +15,14 @@
  * limitations under the License.
  */
 package org.apache.spark.ml.optim
+
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
+import scala.collection.mutable
 
-import org.apache.spark.ml.linalg.{BLAS, Vectors, DenseVector}
+import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vectors}
 import org.apache.spark.mllib.linalg.CholeskyDecomposition
 
-import scala.collection.mutable
 
 private[ml] class NormalEquationSolution(
     val fitIntercept: Boolean,
@@ -29,7 +30,7 @@ private[ml] class NormalEquationSolution(
     val aaInv: Option[DenseVector],
     val objectiveHistory: Option[Array[Double]]) {
 
-  lazy val (coefficients, intercept) = {
+  val (coefficients, intercept) = {
     val x = _coefficients.values
     if (fitIntercept) {
       (new DenseVector(x.slice(0, x.length - 1)), x.last)
@@ -82,19 +83,19 @@ private[ml] class QuasiNewtonSolver(
       aBar: DenseVector): NormalEquationSolution = {
     val numFeatures = aBar.size
     val numFeaturesPlusIntercept = if (fitIntercept) numFeatures + 1 else numFeatures
-    val initialCoefficientsWithIntercept = Vectors.zeros(numFeaturesPlusIntercept)
+    val initialCoefficientsWithIntercept = new Array[Double](numFeaturesPlusIntercept)
     if (fitIntercept) {
-      // TODO: this correct?
-      initialCoefficientsWithIntercept.toArray(numFeaturesPlusIntercept - 1) = bBar
+      initialCoefficientsWithIntercept(numFeaturesPlusIntercept - 1) = bBar
     }
 
-    val costFun = new NormalEquationCostFun(bBar, bbBar, abBar, aaBar, aBar, fitIntercept,
-      numFeatures)
+    val costFun =
+      new NormalEquationCostFun(bBar, bbBar, abBar, aaBar, aBar, fitIntercept, numFeatures)
     val optimizer = l1RegFunc.map { func =>
       new BreezeOWLQN[Int, BDV[Double]](maxIter, 10, func, tol)
     }.getOrElse(new BreezeLBFGS[BDV[Double]](maxIter, 10, tol))
+
     val states = optimizer.iterations(new CachedDiffFunction(costFun),
-      initialCoefficientsWithIntercept.asBreeze.toDenseVector)
+      new BDV[Double](initialCoefficientsWithIntercept))
 
     val arrayBuilder = mutable.ArrayBuilder.make[Double]
     var state: optimizer.State = null
@@ -102,7 +103,6 @@ private[ml] class QuasiNewtonSolver(
       state = states.next()
       arrayBuilder += state.adjustedValue
     }
-    println("num iters", arrayBuilder.result().length)
     val x = state.x.toArray.clone()
     new NormalEquationSolution(fitIntercept, new DenseVector(x), None, Some(arrayBuilder.result()))
   }
@@ -122,11 +122,15 @@ private[ml] class QuasiNewtonSolver(
     override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
       val coef = Vectors.fromBreeze(coefficients).toDense
       if (fitIntercept) {
-        // TODO: use while loop here?
-        val coefArray = coef.toArray
-        val interceptIndex = numFeaturesPlusIntercept - 1
-        val coefWithoutIntercept = coefArray.init
-        coefArray(interceptIndex) = bBar - BLAS.dot(Vectors.dense(coefWithoutIntercept), aBar)
+        var j = 0
+        var dotProd = 0.0
+        val coefValues = coef.values
+        val aBarValues = aBar.values
+        while (j < numFeatures) {
+          dotProd += coefValues(j) * aBarValues(j)
+          j += 1
+        }
+        coefValues(numFeatures) = bBar - dotProd
       }
       val xxb = Vectors.zeros(numFeaturesPlusIntercept).toDense
       BLAS.dspmv(numFeaturesPlusIntercept, 1.0, aa, coef, xxb)
