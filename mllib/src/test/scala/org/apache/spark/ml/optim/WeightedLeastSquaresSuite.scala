@@ -428,7 +428,6 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
     }
   }
 
-
   test("WLS against glmnet") {
     /*
        R code:

@@ -143,7 +143,7 @@ private[ml] class QuasiNewtonSolver(
         }
         coefValues(numFeatures) = bBar - dotProd
       }
-      val xxb = Vectors.zeros(numFeaturesPlusIntercept).toDense
+      val xxb = new DenseVector(new Array[Double](numFeaturesPlusIntercept))
       BLAS.dspmv(numFeaturesPlusIntercept, 1.0, aa, coef, xxb)
       // loss = 1/2 (Y^T W Y - 2 beta^T X^T W Y + beta^T X^T W X beta)
       val loss = 0.5 * bbBar - BLAS.dot(ab, coef) + 0.5 * BLAS.dot(coef, xxb)
@@ -154,12 +154,11 @@ private[ml] class QuasiNewtonSolver(
   }
 }
 
-
 /**
  * Exception thrown when solving a linear system Ax = b for which the matrix A is non-invertible
  * (singular).
  */
-private[spark] class SingularMatrixException(message: String, cause: Throwable)
+class SingularMatrixException(message: String, cause: Throwable)
   extends IllegalArgumentException(message, cause) {
 
   def this(message: String) = this(message, null)

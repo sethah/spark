@@ -209,10 +209,8 @@ private[ml] class WeightedLeastSquares(
     val solver = if ((solverType == WeightedLeastSquares.Auto && elasticNetParam != 0.0) ||
       (solverType == WeightedLeastSquares.QuasiNewton)) {
       val effectiveL1RegFun: Option[(Int) => Double] = if (effectiveL1RegParam != 0.0) {
-        Some(
-          (index: Int) => {
-            val isIntercept = fitIntercept && index == numFeatures
-            if (isIntercept) {
+        Some((index: Int) => {
+            if (fitIntercept && index == numFeatures) {
               0.0
             } else {
               if (standardizeFeatures) {
@@ -221,8 +219,7 @@ private[ml] class WeightedLeastSquares(
                 if (aStd(index) != 0.0) effectiveL1RegParam / aStd(index) else 0.0
               }
             }
-          }
-        )
+          })
       } else {
         None
       }
