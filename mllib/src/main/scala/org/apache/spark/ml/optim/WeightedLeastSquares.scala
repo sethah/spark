@@ -248,7 +248,7 @@ private[ml] class WeightedLeastSquares(
             newSolver.solve(bBarStd, bbBarStd, _ab, _aa, new DenseVector(aBarStd))
         }
       case qn: QuasiNewtonSolver =>
-        solver.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
+        qn.solve(bBarStd, bbBarStd, ab, aa, new DenseVector(aBarStd))
     }
     val intercept = solution.intercept * bStd
     val coefficients = solution.coefficients

@@ -156,7 +156,7 @@ private[ml] class QuasiNewtonSolver(
 
 
 /**
- * Exception thrown when solving a linear system Ax = b for which the matrix is non-invertible
+ * Exception thrown when solving a linear system Ax = b for which the matrix A is non-invertible
  * (singular).
  */
 private[spark] class SingularMatrixException(message: String, cause: Throwable)
