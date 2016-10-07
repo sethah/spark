@@ -28,6 +28,7 @@ import org.apache.spark.rdd.RDD
  * @param coefficients model coefficients
  * @param intercept model intercept
  * @param diagInvAtWA diagonal of matrix (A^T * W * A)^-1
+ * @param objectiveHistory objective function (scaled loss + regularization) at each iteration.
  */
 private[ml] class WeightedLeastSquaresModel(
     val coefficients: DenseVector,
@@ -41,16 +42,17 @@ private[ml] class WeightedLeastSquaresModel(
 }
 
 /**
- * TODO: update doc here
  * Weighted least squares solver via normal equation.
  * Given weighted observations (w,,i,,, a,,i,,, b,,i,,), we use the following weighted least squares
  * formulation:
  *
  * min,,x,z,, 1/2 sum,,i,, w,,i,, (a,,i,,^T^ x + z - b,,i,,)^2^ / sum,,i,, w_i
- *   + 1/2 lambda / delta sum,,j,, (sigma,,j,, x,,j,,)^2^,
+ *   + lambda / delta (1/2 (1 - alpha) sum,,j,, (sigma,,j,, x,,j,,)^2^
+ *   + alpha sum,,j,, abs(sigma,,j,, x,,j,,)),
  *
- * where lambda is the regularization parameter, and delta and sigma,,j,, are controlled by
- * [[standardizeLabel]] and [[standardizeFeatures]], respectively.
+ * where lambda is the regularization parameter, alpha is the ElasticNet mixing parameter,
+ * and delta and sigma,,j,, are controlled by [[standardizeLabel]] and [[standardizeFeatures]],
+ * respectively.
  *
  * Set [[regParam]] to 0.0 and turn off both [[standardizeFeatures]] and [[standardizeLabel]] to
  * match R's `lm`.
@@ -85,6 +87,8 @@ private[ml] class WeightedLeastSquares(
   }
   require(elasticNetParam >= 0.0 && elasticNetParam <= 1.0,
     s"elasticNetParam must be in [0, 1]: $elasticNetParam")
+  require(maxIter >= 0, s"maxIter must be a positive integer: $maxIter")
+  require(tol > 0, s"tol must be greater than zero: $tol")
 
   /**
    * Creates a [[WeightedLeastSquaresModel]] from an RDD of [[Instance]]s.
@@ -105,6 +109,8 @@ private[ml] class WeightedLeastSquares(
     val aaBarValues = aaBar.values
     val numFeatures = abBar.size
     val rawBStd = summary.bStd
+    // if b is constant (rawBStd is zero), then b cannot be scaled. In this case
+    // setting bStd=abs(bBar) ensures that b is not scaled anymore in l-bfgs algorithm.
     val bStd = if (rawBStd == 0.0) math.abs(bBar) else rawBStd
 
     if (rawBStd == 0) {

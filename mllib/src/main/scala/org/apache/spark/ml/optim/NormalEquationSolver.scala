@@ -23,21 +23,21 @@ import scala.collection.mutable
 import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vectors}
 import org.apache.spark.mllib.linalg.CholeskyDecomposition
 
-/** Class that holds the solution to the normal equations. */
 private[ml] class NormalEquationSolution(
     val fitIntercept: Boolean,
-    private val _coefficients: DenseVector,
+    private val _coefficients: Array[Double],
     val aaInv: Option[DenseVector],
     val objectiveHistory: Option[Array[Double]]) {
 
-  val (coefficients, intercept) = {
-    val x = _coefficients.values
+  def coefficients: DenseVector = {
     if (fitIntercept) {
-      (new DenseVector(x.slice(0, x.length - 1)), x.last)
+      new DenseVector(_coefficients.slice(0, _coefficients.length - 1))
     } else {
-      (new DenseVector(x), 0.0)
+      new DenseVector(_coefficients)
     }
   }
+
+  def intercept: Double = if (fitIntercept) _coefficients.last else 0.0
 }
 
 /**
@@ -54,6 +54,9 @@ private[ml] sealed trait NormalEquationSolver {
       aBar: DenseVector): NormalEquationSolution
 }
 
+/**
+ * A class that solves the normal equations directly, using Cholesky decomposition.
+ */
 private[ml] class CholeskySolver(val fitIntercept: Boolean) extends NormalEquationSolver {
 
   def solve(
@@ -66,10 +69,13 @@ private[ml] class CholeskySolver(val fitIntercept: Boolean) extends NormalEquati
     val x = CholeskyDecomposition.solve(aaBar.values, abBar.values)
     val aaInv = CholeskyDecomposition.inverse(aaBar.values, k)
 
-    new NormalEquationSolution(fitIntercept, new DenseVector(x), Some(new DenseVector(aaInv)), None)
+    new NormalEquationSolution(fitIntercept, x, Some(new DenseVector(aaInv)), None)
   }
 }
 
+/**
+ * A class for solving the normal equations using Quasi-Newton optimization methods.
+ */
 private[ml] class QuasiNewtonSolver(
     val fitIntercept: Boolean,
     maxIter: Int,
@@ -105,7 +111,7 @@ private[ml] class QuasiNewtonSolver(
       arrayBuilder += state.adjustedValue
     }
     val x = state.x.toArray.clone()
-    new NormalEquationSolution(fitIntercept, new DenseVector(x), None, Some(arrayBuilder.result()))
+    new NormalEquationSolution(fitIntercept, x, None, Some(arrayBuilder.result()))
   }
 
   /**
@@ -148,7 +154,12 @@ private[ml] class QuasiNewtonSolver(
   }
 }
 
-class SingularMatrixException(message: String, cause: Throwable)
+
+/**
+ * Exception thrown when solving a linear system Ax = b for which the matrix is non-invertible
+ * (singular).
+ */
+private[spark] class SingularMatrixException(message: String, cause: Throwable)
   extends IllegalArgumentException(message, cause) {
 
   def this(message: String) = this(message, null)

@@ -18,19 +18,16 @@
 package org.apache.spark.ml.optim
 
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.ml.feature.{Instance, LabeledPoint}
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{BLAS, Vectors}
 import org.apache.spark.ml.util.TestingUtils._
-import org.apache.spark.mllib.util.{LinearDataGenerator, MLlibTestSparkContext}
+import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.Dataset
 
 class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext {
-  import testImplicits._
 
   private var instances: RDD[Instance] = _
   private var instancesConstLabel: RDD[Instance] = _
-  private var datasetWithDenseFeature: Dataset[_] = _
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -96,11 +93,11 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
      */
     val expectedWithIntercept = Vectors.dense(4.02, 0.50, 12.02)
     val expected = Vectors.dense(0.48336106, 0.02079867)
-    val wlsWithIntercept = new WeightedLeastSquares(fitIntercept = true, 0.0, 0.0,
-      standardizeFeatures = true, standardizeLabel = true, WeightedLeastSquares.Cholesky)
+    val wlsWithIntercept = new WeightedLeastSquares(true, 0.0, 0.0, true, true,
+      solverType = WeightedLeastSquares.Cholesky)
     val wlsModelWithIntercept = wlsWithIntercept.fit(instances)
-    val wls = new WeightedLeastSquares(fitIntercept = false, 0.0, 0.0, standardizeFeatures = true,
-      standardizeLabel = true, WeightedLeastSquares.Cholesky)
+    val wls = new WeightedLeastSquares(false, 0.0, 0.0, true, true,
+      solverType = WeightedLeastSquares.Cholesky)
     val wlsModel = wls.fit(instances)
 
     assert(expectedWithIntercept ~== wlsModelWithIntercept.diagInvAtWA relTol 1e-4)
@@ -121,16 +118,14 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
     ), 2)
 
     // Cholesky solver does not handle singular input
-    intercept[IllegalArgumentException] {
-      new WeightedLeastSquares(
-        false, regParam = 0.0, elasticNetParam = 0.0, standardizeFeatures = false,
-        standardizeLabel = false, solverType = WeightedLeastSquares.Cholesky).fit(singularInstances)
+    intercept[SingularMatrixException] {
+      new WeightedLeastSquares(false, 0.0, 0.0, false, false,
+        solverType = WeightedLeastSquares.Cholesky).fit(singularInstances)
     }
 
     // Cholesky should not throw an exception since regularization is applied
-    new WeightedLeastSquares(
-      false, regParam = 1.0, elasticNetParam = 0.0, standardizeFeatures = false,
-      standardizeLabel = false, solverType = WeightedLeastSquares.Cholesky).fit(singularInstances)
+    new WeightedLeastSquares(false, 1.0, 0.0, false, false,
+      solverType = WeightedLeastSquares.Cholesky).fit(singularInstances)
 
     // quasi-newton solvers should handle singular input and make correct predictions
     // auto solver should try Cholesky first, then fall back to QN
@@ -181,7 +176,6 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
     }
   }
 
-
   test("WLS against lm when label is constant and no regularization") {
     /*
        R code:
@@ -223,6 +217,7 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
         .fit(instancesConstZeroLabel)
       val actual = Vectors.dense(wls.intercept, wls.coefficients(0), wls.coefficients(1))
       assert(actual === Vectors.dense(0.0, 0.0, 0.0))
+      assert(wls.objectiveHistory === Array(0.0))
     }
   }
 
@@ -258,29 +253,29 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
     for (fitIntercept <- Seq(false, true);
          standardization <- Seq(false, true)) {
       val wls = new WeightedLeastSquares(fitIntercept, 0.0, 0.0, standardization, standardization,
-        WeightedLeastSquares.Cholesky)
+        solverType = WeightedLeastSquares.Cholesky)
       // for the case of no intercept, this would not have failed before but since we train
       // in the standardized space now, it will fail
-      intercept[IllegalArgumentException] {
+      intercept[SingularMatrixException] {
         wls.fit(constantFeatures)
       }
     }
 
     // should not fail when regularization is added
-    new WeightedLeastSquares(fitIntercept = true, 0.5, 0.0, standardizeFeatures = true,
-      standardizeLabel = true, WeightedLeastSquares.Cholesky)
+    new WeightedLeastSquares(true, 0.5, 0.0, standardizeFeatures = true,
+      standardizeLabel = true, solverType = WeightedLeastSquares.Cholesky).fit(constantFeatures)
 
     /*
-       for (intercept in c(FALSE, TRUE)) {
-         for (standardize in c(FALSE, TRUE)) {
-           for (regParams in list(c(0.0, 0.0), c(0.5, 0.0), c(0.5, 0.5), c(0.5, 1.0))) {
-             model <- glmnet(A, b, weights=w, intercept=intercept, lambda=regParams[1],
-                             standardize=standardize, alpha=regParams[2], thresh=1E-14)
-             print(as.vector(coef(model)))
-           }
-         }
-       }
-       [1] 0.000000 0.000000 2.253012
+      for (intercept in c(FALSE, TRUE)) {
+        for (standardize in c(FALSE, TRUE)) {
+          for (regParams in list(c(0.0, 0.0), c(0.5, 0.0), c(0.5, 0.5), c(0.5, 1.0))) {
+            model <- glmnet(A, b, weights=w, intercept=intercept, lambda=regParams[1],
+                           standardize=standardize, alpha=regParams[2], thresh=1E-14)
+            print(as.vector(coef(model)))
+          }
+        }
+      }
+      [1] 0.000000 0.000000 2.253012
       [1] 0.000000 0.000000 2.250857
       [1] 0.000000 0.000000 2.249784
       [1] 0.000000 0.000000 2.248709
@@ -318,8 +313,9 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
     for (fitIntercept <- Seq(false, true);
          standardization <- Seq(false, true);
          (lambda, alpha) <- Seq((0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.5, 1.0))) {
-      val wls = new WeightedLeastSquares(fitIntercept, lambda, alpha, standardization, true,
-        WeightedLeastSquares.QuasiNewton)
+      val wls = new WeightedLeastSquares(fitIntercept, regParam = lambda, elasticNetParam = alpha,
+        standardizeFeatures = standardization, standardizeLabel = true,
+        solverType = WeightedLeastSquares.QuasiNewton)
       val model = wls.fit(constantFeatures)
       val actual = Vectors.dense(model.intercept, model.coefficients(0), model.coefficients(1))
       assert(actual ~== expectedQuasiNewton(idx) absTol 1e-6)
@@ -329,31 +325,31 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
 
   test("WLS against glmnet with L1 regularization") {
     /*
-       for (intercept in c(FALSE, TRUE)) {
-         for (lambda in c(0.1, 0.5, 1.0)) {
-           for (standardize in c(FALSE, TRUE)) {
-             for (alpha in c(0.1, 0.5, 1.0)) {
-               model <- glmnet(A, b, weights=w, intercept=intercept, lambda=lambda,
-                             standardize=standardize, alpha=alpha, thresh=1E-14)
-               print(as.vector(coef(model)))
-             }
-           }
-         }
-       }
-      [1]  0.000000 -3.292821  2.921188
-      [1]  0.000000 -3.230854  2.908484
-      [1]  0.000000 -3.145586  2.891014
-      [1]  0.000000 -2.919246  2.841724
-      [1]  0.000000 -2.938323  2.846369
-      [1]  0.000000 -2.965397  2.852838
-      [1]  0.000000 -2.137858  2.684464
-      [1]  0.000000 -1.680094  2.590844
-      [1]  0.0000000 -0.8194631  2.4151405
-      [1]  0.0000000 -0.9608375  2.4301013
-      [1]  0.0000000 -0.6187922  2.3634907
+      for (intercept in c(FALSE, TRUE)) {
+        for (lambda in c(0.1, 0.5, 1.0)) {
+          for (standardize in c(FALSE, TRUE)) {
+            for (alpha in c(0.1, 0.5, 1.0)) {
+              model <- glmnet(A, b, weights=w, intercept=intercept, lambda=lambda,
+                           standardize=standardize, alpha=alpha, thresh=1E-14)
+              print(as.vector(coef(model)))
+            }
+          }
+        }
+      }
+      [1] 0.000000 -3.292821  2.921188
+      [1] 0.000000 -3.230854  2.908484
+      [1] 0.000000 -3.145586  2.891014
+      [1] 0.000000 -2.919246  2.841724
+      [1] 0.000000 -2.938323  2.846369
+      [1] 0.000000 -2.965397  2.852838
+      [1] 0.000000 -2.137858  2.684464
+      [1] 0.000000 -1.680094  2.590844
+      [1] 0.0000000 -0.8194631  2.4151405
+      [1] 0.0000000 -0.9608375  2.4301013
+      [1] 0.0000000 -0.6187922  2.3634907
       [1] 0.000000 0.000000 2.240811
-      [1]  0.000000 -1.346573  2.521293
-      [1]  0.0000000 -0.3680456  2.3212362
+      [1] 0.000000 -1.346573  2.521293
+      [1] 0.0000000 -0.3680456  2.3212362
       [1] 0.000000 0.000000 2.244406
       [1] 0.000000 0.000000 2.219816
       [1] 0.000000 0.000000 2.223694
@@ -482,9 +478,8 @@ class WeightedLeastSquaresSuite extends SparkFunSuite with MLlibTestSparkContext
          regParam <- Seq(0.0, 0.1, 1.0);
          standardizeFeatures <- Seq(false, true)) {
       for (solver <- WeightedLeastSquares.supportedSolvers) {
-        val wls = new WeightedLeastSquares(
-          fitIntercept, regParam, elasticNetParam = 0.0, standardizeFeatures,
-          standardizeLabel = true, solverType = solver)
+        val wls = new WeightedLeastSquares(fitIntercept, regParam, elasticNetParam = 0.0,
+          standardizeFeatures, standardizeLabel = true, solverType = solver)
           .fit(instances)
         val actual = Vectors.dense(wls.intercept, wls.coefficients(0), wls.coefficients(1))
         assert(actual ~== expected(idx) absTol 1e-4)
