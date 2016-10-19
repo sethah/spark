@@ -92,7 +92,8 @@ private[spark] object RandomForest extends Logging {
       featureSubsetStrategy: String,
       seed: Long,
       instr: Option[Instrumentation[_]],
-      parentUID: Option[String] = None): Array[DecisionTreeModel] = {
+      parentUID: Option[String] = None,
+      _splits: Option[Array[Array[Split]]] = None): Array[DecisionTreeModel] = {
 
     val timer = new TimeTracker()
 
@@ -115,7 +116,7 @@ private[spark] object RandomForest extends Logging {
     // Find the splits and the corresponding bins (interval between the splits) using a sample
     // of the input data.
     timer.start("findSplits")
-    val splits = findSplits(retaggedInput, metadata, seed)
+    val splits = _splits.getOrElse(findSplits(retaggedInput, metadata, seed))
     timer.stop("findSplits")
     logDebug("numBins: feature: number of bins")
     logDebug(Range(0, metadata.numFeatures).map { featureIndex =>

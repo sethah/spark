@@ -285,10 +285,16 @@ private[spark] object GradientBoostedTrees extends Logging {
     logDebug("Building tree 0")
     logDebug("##########")
 
+
+    val retaggedInput = input.retag(classOf[LabeledPoint])
+    val metadata =
+      DecisionTreeMetadata.buildMetadata(retaggedInput, treeStrategy, 1, "all")
+    val splits = RandomForest.findSplits(retaggedInput, metadata, seed)
+
     // Initialize tree
     timer.start("building tree 0")
     val firstTree = new DecisionTreeRegressor().setSeed(seed)
-    val firstTreeModel = firstTree.train(input, treeStrategy)
+    val firstTreeModel = firstTree.train(input, treeStrategy, Some(splits))
     val firstTreeWeight = 1.0
     baseLearners(0) = firstTreeModel
     baseLearnerWeights(0) = firstTreeWeight
@@ -320,7 +326,7 @@ private[spark] object GradientBoostedTrees extends Logging {
       logDebug("Gradient boosting tree iteration " + m)
       logDebug("###################################################")
       val dt = new DecisionTreeRegressor().setSeed(seed + m)
-      val model = dt.train(data, treeStrategy)
+      val model = dt.train(data, treeStrategy, Some(splits))
       timer.stop(s"building tree $m")
       // Update partial model
       baseLearners(m) = model
