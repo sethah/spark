@@ -60,6 +60,7 @@ class GBTClassifier @Since("1.4.0") (
     @Since("1.4.0") override val uid: String)
   extends Predictor[Vector, GBTClassifier, GBTClassificationModel]
   with GBTClassifierParams with DefaultParamsWritable with Logging {
+  var useCachedSplits = false
 
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("gbtc"))

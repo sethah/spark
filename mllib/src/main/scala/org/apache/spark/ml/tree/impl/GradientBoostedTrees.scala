@@ -34,6 +34,7 @@ private[spark] object GradientBoostedTrees extends Logging {
 
   /**
    * Method to train a gradient boosting model
+   *
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    * @param seed Random seed.
    * @return tuple of ensemble models and weights:
@@ -42,16 +43,18 @@ private[spark] object GradientBoostedTrees extends Logging {
   def run(
       input: RDD[LabeledPoint],
       boostingStrategy: OldBoostingStrategy,
-      seed: Long): (Array[DecisionTreeRegressionModel], Array[Double]) = {
+      seed: Long,
+      useCachedSplits: Boolean = false): (Array[DecisionTreeRegressionModel], Array[Double]) = {
     val algo = boostingStrategy.treeStrategy.algo
     algo match {
       case OldAlgo.Regression =>
-        GradientBoostedTrees.boost(input, input, boostingStrategy, validate = false, seed)
+        GradientBoostedTrees.boost(input, input, boostingStrategy, validate = false, seed,
+          useCachedSplits)
       case OldAlgo.Classification =>
         // Map labels to -1, +1 so binary classification can be treated as regression.
         val remappedInput = input.map(x => new LabeledPoint((x.label * 2) - 1, x.features))
         GradientBoostedTrees.boost(remappedInput, remappedInput, boostingStrategy, validate = false,
-          seed)
+          seed, useCachedSplits)
       case _ =>
         throw new IllegalArgumentException(s"$algo is not supported by gradient boosting.")
     }
@@ -59,6 +62,7 @@ private[spark] object GradientBoostedTrees extends Logging {
 
   /**
    * Method to validate a gradient boosting model
+   *
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    * @param validationInput Validation dataset.
    *                        This dataset should be different from the training dataset,
@@ -94,6 +98,7 @@ private[spark] object GradientBoostedTrees extends Logging {
   /**
    * Compute the initial predictions and errors for a dataset for the first
    * iteration of gradient boosting.
+   *
    * @param data: training data.
    * @param initTreeWeight: learning rate assigned to the first tree.
    * @param initTree: first DecisionTreeModel.
@@ -116,6 +121,7 @@ private[spark] object GradientBoostedTrees extends Logging {
   /**
    * Update a zipped predictionError RDD
    * (as obtained with computeInitialPredictionAndError)
+   *
    * @param data: training data.
    * @param predictionAndError: predictionError RDD
    * @param treeWeight: Learning rate.
@@ -162,6 +168,7 @@ private[spark] object GradientBoostedTrees extends Logging {
    * Method to calculate error of the base learner for the gradient boosting calculation.
    * Note: This method is not used by the gradient boosting algorithm but is useful for debugging
    * purposes.
+   *
    * @param data Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    * @param trees Boosted Decision Tree models
    * @param treeWeights Learning rates at each boosting iteration.
@@ -232,6 +239,7 @@ private[spark] object GradientBoostedTrees extends Logging {
 
   /**
    * Internal method for performing regression using trees as base learners.
+   *
    * @param input training dataset
    * @param validationInput validation dataset, ignored if validate is set to false.
    * @param boostingStrategy boosting parameters
@@ -245,7 +253,8 @@ private[spark] object GradientBoostedTrees extends Logging {
       validationInput: RDD[LabeledPoint],
       boostingStrategy: OldBoostingStrategy,
       validate: Boolean,
-      seed: Long): (Array[DecisionTreeRegressionModel], Array[Double]) = {
+      seed: Long,
+      useCachedSplits: Boolean = false): (Array[DecisionTreeRegressionModel], Array[Double]) = {
     val timer = new TimeTracker()
     timer.start("total")
     timer.start("init")
@@ -286,8 +295,14 @@ private[spark] object GradientBoostedTrees extends Logging {
     logDebug("##########")
 
 
-    val metadata = DecisionTreeMetadata.buildMetadata(input, treeStrategy.copy, 1, "all")
-    val treeSplits = RandomForest.findSplits(input, metadata, seed)
+    val (metadata, treeSplits) = if (useCachedSplits) {
+      val _meta = DecisionTreeMetadata.buildMetadata(input, treeStrategy.copy, 1, "all")
+      val _splits = RandomForest.findSplits(input, _meta, seed)
+      (Some(_meta), Some(_splits))
+    } else {
+      (None, None)
+    }
+//    val treeSplits = Some(RandomForest.findSplits(input, metadata, seed))
 
     // Initialize tree
     timer.start("building tree 0")
@@ -295,7 +310,7 @@ private[spark] object GradientBoostedTrees extends Logging {
 //    val firstTreeModel = firstTree.train(input, treeStrategy, Some(splits), Some(metadata))
     val firstTreeModel = RandomForest.run(input, treeStrategy, numTrees = 1,
       featureSubsetStrategy = "all", seed = seed, instr = None, parentUID = None,
-      _splits = Some(treeSplits), meta = Some(metadata))
+      _splits = treeSplits, meta = metadata)
       .head.asInstanceOf[DecisionTreeRegressionModel]
     val firstTreeWeight = 1.0
     baseLearners(0) = firstTreeModel
@@ -330,7 +345,7 @@ private[spark] object GradientBoostedTrees extends Logging {
 //      val dt = new DecisionTreeRegressor().setSeed(seed + m)
       val dtModel = RandomForest.run(input, treeStrategy, numTrees = 1,
         featureSubsetStrategy = "all", seed = seed + m, instr = None, parentUID = None,
-        _splits = Some(treeSplits), meta = Some(metadata)).head.asInstanceOf[DecisionTreeRegressionModel]
+        _splits = treeSplits, meta = metadata).head.asInstanceOf[DecisionTreeRegressionModel]
 //      val model = dt.train(data, treeStrategy, Some(treeSplits), Some(metadata))
       timer.stop(s"building tree $m")
       // Update partial model

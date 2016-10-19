@@ -59,6 +59,8 @@ class GBTRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: String)
   extends Predictor[Vector, GBTRegressor, GBTRegressionModel]
   with GBTRegressorParams with DefaultParamsWritable with Logging {
 
+  var useCachedSplits = false
+
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("gbtr"))
 
