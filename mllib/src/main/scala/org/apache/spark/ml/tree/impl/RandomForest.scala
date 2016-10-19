@@ -93,8 +93,8 @@ private[spark] object RandomForest extends Logging {
       seed: Long,
       instr: Option[Instrumentation[_]],
       parentUID: Option[String] = None,
-      _splits: Option[Array[Array[Split]]] = None,
-      meta: Option[DecisionTreeMetadata] = None): Array[DecisionTreeModel] = {
+      splits: Option[Array[Array[Split]]] = None,
+      metadata: Option[DecisionTreeMetadata] = None): Array[DecisionTreeModel] = {
 
     val timer = new TimeTracker()
 
@@ -103,30 +103,31 @@ private[spark] object RandomForest extends Logging {
     timer.start("init")
 
     val retaggedInput = input.retag(classOf[LabeledPoint])
-    val metadata = meta.getOrElse(
-      DecisionTreeMetadata.buildMetadata(retaggedInput, strategy, numTrees, featureSubsetStrategy))
+    val _metadata = metadata.getOrElse {
+      DecisionTreeMetadata.buildMetadata(retaggedInput, strategy, numTrees, featureSubsetStrategy)
+    }
     instr match {
       case Some(instrumentation) =>
-        instrumentation.logNumFeatures(metadata.numFeatures)
-        instrumentation.logNumClasses(metadata.numClasses)
+        instrumentation.logNumFeatures(_metadata.numFeatures)
+        instrumentation.logNumClasses(_metadata.numClasses)
       case None =>
-        logInfo("numFeatures: " + metadata.numFeatures)
-        logInfo("numClasses: " + metadata.numClasses)
+        logInfo("numFeatures: " + _metadata.numFeatures)
+        logInfo("numClasses: " + _metadata.numClasses)
     }
 
     // Find the splits and the corresponding bins (interval between the splits) using a sample
     // of the input data.
     timer.start("findSplits")
-    val splits = _splits.getOrElse(findSplits(retaggedInput, metadata, seed))
+    val _splits = splits.getOrElse(findSplits(retaggedInput, _metadata, seed))
     timer.stop("findSplits")
     logDebug("numBins: feature: number of bins")
-    logDebug(Range(0, metadata.numFeatures).map { featureIndex =>
-      s"\t$featureIndex\t${metadata.numBins(featureIndex)}"
+    logDebug(Range(0, _metadata.numFeatures).map { featureIndex =>
+      s"\t$featureIndex\t${_metadata.numBins(featureIndex)}"
     }.mkString("\n"))
 
     // Bin feature values (TreePoint representation).
     // Cache input RDD for speedup during multiple passes.
-    val treeInput = TreePoint.convertToTreeRDD(retaggedInput, splits, metadata)
+    val treeInput = TreePoint.convertToTreeRDD(retaggedInput, _splits, _metadata)
 
     val withReplacement = numTrees > 1
 
@@ -186,7 +187,7 @@ private[spark] object RandomForest extends Logging {
       // Collect some nodes to split, and choose features for each node (if subsampling).
       // Each group of nodes may come from one or multiple trees, and at multiple levels.
       val (nodesForGroup, treeToNodeToIndexInfo) =
-        RandomForest.selectNodesToSplit(nodeStack, maxMemoryUsage, metadata, rng)
+        RandomForest.selectNodesToSplit(nodeStack, maxMemoryUsage, _metadata, rng)
       // Sanity check (should never occur):
       assert(nodesForGroup.nonEmpty,
         s"RandomForest selected empty nodesForGroup.  Error for unknown reason.")
@@ -197,8 +198,8 @@ private[spark] object RandomForest extends Logging {
 
       // Choose node splits, and enqueue new nodes as needed.
       timer.start("findBestSplits")
-      RandomForest.findBestSplits(baggedInput, metadata, topNodesForGroup, nodesForGroup,
-        treeToNodeToIndexInfo, splits, nodeStack, timer, nodeIdCache)
+      RandomForest.findBestSplits(baggedInput, _metadata, topNodesForGroup, nodesForGroup,
+        treeToNodeToIndexInfo, _splits, nodeStack, timer, nodeIdCache)
       timer.stop("findBestSplits")
     }
 
@@ -219,7 +220,7 @@ private[spark] object RandomForest extends Logging {
       }
     }
 
-    val numFeatures = metadata.numFeatures
+    val numFeatures = _metadata.numFeatures
 
     parentUID match {
       case Some(uid) =>
