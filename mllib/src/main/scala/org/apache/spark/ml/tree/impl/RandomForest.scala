@@ -93,7 +93,8 @@ private[spark] object RandomForest extends Logging {
       seed: Long,
       instr: Option[Instrumentation[_]],
       parentUID: Option[String] = None,
-      _splits: Option[Array[Array[Split]]] = None): Array[DecisionTreeModel] = {
+      _splits: Option[Array[Array[Split]]] = None,
+      meta: Option[DecisionTreeMetadata] = None): Array[DecisionTreeModel] = {
 
     val timer = new TimeTracker()
 
@@ -102,8 +103,8 @@ private[spark] object RandomForest extends Logging {
     timer.start("init")
 
     val retaggedInput = input.retag(classOf[LabeledPoint])
-    val metadata =
-      DecisionTreeMetadata.buildMetadata(retaggedInput, strategy, numTrees, featureSubsetStrategy)
+    val metadata = meta.getOrElse(
+      DecisionTreeMetadata.buildMetadata(retaggedInput, strategy, numTrees, featureSubsetStrategy))
     instr match {
       case Some(instrumentation) =>
         instrumentation.logNumFeatures(metadata.numFeatures)
@@ -739,6 +740,7 @@ private[spark] object RandomForest extends Logging {
                 leftChildStats, rightChildStats, binAggregates.metadata)
               (splitIdx, gainAndImpurityStats)
             }.maxBy(_._2.gain)
+//          println(splits(featureIndex).length, featureIndex, featureIndexIdx, bestFeatureSplitIndex, "asdf")
           (splits(featureIndex)(bestFeatureSplitIndex), bestFeatureGainStats)
         } else if (binAggregates.metadata.isUnordered(featureIndex)) {
           // Unordered categorical feature

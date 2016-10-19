@@ -286,15 +286,17 @@ private[spark] object GradientBoostedTrees extends Logging {
     logDebug("##########")
 
 
-    val retaggedInput = input.retag(classOf[LabeledPoint])
-    val metadata =
-      DecisionTreeMetadata.buildMetadata(retaggedInput, treeStrategy, 1, "all")
-    val splits = RandomForest.findSplits(retaggedInput, metadata, seed)
+    val metadata = DecisionTreeMetadata.buildMetadata(input, treeStrategy.copy, 1, "all")
+    val treeSplits = RandomForest.findSplits(input, metadata, seed)
 
     // Initialize tree
     timer.start("building tree 0")
-    val firstTree = new DecisionTreeRegressor().setSeed(seed)
-    val firstTreeModel = firstTree.train(input, treeStrategy, Some(splits))
+//    val firstTree = new DecisionTreeRegressor().setSeed(seed)
+//    val firstTreeModel = firstTree.train(input, treeStrategy, Some(splits), Some(metadata))
+    val firstTreeModel = RandomForest.run(input, treeStrategy, numTrees = 1,
+      featureSubsetStrategy = "all", seed = seed, instr = None, parentUID = None,
+      _splits = Some(treeSplits), meta = Some(metadata))
+      .head.asInstanceOf[DecisionTreeRegressionModel]
     val firstTreeWeight = 1.0
     baseLearners(0) = firstTreeModel
     baseLearnerWeights(0) = firstTreeWeight
@@ -325,11 +327,14 @@ private[spark] object GradientBoostedTrees extends Logging {
       logDebug("###################################################")
       logDebug("Gradient boosting tree iteration " + m)
       logDebug("###################################################")
-      val dt = new DecisionTreeRegressor().setSeed(seed + m)
-      val model = dt.train(data, treeStrategy, Some(splits))
+//      val dt = new DecisionTreeRegressor().setSeed(seed + m)
+      val dtModel = RandomForest.run(input, treeStrategy, numTrees = 1,
+        featureSubsetStrategy = "all", seed = seed + m, instr = None, parentUID = None,
+        _splits = Some(treeSplits), meta = Some(metadata)).head.asInstanceOf[DecisionTreeRegressionModel]
+//      val model = dt.train(data, treeStrategy, Some(treeSplits), Some(metadata))
       timer.stop(s"building tree $m")
       // Update partial model
-      baseLearners(m) = model
+      baseLearners(m) = dtModel
       // Note: The setting of baseLearnerWeights is incorrect for losses other than SquaredError.
       //       Technically, the weight should be optimized for the particular loss.
       //       However, the behavior should be reasonable, though not optimal.
