@@ -74,7 +74,7 @@ private[spark] class DTStatsAggregator(
    * Index for start of stats for a (feature, bin) is:
    *   index = featureOffsets(featureIndex) + binIndex * statsSize
    */
-  private val allStats: Array[Double] = new Array[Double](allStatsSize)
+  val allStats: Array[Double] = new Array[Double](allStatsSize)
 
   /**
    * Array of parent node sufficient stats.

@@ -103,6 +103,8 @@ private[spark] object RandomForest extends Logging {
     val retaggedInput = input.retag(classOf[LabeledPoint])
     val metadata =
       DecisionTreeMetadata.buildMetadata(retaggedInput, strategy, numTrees, featureSubsetStrategy)
+    println("METADATA")
+    println(metadata.numBins.mkString(","))
     instr match {
       case Some(instrumentation) =>
         instrumentation.logNumFeatures(metadata.numFeatures)
@@ -125,6 +127,8 @@ private[spark] object RandomForest extends Logging {
     // Bin feature values (TreePoint representation).
     // Cache input RDD for speedup during multiple passes.
     val treeInput = TreePoint.convertToTreeRDD(retaggedInput, splits, metadata)
+    println("treepoints")
+    treeInput.collect().foreach(t => println(t.label, t.binnedFeatures.mkString(",")))
 
     val withReplacement = numTrees > 1
 
@@ -294,6 +298,7 @@ private[spark] object RandomForest extends Logging {
           splitIndex += 1
         }
       } else {
+        println("MIXED BIN unordered")
         // Ordered feature
         val binIndex = treePoint.binnedFeatures(featureIndex)
         agg.update(featureIndexIdx, binIndex, treePoint.label, instanceWeight)
@@ -334,6 +339,7 @@ private[spark] object RandomForest extends Logging {
       var featureIndex = 0
       while (featureIndex < numFeatures) {
         val binIndex = treePoint.binnedFeatures(featureIndex)
+        println(binIndex, featureIndex, "ORDEREDBINSEQOP")
         agg.update(featureIndex, binIndex, label, instanceWeight)
         featureIndex += 1
       }
@@ -705,6 +711,10 @@ private[spark] object RandomForest extends Logging {
       node.stats
     }
 
+    println("all stats", binAggregates.allStats.mkString(","))
+
+    println(binAggregates.metadata.numBins.mkString(","))
+
     val validFeatureSplits =
       Range(0, binAggregates.metadata.numFeaturesPerNode).view.map { featureIndexIdx =>
         featuresForNode.map(features => (featureIndexIdx, features(featureIndexIdx)))
@@ -712,9 +722,24 @@ private[spark] object RandomForest extends Logging {
       }.withFilter { case (_, featureIndex) =>
         binAggregates.metadata.numSplits(featureIndex) != 0
       }
+    val mysplits = Range(0, binAggregates.metadata.numFeaturesPerNode).map { featureIndexIdx =>
+      featuresForNode.map(features => (featureIndexIdx, features(featureIndexIdx)))
+        .getOrElse((featureIndexIdx, featureIndexIdx))
+    }
+    mysplits.foreach(split => println(split._2, binAggregates.metadata.numSplits(split._2),
+      binAggregates.metadata.isUnordered(split._2), binAggregates.metadata.isContinuous(split._2)))
+
+    println(splits.length)
+    splits.foreach { split =>
+      println("feature split length", split.length)
+      split.foreach {
+        case c: ContinuousSplit => println(c.threshold)
+        case x: CategoricalSplit => println(x.leftCategories.mkString(","))
+      }
+    }
 
     // For each (feature, split), calculate the gain, and select the best (feature, split).
-    val (bestSplit, bestSplitStats) =
+    val splitsAndImpurityInfo =
       validFeatureSplits.map { case (featureIndexIdx, featureIndex) =>
         val numSplits = binAggregates.metadata.numSplits(featureIndex)
         if (binAggregates.metadata.isContinuous(featureIndex)) {
@@ -766,6 +791,7 @@ private[spark] object RandomForest extends Logging {
           val centroidForCategories = Range(0, numCategories).map { case featureValue =>
             val categoryStats =
               binAggregates.getImpurityCalculator(nodeFeatureOffset, featureValue)
+            println("catstats", categoryStats.count, featureValue)
             val centroid = if (categoryStats.count != 0) {
               if (binAggregates.metadata.isMulticlass) {
                 // multiclass classification
@@ -776,6 +802,7 @@ private[spark] object RandomForest extends Logging {
                 // binary classification
                 // For categorical variables in binary classification,
                 // the bins are ordered by the count of class 1.
+                println("PREDICT!!", categoryStats.stats(1))
                 categoryStats.stats(1)
               } else {
                 // regression
@@ -793,6 +820,8 @@ private[spark] object RandomForest extends Logging {
 
           // bins sorted by centroids
           val categoriesSortedByCentroid = centroidForCategories.toList.sortBy(_._2)
+          println("catsorted")
+          categoriesSortedByCentroid.foreach(x => print(x._1, x._2))
 
           logDebug("Sorted centroids for categorical variable = " +
             categoriesSortedByCentroid.mkString(","))
@@ -810,8 +839,8 @@ private[spark] object RandomForest extends Logging {
           // lastCategory = index of bin with total aggregates for this (node, feature)
           val lastCategory = categoriesSortedByCentroid.last._1
           // Find best split.
-          val (bestFeatureSplitIndex, bestFeatureGainStats) =
-            Range(0, numSplits).map { splitIndex =>
+//          val (bestFeatureSplitIndex, bestFeatureGainStats) =
+            val tmp = Range(0, numSplits).map { splitIndex =>
               val featureValue = categoriesSortedByCentroid(splitIndex)._1
               val leftChildStats =
                 binAggregates.getImpurityCalculator(nodeFeatureOffset, featureValue)
@@ -821,14 +850,40 @@ private[spark] object RandomForest extends Logging {
               gainAndImpurityStats = calculateImpurityStats(gainAndImpurityStats,
                 leftChildStats, rightChildStats, binAggregates.metadata)
               (splitIndex, gainAndImpurityStats)
-            }.maxBy(_._2.gain)
+            }
+          tmp.foreach { case (i, stats) =>
+              println("tmp", i, stats.gain, stats.leftImpurity, stats.rightImpurity)
+          }
+          val (bestFeatureSplitIndex, bestFeatureGainStats) = tmp.maxBy(_._2.gain)
           val categoriesForSplit =
             categoriesSortedByCentroid.map(_._1.toDouble).slice(0, bestFeatureSplitIndex + 1)
           val bestFeatureSplit =
             new CategoricalSplit(featureIndex, categoriesForSplit.toArray, numCategories)
           (bestFeatureSplit, bestFeatureGainStats)
         }
-      }.maxBy(_._2.gain)
+      }
+//    val (bestSplit, bestSplitStats) = splitsAndImpurityInfo.maxBy(_._2.gain)
+
+    val (bestSplit, bestSplitStats) = if (splitsAndImpurityInfo.isEmpty) {
+      val dummyIndex = featuresForNode.map(_.head).getOrElse(0)
+      val dummySplit = if (binAggregates.metadata.isContinuous(dummyIndex)) {
+        new ContinuousSplit(dummyIndex, 0.0)
+      } else {
+        new CategoricalSplit(dummyIndex, Array.empty[Double],
+          binAggregates.metadata.featureArity(dummyIndex))
+      }
+      (dummySplit,
+        ImpurityStats.getInvalidImpurityStats(binAggregates.getImpurityCalculator(dummyIndex, 0)))
+//      (new ContinuousSplit(0, 0.0),
+//        ImpurityStats.getInvalidImpurityStats(binAggregates.getImpurityCalculator(0, 0)))
+    } else {
+      splitsAndImpurityInfo.maxBy(_._2.gain)
+    }
+    println("BEST", bestSplit.featureIndex,
+      bestSplitStats.leftImpurity, bestSplitStats.rightImpurity,
+      bestSplitStats.impurityCalculator.predict)
+    val calc = bestSplitStats.impurityCalculator
+    println(calc.stats.length)
 
     (bestSplit, bestSplitStats)
   }

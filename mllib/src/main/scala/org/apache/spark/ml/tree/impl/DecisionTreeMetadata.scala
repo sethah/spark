@@ -113,6 +113,9 @@ private[spark] object DecisionTreeMetadata extends Logging {
       throw new IllegalArgumentException(s"DecisionTree requires size of input RDD > 0, " +
         s"but was given by empty one.")
     }
+    if (numFeatures == 0) throw new IllegalArgumentException("DecisionTree was given data with " +
+      "zero feature columns.")
+
     val numExamples = input.count()
     val numClasses = strategy.algo match {
       case Classification => strategy.numClasses
@@ -203,8 +206,9 @@ private[spark] object DecisionTreeMetadata extends Logging {
             }
         }
     }
+    val maxBins = if (numBins.isEmpty) 0 else numBins.max
 
-    new DecisionTreeMetadata(numFeatures, numExamples, numClasses, numBins.max,
+    new DecisionTreeMetadata(numFeatures, numExamples, numClasses, maxBins,
       strategy.categoricalFeaturesInfo, unorderedFeatures.toSet, numBins,
       strategy.impurity, strategy.quantileCalculationStrategy, strategy.maxDepth,
       strategy.minInstancesPerNode, strategy.minInfoGain, numTrees, numFeaturesPerNode)
