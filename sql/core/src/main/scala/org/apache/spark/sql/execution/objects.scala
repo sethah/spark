@@ -99,6 +99,7 @@ case class DeserializeToObjectExec(
 case class SerializeFromObjectExec(
     serializer: Seq[NamedExpression],
     child: SparkPlan) extends ObjectConsumerExec with CodegenSupport {
+  toString
 
   override def output: Seq[Attribute] = serializer.map(_.toAttribute)
 
