@@ -17,6 +17,8 @@
 
 package org.apache.spark.mllib.clustering
 
+import org.apache.spark.ml.tree.impl.TimeTracker
+
 import scala.collection.mutable
 
 import org.apache.spark.annotation.Since
@@ -352,47 +354,58 @@ class KMeans private (
 
         // Construct centers matrix.
         val centerMatrix = new DenseMatrix(dim, k, thisCenterArray)
+        val centersWithNorm = Array.tabulate(k) { idx =>
+          new VectorWithNorm(Vectors.dense(thisCenterArray.slice(idx * dim, (idx + 1) * dim)),
+            thisCenterNormArray(idx))
+        }
 
         // Compute dot product matrix between data and center.
         val dotProductMatrix = new DenseMatrix(numRows, k, Array.fill(numRows * k)(0.0))
         gemm(1.0, pointMatrix, centerMatrix, 0.0, dotProductMatrix)
 
+        // iterate over blockSize * k and if they pass the numerical precision test, the
+        // distance is simply norm1 + norm2 - 2.0 * dotProd
+        // if they do not pass the test, call vectors.sqdist
+        val closest = new Array[Int](numRows)
+        val minCosts = Array.fill(numRows)(Double.PositiveInfinity)
+        val dotProdValues = dotProductMatrix.values
         i = 0
-        while (i < numRows) {
-          var minCost = Double.PositiveInfinity
-          var min = -1
+        while (i < k) {
+          val centerNorm = thisCenterNormArray(i)
+          val center = centersWithNorm(i).vector
           var j = 0
-
-          val point = pointMatrix match {
-            case dm: DenseMatrix =>
-              Vectors.dense(dm.values.slice(i * dim, (i + 1) * dim))
-            case sm: SparseMatrix =>
-              val start = sm.colPtrs(i)
-              val end = sm.colPtrs(i + 1)
-              val indices = sm.rowIndices.slice(start, end)
-              val values = sm.values.slice(start, end)
-              Vectors.sparse(dim, indices, values)
-          }
-          val pointNorm = pointNormArray(i)
-
-          while (j < k) {
-            val center = Vectors.dense(thisCenterArray.slice(j * dim, (j + 1) * dim))
-            val centerNorm = thisCenterNormArray(j)
-            val squaredDistance = MLUtils.fastSquaredDistance(point, pointNorm, center, centerNorm,
-              1E-6, dotProductMatrix.values(i + j * numRows))
-
-            if (squaredDistance < minCost) {
-              minCost = squaredDistance
-              min = j
+          while (j < numRows) {
+            val pointNorm = pointNormArray(j)
+            val normDiff = centerNorm - pointNorm
+            val sumSquaredNorm = pointNorm * pointNorm + centerNorm * centerNorm
+            val precisionBound1 = 2.0 * MLUtils.EPSILON * sumSquaredNorm /
+              (normDiff * normDiff + MLUtils.EPSILON)
+            val dist = if (precisionBound1 < 1e-6) {
+              sumSquaredNorm - 2.0 * dotProdValues(i * numRows + j)
+            } else {
+              val point = pointMatrix match {
+                case dm: DenseMatrix =>
+                  Vectors.dense(dm.values.slice(j * dim, j * dim + dim))
+                case sm: SparseMatrix =>
+                  throw new Exception("no sparse")
+              }
+              Vectors.sqdist(center, point)
+            }
+            if (dist < minCosts(j)) {
+              minCosts(j) = dist
+              closest(j) = i
             }
             j += 1
           }
-          costAccums.add(minCost)
-          val sum = sums(min)
-          axpy(1.0, point, sum)
-          counts(min) += 1
           i += 1
         }
+
+        // add points contributions to the appropriate centers
+        pointMatrix.foreachActive { (rowIndex, colIndex, value) =>
+          val closestCenter = closest(rowIndex)
+          sums(closestCenter).toArray(colIndex) += value
+        }
+        closest.foreach { i => counts(i) += 1}
 
         val contribs = for (j <- 0 until k) yield {
           (j, (sums(j), counts(j)))
