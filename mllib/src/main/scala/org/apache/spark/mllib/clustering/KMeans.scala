@@ -321,6 +321,7 @@ class KMeans private (
 
     // Execute Lloyd's algorithm until converged or reached the max number of iterations.
     while (iteration < maxIterations && !done) {
+      val tIter0 = System.nanoTime()
       type WeightedPoint = (Vector, Long)
       def mergeContribs(x: WeightedPoint, y: WeightedPoint): WeightedPoint = {
         axpy(1.0, x._1, y._1)
@@ -330,6 +331,7 @@ class KMeans private (
       val costAccums = sc.doubleAccumulator
 
       // Construct center array and broadcast it.
+      val centersTime0 = System.nanoTime()
       val centerArray = new Array[Double](k * dim)
       val centerNormArray = new Array[Double](k)
       var i = 0
@@ -338,11 +340,16 @@ class KMeans private (
         centerNormArray(i) = center.norm
         i += 1
       }
+      val centersTime1 = System.nanoTime()
+      println(s"centersTime: ${(centersTime1 - centersTime0) / 1e9}")
       val bcCenterArray = sc.broadcast(centerArray)
       val bcCenterNormArray = sc.broadcast(centerNormArray)
 
       // Find the sum and count of points mapping to each center.
+      val flatMapTime0 = System.nanoTime()
       val totalContribs = data.flatMap { case (pointMatrix, pointNormArray) =>
+        val timingMap = new mutable.HashMap[String, Long]()
+        val t0 = System.nanoTime()
         val thisCenterArray = bcCenterArray.value
         val thisCenterNormArray = bcCenterNormArray.value
 
@@ -353,19 +360,26 @@ class KMeans private (
         val counts = Array.fill(k)(0L)
 
         // Construct centers matrix.
+        val tCenters0 = System.nanoTime()
         val centerMatrix = new DenseMatrix(dim, k, thisCenterArray)
         val centersWithNorm = Array.tabulate(k) { idx =>
           new VectorWithNorm(Vectors.dense(thisCenterArray.slice(idx * dim, (idx + 1) * dim)),
             thisCenterNormArray(idx))
         }
+        val tCenters1 = System.nanoTime()
+        timingMap += ("Centers time" -> (tCenters1 - tCenters0))
 
         // Compute dot product matrix between data and center.
+        val tGEMM0 = System.nanoTime()
         val dotProductMatrix = new DenseMatrix(numRows, k, Array.fill(numRows * k)(0.0))
         gemm(1.0, pointMatrix, centerMatrix, 0.0, dotProductMatrix)
+        val tGEMM1 = System.nanoTime()
+        timingMap += "GEMM time" -> (tGEMM1 - tGEMM0)
 
         // iterate over blockSize * k and if they pass the numerical precision test, the
         // distance is simply norm1 + norm2 - 2.0 * dotProd
         // if they do not pass the test, call vectors.sqdist
+        val findClosestTime0 = System.nanoTime()
         val closest = new Array[Int](numRows)
         val minCosts = Array.fill(numRows)(Double.PositiveInfinity)
         val dotProdValues = dotProductMatrix.values
@@ -399,45 +413,77 @@ class KMeans private (
           }
           i += 1
         }
+        val findClosestTime1 = System.nanoTime()
+        timingMap += "Find closest" -> (findClosestTime1 - findClosestTime0)
 
+        val addContribsTime0 = System.nanoTime()
         // add points contributions to the appropriate centers
         pointMatrix.foreachActive { (rowIndex, colIndex, value) =>
           val closestCenter = closest(rowIndex)
           sums(closestCenter).toArray(colIndex) += value
         }
         closest.foreach { i => counts(i) += 1}
-
-        val contribs = for (j <- 0 until k) yield {
-          (j, (sums(j), counts(j)))
+        val addContribsTime1 = System.nanoTime()
+        timingMap += "Add contribs" -> (addContribsTime1 - addContribsTime0)
+        val sumTimes = timingMap.values.sum
+        val normedMap = timingMap.map { case (k, v) =>
+          k -> v / sumTimes.toDouble
         }
-        contribs.iterator
+        println(normedMap)
+        println(timingMap.map { case (k, v ) => k -> v / 1e9})
+
+//        val contribs = for (j <- 0 until k) yield {
+//          (j, (sums(j), counts(j)))
+//        }
+//        contribs.iterator
+        val t1 = System.nanoTime()
+        println(s"Flatmap inner time: ${(t1 - t0) / 1e9}")
+        counts.indices.filter(counts(_) > 0).map(j => (j, (sums(j), counts(j)))).iterator
       }.reduceByKey(mergeContribs).collectAsMap()
+      val flatMapTime1 = System.nanoTime()
+      println(s"Flat map time: ${(flatMapTime1 - flatMapTime0) / 1e9}")
 
       bcCenterArray.destroy(blocking = false)
       bcCenterNormArray.destroy(blocking = false)
 
       // Update the cluster centers and costs
-      var changed = false
-      var j = 0
-      while (j < k) {
-        val (sum, count) = totalContribs(j)
-        if (count != 0) {
-          scal(1.0 / count, sum)
-          val newCenter = new VectorWithNorm(sum)
-          if (KMeans.fastSquaredDistance(newCenter, centers(j)) > epsilon * epsilon) {
-            changed = true
-          }
-          centers(j) = newCenter
+      done = true
+      totalContribs.foreach { case (j, (sum, count)) =>
+        scal(1.0 / count, sum)
+        val newCenter = new VectorWithNorm(sum)
+        if (done && KMeans.fastSquaredDistance(newCenter, centers(j)) > epsilon * epsilon) {
+          done = false
         }
-        j += 1
+        centers(j) = newCenter
       }
 
+      // Update the cluster centers and costs
+//      var changed = false
+//      var j = 0
+//      val trueK = totalContribs.size
+//      while (j < trueK) {
+//        val (sum, count) = totalContribs(j)
+//        if (count != 0) {
+//          scal(1.0 / count, sum)
+//          val newCenter = new VectorWithNorm(sum)
+//          if (KMeans.fastSquaredDistance(newCenter, centers(j)) > epsilon * epsilon) {
+//            changed = true
+//          }
+//          centers(j) = newCenter
+//        }
+//        j += 1
+//      }
+
       costs = costAccums.value
-      if (!changed) {
-        logInfo(s"Run finished in ${iteration + 1} iterations")
-        done = true
-      }
+//      if (!done) {
+//        logInfo(s"Run finished in ${iteration + 1} iterations")
+//        done = true
+//      }
       iteration += 1
+      val tIter1 = System.nanoTime()
+      println("---------------------")
+      println(s"Iteration time:  ${(tIter1 - tIter0) / 1e9}")
+      println("---------------------")
     }
 
     val iterationTimeInSeconds = (System.nanoTime() - iterationStartTime) / 1e9
