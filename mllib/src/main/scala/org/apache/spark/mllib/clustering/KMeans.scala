@@ -341,7 +341,7 @@ class KMeans private (
         i += 1
       }
       val centersTime1 = System.nanoTime()
-      println(s"centersTime: ${(centersTime1 - centersTime0) / 1e9}")
+//      println(s"centersTime: ${(centersTime1 - centersTime0) / 1e9}")
       val bcCenterArray = sc.broadcast(centerArray)
       val bcCenterNormArray = sc.broadcast(centerNormArray)
 
@@ -356,7 +356,7 @@ class KMeans private (
         val k = thisCenterNormArray.length
         val numRows = pointMatrix.numRows
 
-        val sums = Array.fill(k)(Vectors.zeros(dim))
+        val sums = Array.fill(k)(new Array[Double](dim))
         val counts = Array.fill(k)(0L)
 
         // Construct centers matrix.
@@ -383,6 +383,7 @@ class KMeans private (
         val closest = new Array[Int](numRows)
         val minCosts = Array.fill(numRows)(Double.PositiveInfinity)
         val dotProdValues = dotProductMatrix.values
+        var totalSqDistCalls = 0
         i = 0
         while (i < k) {
           val centerNorm = thisCenterNormArray(i)
@@ -403,6 +404,7 @@ class KMeans private (
                 case sm: SparseMatrix =>
                   throw new Exception("no sparse")
               }
+              totalSqDistCalls += 1
               Vectors.sqdist(center, point)
             }
             if (dist < minCosts(j)) {
@@ -413,6 +415,7 @@ class KMeans private (
           }
           i += 1
         }
+//        println(s"sq dist calls: $totalSqDistCalls/${k * numRows}")
         val findClosestTime1 = System.nanoTime()
         timingMap += "Find closest" -> (findClosestTime1 - findClosestTime0)
 
@@ -420,7 +423,7 @@ class KMeans private (
         // add points contributions to the appropriate centers
         pointMatrix.foreachActive { (rowIndex, colIndex, value) =>
           val closestCenter = closest(rowIndex)
-          sums(closestCenter).toArray(colIndex) += value
+          sums(closestCenter)(colIndex) += value
         }
         closest.foreach { i => counts(i) += 1}
         val addContribsTime1 = System.nanoTime()
@@ -429,19 +432,20 @@ class KMeans private (
         val normedMap = timingMap.map { case (k, v) =>
           k -> v / sumTimes.toDouble
         }
-        println(normedMap)
-        println(timingMap.map { case (k, v ) => k -> v / 1e9})
+//        println(normedMap)
+//        println(timingMap.map { case (k, v ) => "r" + k -> v / 1e9})
 
 //        val contribs = for (j <- 0 until k) yield {
 //          (j, (sums(j), counts(j)))
 //        }
 //        contribs.iterator
         val t1 = System.nanoTime()
-        println(s"Flatmap inner time: ${(t1 - t0) / 1e9}")
-        counts.indices.filter(counts(_) > 0).map(j => (j, (sums(j), counts(j)))).iterator
+//        println(s"Flatmap inner time: ${(t1 - t0) / 1e9}")
+        counts.indices.filter(counts(_) > 0)
+          .map(j => (j, (Vectors.dense(sums(j)), counts(j)))).iterator
       }.reduceByKey(mergeContribs).collectAsMap()
       val flatMapTime1 = System.nanoTime()
-      println(s"Flat map time: ${(flatMapTime1 - flatMapTime0) / 1e9}")
+//      println(s"Flat map time: ${(flatMapTime1 - flatMapTime0) / 1e9}")
 
       bcCenterArray.destroy(blocking = false)
       bcCenterNormArray.destroy(blocking = false)
