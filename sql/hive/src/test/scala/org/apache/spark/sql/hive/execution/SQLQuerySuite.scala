@@ -68,6 +68,22 @@ class SQLQuerySuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
   import hiveContext._
   import spark.implicits._
 
+  test("query global temp view") {
+    val df = Seq(1).toDF("i1")
+    df.createGlobalTempView("tbl1")
+    val global_temp_db = spark.conf.get("spark.sql.globalTempDatabase")
+    checkAnswer(spark.sql(s"select * from ${global_temp_db}.tbl1"), Row(1))
+    spark.sql(s"drop view ${global_temp_db}.tbl1")
+  }
+
+  test("non-existent global temp view") {
+    val global_temp_db = spark.conf.get("spark.sql.globalTempDatabase")
+    val message = intercept[AnalysisException] {
+      spark.sql(s"select * from ${global_temp_db}.nonexistentview")
+    }.getMessage
+    assert(message.contains("Table or view not found"))
+  }
+
   test("script") {
     val scriptFilePath = getTestResourcePath("test_script.sh")
     if (testCommandAvailable("bash") && testCommandAvailable("echo | sed")) {
@@ -358,7 +374,7 @@ class SQLQuerySuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
         "# Partition Information",
         "# col_name",
         "Detailed Partition Information CatalogPartition(",
-        "Partition Values: [Us, 1]",
+        "Partition Values: [c=Us, d=1]",
         "Storage(Location:",
         "Partition Parameters")
 
@@ -399,10 +415,8 @@ class SQLQuerySuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
         .range(1).select('id as 'a, 'id as 'b, 'id as 'c, 'id as 'd).write
         .partitionBy("d")
         .saveAsTable("datasource_table")
-      val m4 = intercept[AnalysisException] {
-        sql("DESC datasource_table PARTITION (d=2)")
-      }.getMessage()
-      assert(m4.contains("DESC PARTITION is not allowed on a datasource table"))
+
+      sql("DESC datasource_table PARTITION (d=0)")
 
       val m5 = intercept[AnalysisException] {
         spark.range(10).select('id as 'a, 'id as 'b).createTempView("view1")
@@ -1551,15 +1565,27 @@ class SQLQuerySuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
     ).map(i => Row(i._1, i._2, i._3, i._4)))
   }
 
-  test("SPARK-10562: partition by column with mixed case name") {
-    withTable("tbl10562") {
-      val df = Seq(2012 -> "a").toDF("Year", "val")
-      df.write.partitionBy("Year").saveAsTable("tbl10562")
-      checkAnswer(sql("SELECT year FROM tbl10562"), Row(2012))
-      checkAnswer(sql("SELECT Year FROM tbl10562"), Row(2012))
-      checkAnswer(sql("SELECT yEAr FROM tbl10562"), Row(2012))
-      checkAnswer(sql("SELECT val FROM tbl10562 WHERE Year > 2015"), Nil)
-      checkAnswer(sql("SELECT val FROM tbl10562 WHERE Year == 2012"), Row("a"))
+  ignore("SPARK-10562: partition by column with mixed case name") {
+    def runOnce() {
+      withTable("tbl10562") {
+        val df = Seq(2012 -> "a").toDF("Year", "val")
+        df.write.partitionBy("Year").saveAsTable("tbl10562")
+        checkAnswer(sql("SELECT year FROM tbl10562"), Row(2012))
+        checkAnswer(sql("SELECT Year FROM tbl10562"), Row(2012))
+        checkAnswer(sql("SELECT yEAr FROM tbl10562"), Row(2012))
+        checkAnswer(sql("SELECT val FROM tbl10562 WHERE Year > 2015"), Nil)
+        checkAnswer(sql("SELECT val FROM tbl10562 WHERE Year == 2012"), Row("a"))
+      }
+    }
+    try {
+      runOnce()
+    } catch {
+      case t: Throwable =>
+        // Retry to gather more test data. TODO(ekl) revert this once we deflake this test.
+        runOnce()
+        runOnce()
+        runOnce()
+        throw t
     }
   }
 
@@ -1944,6 +1970,39 @@ class SQLQuerySuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
         }.getMessage
         assert(m2.contains("LOAD DATA input path allows only filename wildcard"))
       }
+    }
+  }
+
+  test("Insert overwrite with partition") {
+    withTable("tableWithPartition") {
+      sql(
+        """
+          |CREATE TABLE tableWithPartition (key int, value STRING)
+          |PARTITIONED BY (part STRING)
+        """.stripMargin)
+      sql(
+        """
+          |INSERT OVERWRITE TABLE tableWithPartition PARTITION (part = '1')
+          |SELECT * FROM default.src
+        """.stripMargin)
+       checkAnswer(
+         sql("SELECT part, key, value FROM tableWithPartition"),
+         sql("SELECT '1' AS part, key, value FROM default.src")
+       )
+
+      sql(
+        """
+          |INSERT OVERWRITE TABLE tableWithPartition PARTITION (part = '1')
+          |SELECT * FROM VALUES (1, "one"), (2, "two"), (3, null) AS data(key, value)
+        """.stripMargin)
+      checkAnswer(
+        sql("SELECT part, key, value FROM tableWithPartition"),
+        sql(
+          """
+            |SELECT '1' AS part, key, value FROM VALUES
+            |(1, "one"), (2, "two"), (3, null) AS data(key, value)
+          """.stripMargin)
+      )
     }
   }
 
