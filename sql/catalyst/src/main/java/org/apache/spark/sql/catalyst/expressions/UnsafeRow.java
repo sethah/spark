@@ -145,7 +145,6 @@ public final class UnsafeRow extends InternalRow implements Externalizable, Kryo
    * @param numFields the number of fields in this row
    */
   public UnsafeRow(int numFields) {
-    System.out.println("UNSAFE ROW HERE");
     this.numFields = numFields;
     this.bitSetWidthInBytes = calculateBitSetWidthInBytes(numFields);
   }
@@ -307,7 +306,6 @@ public final class UnsafeRow extends InternalRow implements Externalizable, Kryo
 
   @Override
   public Object get(int ordinal, DataType dataType) {
-    System.out.println("UNSAFE GET");
     if (isNullAt(ordinal) || dataType instanceof NullType) {
       return null;
     } else if (dataType instanceof BooleanType) {

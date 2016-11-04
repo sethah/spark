@@ -313,9 +313,13 @@ class LogisticRegressionModel(JavaModel, JavaClassificationModel, JavaMLWritable
         training set. An exception is thrown if
         `trainingSummary is None`.
         """
-        java_blrt_summary = self._call_java("summary")
-        # Note: Once multiclass is added, update this to return correct summary
-        return BinaryLogisticRegressionTrainingSummary(java_blrt_summary)
+        if self.hasSummary:
+            java_blrt_summary = self._call_java("summary")
+            # Note: Once multiclass is added, update this to return correct summary
+            return BinaryLogisticRegressionTrainingSummary(java_blrt_summary)
+        else:
+            raise RuntimeError("No training summary available for this %s" %
+                               self.__class__.__name__)
 
     @property
     @since("2.0.0")

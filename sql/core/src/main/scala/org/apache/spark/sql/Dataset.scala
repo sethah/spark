@@ -2487,9 +2487,7 @@ class Dataset[T] private[sql](
     sparkSession.sessionState.executePlan(deserialized).toRdd.mapPartitions { rows =>
 
       rows.map { elem =>
-        println(elem.getClass().getName())
         val tmp = elem.get(0, objectType).asInstanceOf[T]
-//        println(tmp)
         tmp
       }
     }
