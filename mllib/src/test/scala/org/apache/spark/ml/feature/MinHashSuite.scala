@@ -123,4 +123,22 @@ class MinHashSuite extends SparkFunSuite with MLlibTestSparkContext with Default
     assert(precision == 1.0)
     assert(recall >= 0.7)
   }
+
+  test("empty vector") {
+    val ctx = spark.sqlContext
+    import ctx.implicits._
+    val df = Seq(
+//      Vectors.sparse(10, Array.empty[Int], Array.empty[Double]),
+      Vectors.sparse(10, Array(2, 5), Array(3.0, 1.0)),
+      Vectors.dense((0 until 10).map(_.toDouble).toArray)
+    ).map(Tuple1.apply).toDF("features")
+    val minhash = new MinHash()
+      .setOutputDim(20)
+      .setInputCol("features")
+      .setOutputCol("values")
+      .setSeed(12345)
+    val model = minhash.fit(df)
+    val key = Vectors.sparse(10, Array(3), Array(1.0))
+    model.approxNearestNeighbors(df, key, 3).show()
+  }
 }

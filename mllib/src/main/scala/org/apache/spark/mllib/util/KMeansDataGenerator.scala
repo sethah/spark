@@ -56,6 +56,7 @@ object KMeansDataGenerator {
     // First, generate some centers
     val rand = new Random(42)
     val centers = Array.fill(k)(Array.fill(d)(rand.nextGaussian() * r))
+    centers.foreach(c => println("c", c.mkString(",")))
     // Then generate points around each center
     sc.parallelize(0 until numPoints, numPartitions).map { idx =>
       val center = centers(idx % k)

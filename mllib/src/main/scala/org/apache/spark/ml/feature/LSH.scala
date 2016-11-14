@@ -106,7 +106,7 @@ private[ml] abstract class LSHModel[T <: LSHModel[T]]
    * transformed data when necessary.
    *
    * This method implements two ways of fetching k nearest neighbors:
-   *  - Single Probing: Fast, return at most k elements (Probing only one buckets)
+   *  - Single Probing: Fast, return at most k elements (Probing only one bucket)
    *  - Multiple Probing: Slow, return exact k elements (Probing multiple buckets close to the key)
    *
    * @param dataset the dataset to search for nearest neighbors of the key
@@ -126,11 +126,13 @@ private[ml] abstract class LSHModel[T <: LSHModel[T]]
     require(numNearestNeighbors > 0, "The number of nearest neighbors cannot be less than 1")
     // Get Hash Value of the key
     val keyHash = hashFunction(key)
+//    println(keyHash)
     val modelDataset: DataFrame = if (!dataset.columns.contains($(outputCol))) {
-        transform(dataset)
-      } else {
-        dataset.toDF()
-      }
+      transform(dataset)
+    } else {
+      dataset.toDF()
+    }
+//    modelDataset.show(50)
 
     // In the origin dataset, find the hash value that is closest to the key
     val hashDistUDF = udf((x: Vector) => hashDistance(x, keyHash), DataTypes.DoubleType)
@@ -147,6 +149,7 @@ private[ml] abstract class LSHModel[T <: LSHModel[T]]
       // Filter the dataset where the hash value is less than the threshold.
       modelDataset.filter(hashDistCol <= hashThreshold)
     }
+    println("subset", modelSubset.count())
 
     // Get the top k nearest neighbor by their distance to the key
     val keyDistUDF = udf((x: Vector) => keyDistance(x, key), DataTypes.DoubleType)
@@ -162,7 +165,8 @@ private[ml] abstract class LSHModel[T <: LSHModel[T]]
       dataset: Dataset[_],
       key: Vector,
       numNearestNeighbors: Int): Dataset[_] = {
-    approxNearestNeighbors(dataset, key, numNearestNeighbors, true, "distCol")
+    approxNearestNeighbors(dataset, key, numNearestNeighbors,
+      singleProbing = true, distCol = "distCol")
   }
 
   /**

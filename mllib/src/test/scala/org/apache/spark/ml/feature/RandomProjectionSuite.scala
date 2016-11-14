@@ -21,11 +21,12 @@ import breeze.numerics.{cos, sin}
 import breeze.numerics.constants.Pi
 
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.ml.clustering.KMeans
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.ml.param.ParamsSuite
 import org.apache.spark.ml.util.DefaultReadWriteTest
 import org.apache.spark.ml.util.TestingUtils._
-import org.apache.spark.mllib.util.MLlibTestSparkContext
+import org.apache.spark.mllib.util.{KMeansDataGenerator, MLlibTestSparkContext}
 import org.apache.spark.sql.Dataset
 
 class RandomProjectionSuite
@@ -104,6 +105,37 @@ class RandomProjectionSuite
     val (falsePositive, falseNegative) = LSHTest.calculateLSHProperty(dataset, rp, 8.0, 2.0)
     assert(falsePositive < 0.4)
     assert(falseNegative < 0.4)
+  }
+  test("mydimtest") {
+//    val numDim = 100
+//    val data = {
+//      for (i <- 0 until numDim; j <- Seq(-2, -1, 1, 2))
+//        yield Vectors.sparse(numDim, Seq((i, j.toDouble)))
+//    }
+//    val df = spark.createDataFrame(data.map(Tuple1.apply)).toDF("keys")
+//    df.show()
+//    println(df.count())
+    val ctx = spark.sqlContext
+    import ctx.implicits._
+    val rdd = KMeansDataGenerator.generateKMeansRDD(spark.sparkContext, 10000, 2, 100, 10)
+    val df = rdd.map(arr => Tuple1(Vectors.dense(arr))).toDF("features")
+
+    val queryPoint = Vectors.dense(rdd.first()).toSparse
+    val secondPoint = Vectors.dense(rdd.take(2)(1))
+    println("dist", Vectors.sqdist(queryPoint, secondPoint),
+      Vectors.sqdist(queryPoint, Vectors.dense(rdd.take(5).last)))
+    Seq(1, 5, 10, 50).foreach { outputDim =>
+      // Project from 100 dimensional Euclidean Space to 10 dimensions
+      val rp = new RandomProjection()
+        .setOutputDim(outputDim)
+        .setInputCol("features")
+        .setOutputCol("values")
+        .setBucketLength(1)
+        .setSeed(42)
+      val model = rp.fit(df)
+      model.approxNearestNeighbors(df, queryPoint, 3)
+      model.transform(df).show()
+    }
   }
 
   test("RandomProjection with high dimension data: test of LSH property") {
