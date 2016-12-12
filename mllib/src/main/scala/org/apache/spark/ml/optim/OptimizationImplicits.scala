@@ -16,35 +16,34 @@
  */
 package org.apache.spark.ml.optim
 
+import org.apache.spark.ml.linalg.{BLAS, Vector}
 
-import org.apache.spark.ml.linalg.{Vectors, DenseVector, Vector, BLAS}
-import OptimizerImplicits._
+object OptimizerImplicits {
+  trait CanMath[T] {
+    def addInPlace(x: T, y: T): Unit
+    def scalarMultiply(x: T, alpha: Double): Unit
+  }
 
+  object CanMath {
+    def apply[T: CanMath]: CanMath[T] = implicitly
+  }
 
-
-trait Optimizer[T] {
-
-  def optimize(lossFunction: LossFunction[T], initialParameters: T): T
-
-}
-
-class GradientDescent[T: OptimizerImplicits.CanMath] extends Optimizer[T] {
-
-  def optimize(lossFunction: LossFunction[T], initialParameters: T): T = {
-    println(initialParameters match {
-      case _: Vector => "I'm a vector!"
-      case _ => "NOT"
-    })
-    val stepSize = 0.01
-    val theta = initialParameters
-    var iter = 0
-    while (iter < 100) {
-      val (loss, gradient) = lossFunction.compute(theta)
-      println(s"Loss: $loss, gradient: $gradient")
-      gradient * stepSize
-      theta + gradient
-      iter += 1
+  implicit object CanMathVector extends CanMath[Vector] {
+    def addInPlace(x: Vector, y: Vector): Unit = {
+      BLAS.axpy(1.0, y, x)
     }
-    initialParameters
+
+//    def subtractInPlace(x: Vector, y: Vector): Unit = {
+//      BLAS.axpy()
+//    }
+
+    def scalarMultiply(x: Vector, alpha: Double): Unit = {
+      BLAS.scal(alpha, x)
+    }
+  }
+
+  implicit class CanMathOps[T: CanMath](value: T) {
+    def +(other: T): Unit = CanMath[T].addInPlace(value, other)
+    def *(alpha: Double): Unit = CanMath[T].scalarMultiply(value, alpha)
   }
 }

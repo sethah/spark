@@ -60,9 +60,10 @@ class LeastSquaresCostFun(data: DataFrame, numExamples: Long) extends LossFuncti
       seqOp = (c, v) => (c, v) match { case ((grad, loss), instance) =>
         val diff = BLAS.dot(instance.features, theta) - instance.label
         val loss = diff * diff / 2.0
-        val gradient = instance.features.copy
-        BLAS.scal(diff, gradient)
-        (gradient, loss)
+//        val gradient = instance.features.copy
+//        BLAS.scal(diff, gradient)
+        BLAS.axpy(-diff, instance.features, grad)
+        (grad, loss)
       },
       combOp = (c1, c2) => (c1, c2) match { case ((grad1, loss1), (grad2, loss2)) =>
         BLAS.axpy(1.0, grad2, grad1)
