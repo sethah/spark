@@ -17,11 +17,16 @@
 
 package org.apache.spark.ml.regression
 
+import org.apache.spark.ml.optim.optimizers.{IterativeOptimizerState, HasL1Reg, IterativeOptimizer, Optimizer}
+
 import scala.collection.mutable
+
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import breeze.stats.distributions.StudentsT
 import org.apache.hadoop.fs.Path
+import org.apache.spark.ml.optim.{DifferentiableFunction, WeightedLeastSquares}
+
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.broadcast.Broadcast
@@ -29,10 +34,8 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.{DifferentiableFunction, WeightedLeastSquares}
 import org.apache.spark.ml.PredictorParams
-import org.apache.spark.ml.optim.optimizers._
-import org.apache.spark.ml.param.{Param, ParamMap, Params}
+import org.apache.spark.ml.param.{Param, ParamMap}
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util._
 import org.apache.spark.mllib.evaluation.RegressionMetrics
@@ -45,10 +48,24 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.storage.StorageLevel
 
-trait HasOptimizer extends Params {
+/**
+ * Params for linear regression.
+ */
+private[regression] trait OptLinearRegressionParams extends PredictorParams
+  with HasRegParam with HasElasticNetParam with HasMaxIter with HasTol
+  with HasFitIntercept with HasStandardization with HasWeightCol with HasSolver
+  with HasAggregationDepth {
 
-  type OptimizerType
+  type OptimizerType = IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
+    IterativeOptimizerState[DenseVector]]
 
+
+  /*
+   * TODO: we don't make this firstorder optimizer right now because we don't have access to
+   * TODO: the low level stuff in breeze that would be required to implement all of the functions
+   * TODO: for first order optimizer. Though we would ideally like to specify that the optimizer
+   * TODO: for linear regression is a FirstOrderOptimizer[DenseVector]
+   */
   /**
    * @group param
    */
@@ -56,17 +73,8 @@ trait HasOptimizer extends Params {
 
   /** @group getParam */
   final def getOptimizer: OptimizerType = $(optimizer)
+
 }
-
-/**
- * Params for linear regression.
- */
-private[regression] trait LinearRegressionParams extends PredictorParams
-    with HasRegParam with HasElasticNetParam with HasMaxIter with HasTol
-    with HasFitIntercept with HasStandardization with HasWeightCol with HasSolver
-    with HasAggregationDepth with HasOptimizer
-
-
 
 /**
  * Linear regression.
@@ -87,15 +95,12 @@ private[regression] trait LinearRegressionParams extends PredictorParams
  *  - L2 + L1 (elastic net)
  */
 @Since("1.3.0")
-class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String)
-  extends Regressor[Vector, LinearRegression, LinearRegressionModel]
-  with LinearRegressionParams with DefaultParamsWritable with Logging {
-
-  type OptimizerType = IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
-    IterativeOptimizerState[DenseVector]]
+class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String)
+  extends Regressor[Vector, OptLinearRegression, OptLinearRegressionModel]
+    with OptLinearRegressionParams with DefaultParamsWritable with Logging {
 
   @Since("1.4.0")
-  def this() = this(Identifiable.randomUID("linReg"))
+  def this() = this(Identifiable.randomUID("optlinReg"))
 
   /**
    * Set the regularization parameter.
@@ -126,7 +131,6 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
    * @note With/without standardization, the models should be always converged
    * to the same solution when no regularization is applied. In R's GLMNET package,
    * the default behavior is true as well.
-   *
    * @group setParam
    */
   @Since("1.5.0")
@@ -210,10 +214,11 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
   def setAggregationDepth(value: Int): this.type = set(aggregationDepth, value)
   setDefault(aggregationDepth -> 2)
 
-  @Since("2.2.0")
-  def setOptimizer(value: OptimizerType): this.type = set(optimizer, value)
+  def setOptimizer(value: OptimizerType): this.type = {
+    set(optimizer, value)
+  }
 
-  override protected def train(dataset: Dataset[_]): LinearRegressionModel = {
+  override protected def train(dataset: Dataset[_]): OptLinearRegressionModel = {
     // Extract the number of features before deciding optimization solver.
     val numFeatures = dataset.select(col($(featuresCol))).first().getAs[Vector](0).size
     val w = if (!isDefined(weightCol) || $(weightCol).isEmpty) lit(1.0) else col($(weightCol))
@@ -235,9 +240,9 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
       val model = optimizer.fit(instances)
       // When it is trained by WeightedLeastSquares, training summary does not
       // attach returned model.
-      val lrModel = copyValues(new LinearRegressionModel(uid, model.coefficients, model.intercept))
+      val lrModel = copyValues(new OptLinearRegressionModel(uid, model.coefficients, model.intercept))
       val (summaryModel, predictionColName) = lrModel.findSummaryModelAndPredictionCol()
-      val trainingSummary = new LinearRegressionTrainingSummary(
+      val trainingSummary = new OptLinearRegressionTrainingSummary(
         summaryModel.transform(dataset),
         predictionColName,
         $(labelCol),
@@ -254,13 +259,13 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
 
     val (featuresSummarizer, ySummarizer) = {
       val seqOp = (c: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer),
-        instance: Instance) =>
-          (c._1.add(instance.features, instance.weight),
-            c._2.add(Vectors.dense(instance.label), instance.weight))
+                   instance: Instance) =>
+        (c._1.add(instance.features, instance.weight),
+          c._2.add(Vectors.dense(instance.label), instance.weight))
 
       val combOp = (c1: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer),
-        c2: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer)) =>
-          (c1._1.merge(c2._1), c1._2.merge(c2._2))
+                    c2: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer)) =>
+        (c1._1.merge(c2._1), c1._2.merge(c2._2))
 
       instances.treeAggregate(
         new MultivariateOnlineSummarizer, new MultivariateOnlineSummarizer
@@ -287,11 +292,11 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
         val coefficients = Vectors.sparse(numFeatures, Seq())
         val intercept = yMean
 
-        val model = copyValues(new LinearRegressionModel(uid, coefficients, intercept))
+        val model = copyValues(new OptLinearRegressionModel(uid, coefficients, intercept))
         // Handle possible missing or invalid prediction columns
         val (summaryModel, predictionColName) = model.findSummaryModelAndPredictionCol()
 
-        val trainingSummary = new LinearRegressionTrainingSummary(
+        val trainingSummary = new OptLinearRegressionTrainingSummary(
           summaryModel.transform(dataset),
           predictionColName,
           $(labelCol),
@@ -332,35 +337,29 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     val costFun = new LeastSquaresCostFun(instances, yStd, yMean, $(fitIntercept),
       $(standardization), bcFeaturesStd, bcFeaturesMean, effectiveL2RegParam, $(aggregationDepth))
 
-    val standardizationParam = $(standardization)
-    val effectiveL1RegFun = (index: Int) => {
-      if (standardizationParam) {
-        effectiveL1RegParam
-      } else {
-        // If `standardization` is false, we still standardize the data
-        // to improve the rate of convergence; as a result, we have to
-        // perform this reverse standardization by penalizing each component
-        // differently to get effectively the same objective function when
-        // the training dataset is not standardized.
-        if (featuresStd(index) != 0.0) effectiveL1RegParam / featuresStd(index) else 0.0
-      }
-    }
-
-    val opt = if (!isSet(optimizer)) {
-      if ($(elasticNetParam) > 0.0 && effectiveRegParam > 0.0) {
-        new OWLQN().setL1RegFunc(effectiveL1RegFun).setMaxIter(getMaxIter).setTol(getTol)
-      } else {
-        new LBFGS().setMaxIter(getMaxIter).setTol(getTol)
-      }
-    } else {
-      getOptimizer match {
-        case l1Opt: OptimizerType with HasL1Reg if $(elasticNetParam) > 0.0 &&
-          effectiveRegParam > 0.0 =>
-          l1Opt.set(l1Opt.l1RegFunc, effectiveL1RegFun)
-        case l2Opt: OptimizerType if $(elasticNetParam) == 0.0 => l2Opt
-        case _ => throw new SparkException(s"Wrong type of optimizer for elasticNetParam: " +
-          s"${$(elasticNetParam)}")
-      }
+    val opt = getOptimizer match {
+      case l1Opt: IterativeOptimizer[DenseVector,
+        DifferentiableFunction[DenseVector],
+        IterativeOptimizerState[DenseVector]] with HasL1Reg if $(elasticNetParam) > 0.0 &&
+        effectiveRegParam > 0.0 =>
+          val standardizationParam = $(standardization)
+          def effectiveL1RegFun = (index: Int) => {
+            if (standardizationParam) {
+              effectiveL1RegParam
+            } else {
+              // If `standardization` is false, we still standardize the data
+              // to improve the rate of convergence; as a result, we have to
+              // perform this reverse standardization by penalizing each component
+              // differently to get effectively the same objective function when
+              // the training dataset is not standardized.
+              if (featuresStd(index) != 0.0) effectiveL1RegParam / featuresStd(index) else 0.0
+            }
+          }
+        l1Opt.set(l1Opt.l1RegFunc, effectiveL1RegFun)
+      case l2Opt: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
+        IterativeOptimizerState[DenseVector]] =>
+        l2Opt
+      case _ => throw new SparkException("optimizers didn't match up!")
     }
 
     val initialCoefficients = Vectors.zeros(numFeatures)
@@ -374,7 +373,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
         val (bf, bgrad) = costFun.calculate(new BDV(x.values))
         (bf, new DenseVector(bgrad.data))
       }
-    }
+}
     val optIterations = opt.iterations(lossFunction, initialCoefficients.toDense)
 
     var lastIter: IterativeOptimizerState[DenseVector] = null
@@ -384,7 +383,6 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
       arrayBuilder += lastIter.loss
     }
     val objectiveHistory = arrayBuilder.result()
-
 
     bcFeaturesMean.destroy(blocking = false)
     bcFeaturesStd.destroy(blocking = false)
@@ -400,7 +398,49 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
       rawCoefficients(i) *= { if (featuresStd(i) != 0.0) yStd / featuresStd(i) else 0.0 }
       i += 1
     }
+
     val coefficients = Vectors.dense(rawCoefficients).compressed
+
+//    val (coefficients, objectiveHistory) = {
+//      /*
+//         Note that in Linear Regression, the objective history (loss + regularization) returned
+//         from optimizer is computed in the scaled space given by the following formula.
+//         <blockquote>
+//            $$
+//            L &= 1/2n||\sum_i w_i(x_i - \bar{x_i}) / \hat{x_i} - (y - \bar{y}) / \hat{y}||^2
+//                 + regTerms \\
+//            $$
+//         </blockquote>
+//       */
+//      val arrayBuilder = mutable.ArrayBuilder.make[Double]
+//      var state: optimizer.State = null
+//      while (states.hasNext) {
+//        state = states.next()
+//        arrayBuilder += state.adjustedValue
+//      }
+//      if (state == null) {
+//        val msg = s"${optimizer.getClass.getName} failed."
+//        logError(msg)
+//        throw new SparkException(msg)
+//      }
+//
+//      bcFeaturesMean.destroy(blocking = false)
+//      bcFeaturesStd.destroy(blocking = false)
+//
+//      /*
+//         The coefficients are trained in the scaled space; we're converting them back to
+//         the original space.
+//       */
+//      val rawCoefficients = state.x.toArray.clone()
+//      var i = 0
+//      val len = rawCoefficients.length
+//      while (i < len) {
+//        rawCoefficients(i) *= { if (featuresStd(i) != 0.0) yStd / featuresStd(i) else 0.0 }
+//        i += 1
+//      }
+//
+//      (Vectors.dense(rawCoefficients).compressed, arrayBuilder.result())
+//    }
 
     /*
        The intercept in R's GLMNET is computed using closed form after the coefficients are
@@ -415,11 +455,11 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
 
     if (handlePersistence) instances.unpersist()
 
-    val model = copyValues(new LinearRegressionModel(uid, coefficients, intercept))
+    val model = copyValues(new OptLinearRegressionModel(uid, coefficients, intercept))
     // Handle possible missing or invalid prediction columns
     val (summaryModel, predictionColName) = model.findSummaryModelAndPredictionCol()
 
-    val trainingSummary = new LinearRegressionTrainingSummary(
+    val trainingSummary = new OptLinearRegressionTrainingSummary(
       summaryModel.transform(dataset),
       predictionColName,
       $(labelCol),
@@ -431,14 +471,14 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
   }
 
   @Since("1.4.0")
-  override def copy(extra: ParamMap): LinearRegression = defaultCopy(extra)
+  override def copy(extra: ParamMap): OptLinearRegression = defaultCopy(extra)
 }
 
 @Since("1.6.0")
-object LinearRegression extends DefaultParamsReadable[LinearRegression] {
+object OptLinearRegression extends DefaultParamsReadable[OptLinearRegression] {
 
   @Since("1.6.0")
-  override def load(path: String): LinearRegression = super.load(path)
+  override def load(path: String): OptLinearRegression = super.load(path)
 
   /**
    * When using `LinearRegression.solver` == "normal", the solver must limit the number of
@@ -453,14 +493,14 @@ object LinearRegression extends DefaultParamsReadable[LinearRegression] {
  * Model produced by [[LinearRegression]].
  */
 @Since("1.3.0")
-class LinearRegressionModel private[ml] (
-    @Since("1.4.0") override val uid: String,
-    @Since("2.0.0") val coefficients: Vector,
-    @Since("1.3.0") val intercept: Double)
-  extends RegressionModel[Vector, LinearRegressionModel]
-  with LinearRegressionParams with MLWritable {
+class OptLinearRegressionModel private[ml] (
+                                          @Since("1.4.0") override val uid: String,
+                                          @Since("2.0.0") val coefficients: Vector,
+                                          @Since("1.3.0") val intercept: Double)
+  extends RegressionModel[Vector, OptLinearRegressionModel]
+    with LinearRegressionParams with MLWritable {
 
-  private var trainingSummary: Option[LinearRegressionTrainingSummary] = None
+  private var trainingSummary: Option[OptLinearRegressionTrainingSummary] = None
 
   override val numFeatures: Int = coefficients.size
 
@@ -469,12 +509,12 @@ class LinearRegressionModel private[ml] (
    * thrown if `trainingSummary == None`.
    */
   @Since("1.5.0")
-  def summary: LinearRegressionTrainingSummary = trainingSummary.getOrElse {
+  def summary: OptLinearRegressionTrainingSummary = trainingSummary.getOrElse {
     throw new SparkException("No training summary available for this LinearRegressionModel")
   }
 
   private[regression]
-  def setSummary(summary: Option[LinearRegressionTrainingSummary]): this.type = {
+  def setSummary(summary: Option[OptLinearRegressionTrainingSummary]): this.type = {
     this.trainingSummary = summary
     this
   }
@@ -489,10 +529,10 @@ class LinearRegressionModel private[ml] (
    * @param dataset Test dataset to evaluate model on.
    */
   @Since("2.0.0")
-  def evaluate(dataset: Dataset[_]): LinearRegressionSummary = {
+  def evaluate(dataset: Dataset[_]): OptLinearRegressionSummary = {
     // Handle possible missing or invalid prediction columns
     val (summaryModel, predictionColName) = findSummaryModelAndPredictionCol()
-    new LinearRegressionSummary(summaryModel.transform(dataset), predictionColName,
+    new OptLinearRegressionSummary(summaryModel.transform(dataset), predictionColName,
       $(labelCol), $(featuresCol), summaryModel, Array(0D))
   }
 
@@ -501,7 +541,7 @@ class LinearRegressionModel private[ml] (
    * otherwise generates a new column and sets it as the prediction column on a new copy
    * of the current model.
    */
-  private[regression] def findSummaryModelAndPredictionCol(): (LinearRegressionModel, String) = {
+  private[regression] def findSummaryModelAndPredictionCol(): (OptLinearRegressionModel, String) = {
     $(predictionCol) match {
       case "" =>
         val predictionColName = "prediction_" + java.util.UUID.randomUUID.toString
@@ -516,9 +556,9 @@ class LinearRegressionModel private[ml] (
   }
 
   @Since("1.4.0")
-  override def copy(extra: ParamMap): LinearRegressionModel = {
-    val newModel = copyValues(new LinearRegressionModel(uid, coefficients, intercept), extra)
-    newModel.setSummary(trainingSummary).setParent(parent)
+  override def copy(extra: ParamMap): OptLinearRegressionModel = {
+    val newModel = copyValues(new OptLinearRegressionModel(uid, coefficients, intercept), extra)
+    newModel//.setSummary(trainingSummary).setParent(parent)
   }
 
   /**
@@ -530,20 +570,21 @@ class LinearRegressionModel private[ml] (
    * This also does not save the [[parent]] currently.
    */
   @Since("1.6.0")
-  override def write: MLWriter = new LinearRegressionModel.LinearRegressionModelWriter(this)
+  override def write: MLWriter = new OptLinearRegressionModel.OptLinearRegressionModelWriter(this)
 }
 
 @Since("1.6.0")
-object LinearRegressionModel extends MLReadable[LinearRegressionModel] {
+object OptLinearRegressionModel extends MLReadable[OptLinearRegressionModel] {
 
   @Since("1.6.0")
-  override def read: MLReader[LinearRegressionModel] = new LinearRegressionModelReader
+  override def read: MLReader[OptLinearRegressionModel] = new OptLinearRegressionModelReader
 
   @Since("1.6.0")
-  override def load(path: String): LinearRegressionModel = super.load(path)
+  override def load(path: String): OptLinearRegressionModel = super.load(path)
 
   /** [[MLWriter]] instance for [[LinearRegressionModel]] */
-  private[LinearRegressionModel] class LinearRegressionModelWriter(instance: LinearRegressionModel)
+  private[OptLinearRegressionModel]
+  class OptLinearRegressionModelWriter(instance: OptLinearRegressionModel)
     extends MLWriter with Logging {
 
     private case class Data(intercept: Double, coefficients: Vector)
@@ -558,12 +599,12 @@ object LinearRegressionModel extends MLReadable[LinearRegressionModel] {
     }
   }
 
-  private class LinearRegressionModelReader extends MLReader[LinearRegressionModel] {
+  private class OptLinearRegressionModelReader extends MLReader[OptLinearRegressionModel] {
 
     /** Checked against metadata when loading model */
-    private val className = classOf[LinearRegressionModel].getName
+    private val className = classOf[OptLinearRegressionModel].getName
 
-    override def load(path: String): LinearRegressionModel = {
+    override def load(path: String): OptLinearRegressionModel = {
       val metadata = DefaultParamsReader.loadMetadata(path, sc, className)
 
       val dataPath = new Path(path, "data").toString
@@ -572,7 +613,7 @@ object LinearRegressionModel extends MLReadable[LinearRegressionModel] {
         MLUtils.convertVectorColumnsToML(data, "coefficients")
           .select("intercept", "coefficients")
           .head()
-      val model = new LinearRegressionModel(metadata.uid, coefficients, intercept)
+      val model = new OptLinearRegressionModel(metadata.uid, coefficients, intercept)
 
       DefaultParamsReader.getAndSetParams(model, metadata)
       model
@@ -590,15 +631,15 @@ object LinearRegressionModel extends MLReadable[LinearRegressionModel] {
  */
 @Since("1.5.0")
 @Experimental
-class LinearRegressionTrainingSummary private[regression] (
-    predictions: DataFrame,
-    predictionCol: String,
-    labelCol: String,
-    featuresCol: String,
-    model: LinearRegressionModel,
-    diagInvAtWA: Array[Double],
-    val objectiveHistory: Array[Double])
-  extends LinearRegressionSummary(
+class OptLinearRegressionTrainingSummary private[regression] (
+                                                            predictions: DataFrame,
+                                                            predictionCol: String,
+                                                            labelCol: String,
+                                                            featuresCol: String,
+                                                            model: OptLinearRegressionModel,
+                                                            diagInvAtWA: Array[Double],
+                                                            val objectiveHistory: Array[Double])
+  extends OptLinearRegressionSummary(
     predictions,
     predictionCol,
     labelCol,
@@ -630,13 +671,13 @@ class LinearRegressionTrainingSummary private[regression] (
  */
 @Since("1.5.0")
 @Experimental
-class LinearRegressionSummary private[regression] (
-    @transient val predictions: DataFrame,
-    val predictionCol: String,
-    val labelCol: String,
-    val featuresCol: String,
-    private val privateModel: LinearRegressionModel,
-    private val diagInvAtWA: Array[Double]) extends Serializable {
+class OptLinearRegressionSummary private[regression] (
+                                                    @transient val predictions: DataFrame,
+                                                    val predictionCol: String,
+                                                    val labelCol: String,
+                                                    val featuresCol: String,
+                                                    private val privateModel: OptLinearRegressionModel,
+                                                    private val diagInvAtWA: Array[Double]) extends Serializable {
 
   @transient private val metrics = new RegressionMetrics(
     predictions
@@ -935,13 +976,13 @@ class LinearRegressionSummary private[regression] (
  * @param bcFeaturesStd The broadcast standard deviation values of the features.
  * @param bcFeaturesMean The broadcast mean values of the features.
  */
-private class LeastSquaresAggregator(
-    bcCoefficients: Broadcast[Vector],
-    labelStd: Double,
-    labelMean: Double,
-    fitIntercept: Boolean,
-    bcFeaturesStd: Broadcast[Array[Double]],
-    bcFeaturesMean: Broadcast[Array[Double]]) extends Serializable {
+private class OptLeastSquaresAggregator(
+                                      bcCoefficients: Broadcast[Vector],
+                                      labelStd: Double,
+                                      labelMean: Double,
+                                      fitIntercept: Boolean,
+                                      bcFeaturesStd: Broadcast[Array[Double]],
+                                      bcFeaturesMean: Broadcast[Array[Double]]) extends Serializable {
 
   private var totalCnt: Long = 0L
   private var weightSum: Double = 0.0
@@ -1016,7 +1057,7 @@ private class LeastSquaresAggregator(
    * @param other The other LeastSquaresAggregator to be merged.
    * @return This LeastSquaresAggregator object.
    */
-  def merge(other: LeastSquaresAggregator): this.type = {
+  def merge(other: OptLeastSquaresAggregator): this.type = {
     require(dim == other.dim, s"Dimensions mismatch when merging with another " +
       s"LeastSquaresAggregator. Expecting $dim but got ${other.dim}.")
 
@@ -1058,16 +1099,16 @@ private class LeastSquaresAggregator(
  * It returns the loss and gradient with L2 regularization at a particular point (coefficients).
  * It's used in Breeze's convex optimization routines.
  */
-private class LeastSquaresCostFun(
-    instances: RDD[Instance],
-    labelStd: Double,
-    labelMean: Double,
-    fitIntercept: Boolean,
-    standardization: Boolean,
-    bcFeaturesStd: Broadcast[Array[Double]],
-    bcFeaturesMean: Broadcast[Array[Double]],
-    effectiveL2regParam: Double,
-    aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
+private class OptLeastSquaresCostFun(
+                                   instances: RDD[Instance],
+                                   labelStd: Double,
+                                   labelMean: Double,
+                                   fitIntercept: Boolean,
+                                   standardization: Boolean,
+                                   bcFeaturesStd: Broadcast[Array[Double]],
+                                   bcFeaturesMean: Broadcast[Array[Double]],
+                                   effectiveL2regParam: Double,
+                                   aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
 
   override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
     val coeffs = Vectors.fromBreeze(coefficients)
@@ -1084,9 +1125,6 @@ private class LeastSquaresCostFun(
     }
 
     val totalGradientArray = leastSquaresAggregator.gradient.toArray
-//    println(coefficients)
-//    println(totalGradientArray.mkString(","))
-//    println(leastSquaresAggregator.loss)
     bcCoeffs.destroy(blocking = false)
 
     val regVal = if (effectiveL2regParam == 0.0) {
