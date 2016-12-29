@@ -17,6 +17,9 @@
 
 package org.apache.spark.ml.regression
 
+import org.apache.spark.ml.optim.{OptimizerImplicits, FirstOrderOptimizerState, StoppingCriteria, LBFGS}
+import breeze.linalg.{DenseVector => BDV}
+
 import scala.util.Random
 
 import org.apache.spark.SparkFunSuite
@@ -101,6 +104,18 @@ class LinearRegressionSuite
       Instance(0.0, 3.0, Vectors.dense(2.0, 11.0)),
       Instance(0.0, 4.0, Vectors.dense(3.0, 13.0))
     ), 2).toDF()
+  }
+
+  test("opt test") {
+    import OptimizerImplicits._
+    val stop = (state: FirstOrderOptimizerState[_, _]) => {
+      state.iter > 5000
+    }
+    val olr = new OptLinearRegression().setSolver("l-bfgs")
+      .setOptimizer(new LBFGS[BDV[Double]](new BDV(Array.fill(2)(0.0))))
+    val model = olr.fit(datasetWithWeight)
+    println(model.coefficients)
+    println(model.intercept)
   }
 
   /**
