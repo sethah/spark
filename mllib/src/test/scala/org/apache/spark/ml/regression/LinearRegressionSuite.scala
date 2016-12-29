@@ -17,8 +17,11 @@
 
 package org.apache.spark.ml.regression
 
-import scala.util.Random
+import org.apache.spark.ml.optim._
+import breeze.linalg.{DenseVector => BDV}
+import org.apache.spark.ml.optim.optimizers.{LBFGS, OWLQN, OptimizerImplicits, VLBFGS}
 
+import scala.util.Random
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.feature.LabeledPoint
@@ -108,6 +111,39 @@ class LinearRegressionSuite
       Instance(0.0, 3.0, Vectors.dense(2.0, 11.0)),
       Instance(0.0, 4.0, Vectors.dense(3.0, 13.0))
     ), 2).toDF()
+  }
+
+  test("space test") {
+    val space = OptimizerImplicits.DenseVectorSpace
+    val x = new DenseVector(Array(3.0, -2.0))
+    val y = new DenseVector(Array(5.0, -3.0))
+    println(space.combine(Seq((x, 2.0), (y, 3.0))))
+  }
+
+  test("opt test") {
+    import OptimizerImplicits._
+//    val optimizer = new GradientDescent()
+//      .setMaxIter(100)
+//    val optimizer = new AdaGrad("adf", 0.3)
+//    val optimizer = new OWLQN() // .setL1RegFunc((x: Int) => 0.0)
+    val optimizer = new VLBFGS[DenseVector](7)
+    val olr = new LinearRegression()
+      .setSolver("l-bfgs")
+      .setOptimizer(optimizer)
+      .setRegParam(0.5)
+//      .setElasticNetParam(0.1)
+//      .setOptimizer(new LBFGS(Vectors.zeros(2).toDense))
+    val model = olr.fit(datasetWithDenseFeature)
+    println(model.coefficients)
+    println(model.intercept)
+    println(model.summary.objectiveHistory.mkString(","))
+    val lr = new LinearRegression().setSolver("l-bfgs").setRegParam(0.5).setElasticNetParam(0.0)
+      .setOptimizer(new LBFGS())
+    val model2 = lr.fit(datasetWithDenseFeature)
+    println(model2.coefficients)
+    println(model2.intercept)
+    println(model2.summary.objectiveHistory.mkString(","))
+    model2.transform(datasetWithDenseFeature).show()
   }
 
   /**
