@@ -17,13 +17,15 @@
 
 package org.apache.spark.ml.regression
 
+import org.apache.spark.ml.optim.optimizers.Optimizer
+
 import scala.collection.mutable
 
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import breeze.stats.distributions.StudentsT
 import org.apache.hadoop.fs.Path
-import org.apache.spark.ml.optim.{DifferentiableFunction, Optimizer, WeightedLeastSquares}
+import org.apache.spark.ml.optim.{DifferentiableFunction, WeightedLeastSquares}
 
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
@@ -60,7 +62,7 @@ private[regression] trait OptLinearRegressionParams extends PredictorParams
    * @group param
    */
   final val optimizer: Param[Optimizer[DenseVector, DifferentiableFunction[DenseVector]]] =
-    new Param(this, "elasticNetParam", "the ElasticNet mixing parameter, in range [0, 1]. " +
+    new Param(this, "optimizer", "the ElasticNet mixing parameter, in range [0, 1]. " +
       "For alpha = 0, the penalty is an L2 penalty. For alpha = 1, it is an L1 penalty")
 
   /** @group getParam */
@@ -364,7 +366,23 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
         (bf, new DenseVector(bgrad.data))
       }
 }
-    val coefficients = opt.optimize(lossFunction, initialCoefficients.toDense)
+    val optCoefficients = opt.optimize(lossFunction, initialCoefficients.toDense)
+    bcFeaturesMean.destroy(blocking = false)
+    bcFeaturesStd.destroy(blocking = false)
+
+    /*
+       The coefficients are trained in the scaled space; we're converting them back to
+       the original space.
+     */
+    val rawCoefficients = optCoefficients.toArray.clone()
+    var i = 0
+    val len = rawCoefficients.length
+    while (i < len) {
+      rawCoefficients(i) *= { if (featuresStd(i) != 0.0) yStd / featuresStd(i) else 0.0 }
+      i += 1
+    }
+
+    val coefficients = Vectors.dense(rawCoefficients).compressed
 
 //    val (coefficients, objectiveHistory) = {
 //      /*

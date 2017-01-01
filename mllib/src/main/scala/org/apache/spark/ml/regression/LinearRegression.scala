@@ -1058,6 +1058,9 @@ private class LeastSquaresCostFun(
     }
 
     val totalGradientArray = leastSquaresAggregator.gradient.toArray
+//    println(coefficients)
+//    println(totalGradientArray.mkString(","))
+//    println(leastSquaresAggregator.loss)
     bcCoeffs.destroy(blocking = false)
 
     val regVal = if (effectiveL2regParam == 0.0) {

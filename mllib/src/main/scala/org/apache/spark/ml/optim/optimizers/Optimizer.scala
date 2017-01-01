@@ -14,11 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.ml.optim
-import breeze.linalg.{DenseVector => BDV, NumericOps}
-import scala.language.implicitConversions
+package org.apache.spark.ml.optim.optimizers
+
+import breeze.linalg.{DenseVector => BDV}
 import org.apache.spark.ml.linalg.{BLAS, DenseVector}
+import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.param.Params
+
+import scala.language.implicitConversions
 
 /**
  *
@@ -27,8 +30,46 @@ import org.apache.spark.ml.param.Params
  */
 trait Optimizer[T, S <: (T => Any)] extends Params {
 
+  // TODO: we also want to track the objective history in most spark algos so
+  // it might be good to have a sub trait that is iterative optimizer which has a way
+  // to grab that history
+
   def optimize(lossFunction: S, initialParameters: T): T
 
+}
+
+trait IterativeOptimizer[T, S <: (T => Any)] extends Optimizer[T, S] {
+
+  type State <: OptimizerState[T]
+
+  def initialState(lossFunction: DifferentiableFunction[T], initialParams: T): State
+
+  /**
+   * For iterative optimizers this represents an infinite number of optimization steps.
+   *
+   * In practice, we take from this iterator only until convergence is achieved.
+   */
+  def infiniteIterations(
+      lossFunction: DifferentiableFunction[T],
+      start: State): Iterator[State] = {
+    Iterator.iterate(start)(iterateOnce(lossFunction))
+  }
+
+  def converged(state: State): Boolean
+
+  def optimize(lossFunction: DifferentiableFunction[T], initialParameters: T): T = {
+
+    val allIterations =
+      infiniteIterations(lossFunction, initialState(lossFunction, initialParameters))
+        .takeWhile(!converged(_))
+//    var lastIteration: State = _
+//    while (allIterations.hasNext) {
+//      lastIteration = allIterations.next()
+//    }
+    allIterations.toList.last.params
+  }
+
+  def iterateOnce(lossFunction: DifferentiableFunction[T])(state: State): State
 }
 
 trait NormedInnerProductSpace[T, F] {
@@ -49,8 +90,8 @@ object OptimizerImplicits {
       require(v.nonEmpty)
       val hd = new DenseVector(v.head._1.values.clone())
       BLAS.scal(v.head._2, hd)
-      v.tail.foreach { case (v, d) =>
-        BLAS.axpy(d, v, hd)
+      v.tail.foreach { case (vec, d) =>
+        BLAS.axpy(d, vec, hd)
       }
       hd
     }

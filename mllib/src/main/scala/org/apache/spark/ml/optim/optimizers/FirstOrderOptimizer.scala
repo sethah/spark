@@ -14,12 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.ml.optim
+package org.apache.spark.ml.optim.optimizers
 
+import org.apache.spark.ml.optim.DifferentiableFunction
+import org.apache.spark.ml.param.Params
 import org.apache.spark.ml.param.shared.HasMaxIter
 
-trait FirstOrderOptimizer[T] extends Optimizer[T, DifferentiableFunction[T]]
-  with HasMaxIter {
+trait FirstOrderOptimizerParams extends Params with HasMaxIter
+
+trait FirstOrderOptimizer[T] extends IterativeOptimizer[T, DifferentiableFunction[T]]
+  with FirstOrderOptimizerParams {
 
 
   /** An abstract type alias for the history required to be tracked in the subclass optimizers. */
@@ -36,19 +40,7 @@ trait FirstOrderOptimizer[T] extends Optimizer[T, DifferentiableFunction[T]]
    */
 
   //  def stoppingCriteria: StoppingCriteria[State]
-  def stoppingCriteria: (State => Boolean)
-
-  def optimize(lossFunction: DifferentiableFunction[T], initialParameters: T): T = {
-
-    val allIterations =
-      infiniteIterations(lossFunction, initialState(lossFunction, initialParameters))
-        .takeWhile(!stoppingCriteria(_))
-    var lastIteration: State = null
-    while (allIterations.hasNext) {
-      lastIteration = allIterations.next()
-    }
-    lastIteration.params
-  }
+//  def stoppingCriteria: (State => Boolean)
 
   def initialState(
       lossFunction: DifferentiableFunction[T],
@@ -56,17 +48,6 @@ trait FirstOrderOptimizer[T] extends Optimizer[T, DifferentiableFunction[T]]
     val (firstLoss, firstGradient) = lossFunction.compute(initialParams)
     FirstOrderOptimizerState(initialParams, 0, firstLoss, firstGradient,
       initialHistory(lossFunction, initialParams))
-  }
-
-  /**
-   * For iterative optimizers this represents an infinite number of optimization steps.
-   *
-   * In practice, we take from this iterator only until convergence is achieved.
-   */
-  def infiniteIterations(
-      lossFunction: DifferentiableFunction[T],
-      start: State): Iterator[State] = {
-    Iterator.iterate(start)(iterateOnce(lossFunction))
   }
 
   /**
@@ -78,10 +59,10 @@ trait FirstOrderOptimizer[T] extends Optimizer[T, DifferentiableFunction[T]]
    * @param state The current optimization state.
    * @return The next optimization state.
    */
-  private def iterateOnce(lossFunction: DifferentiableFunction[T])(state: State): State = {
+  override def iterateOnce(lossFunction: DifferentiableFunction[T])(state: State): State = {
     val direction = chooseDescentDirection(state)
     val stepSize = chooseStepSize(lossFunction, direction, state)
-    val nextPosition = takeStep(state.params, direction, stepSize)
+    val nextPosition = takeStep(state.params, direction, stepSize, state.history)
     val (nextLoss, nextGradient) = lossFunction.compute(nextPosition)
     val nextHistory = updateHistory(nextPosition, nextGradient, nextLoss, state)
     FirstOrderOptimizerState(nextPosition, state.iter + 1, nextLoss, nextGradient, nextHistory)
@@ -94,7 +75,7 @@ trait FirstOrderOptimizer[T] extends Optimizer[T, DifferentiableFunction[T]]
   /**
    * Return the next set of parameters from the current parameters.
    */
-  def takeStep(position: T, stepDirection: T, stepSize: Double): T
+  def takeStep(position: T, stepDirection: T, stepSize: Double, history: History): T
 
   def initialHistory(lossFunction: DifferentiableFunction[T], initialParams: T): History
 
