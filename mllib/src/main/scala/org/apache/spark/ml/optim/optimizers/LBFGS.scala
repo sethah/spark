@@ -22,21 +22,43 @@ import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.linalg.DenseVector
 import org.apache.spark.ml.optim.DifferentiableFunction
-import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.param.{Params, ParamMap}
+import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
+import org.apache.spark.ml.util.Identifiable
 
 import scala.collection.mutable
 
-class LBFGS(initialCoefficients: DenseVector)
-  extends Optimizer[DenseVector, DifferentiableFunction[DenseVector]] with Logging {
+trait LBFGSParams extends Params with HasMaxIter with HasTol
 
-  override val uid = "lbfgs"
+class LBFGS(override val uid: String)
+  extends IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]]
+    with LBFGSParams with Logging {
+
+  def this() = this(Identifiable.randomUID("lbfgs"))
+
+  def setMaxIter(value: Int): this.type = set(maxIter, value)
+  setDefault(maxIter -> 100)
+
+  def setTol(value: Double): this.type = set(tol, value)
+  setDefault(tol -> 1e-6)
 
   override def copy(extra: ParamMap): LBFGS = {
-    new LBFGS(initialCoefficients)
+    new LBFGS(uid)
   }
 
-  def optimize(lossFunction: DifferentiableFunction[DenseVector],
-               initialParameters: DenseVector): DenseVector = {
+  class LBFGSState(val iter: Int, val params: DenseVector, val loss: Double)
+    extends OptimizerState[DenseVector]
+
+  def initialState(
+                    lossFunction: DifferentiableFunction[DenseVector],
+                    initialParams: DenseVector): State = {
+    val (firstLoss, firstGradient) = lossFunction.compute(initialParams)
+    IterativeOptimizerState(0, initialParams, firstLoss)
+  }
+
+  override def iterations(lossFunction: DifferentiableFunction[DenseVector],
+                          initialParameters: DenseVector): Iterator[State] = {
+    val start = initialState(lossFunction, initialParameters)
     val breezeLoss = new DiffFunction[BDV[Double]] {
       override def valueAt(x: BDV[Double]): Double = {
         lossFunction.apply(new DenseVector(x.data))
@@ -49,24 +71,13 @@ class LBFGS(initialCoefficients: DenseVector)
         (f, grad.asBreeze.toDenseVector)
       }
     }
-    val breezeOptimizer = new BreezeLBFGS[BDV[Double]](100, 10, 1e-6)
-
-    val states = breezeOptimizer.iterations(new CachedDiffFunction(breezeLoss),
-      initialCoefficients.asBreeze.toDenseVector)
-    val arrayBuilder = mutable.ArrayBuilder.make[Double]
-    var state: breezeOptimizer.State = null
-    while (states.hasNext) {
-      state = states.next()
-      arrayBuilder += state.adjustedValue
+    val breezeOptimizer = new BreezeLBFGS[BDV[Double]](getMaxIter, 10, getTol)
+    val bIter = breezeOptimizer.iterations(breezeLoss, start.params.asBreeze.toDenseVector)
+    val tmp = bIter.map { bstate =>
+      IterativeOptimizerState(bstate.iter, new DenseVector(bstate.x.data), bstate.value)
     }
-    if (state == null) {
-      val msg = s"${breezeOptimizer.getClass.getName} failed."
-      logError(msg)
-      throw new SparkException(msg)
-    }
-    new DenseVector(state.x.data)
+    tmp
   }
-
 }
 
 //class LBFGS[T](

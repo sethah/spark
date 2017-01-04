@@ -19,7 +19,7 @@ package org.apache.spark.ml.regression
 
 import org.apache.spark.ml.optim._
 import breeze.linalg.{DenseVector => BDV}
-import org.apache.spark.ml.optim.optimizers.{AdaGrad, OptimizerImplicits, GradientDescent}
+import org.apache.spark.ml.optim.optimizers.{OWLQN, LBFGS, OptimizerImplicits}
 
 import scala.util.Random
 
@@ -118,18 +118,23 @@ class LinearRegressionSuite
     import OptimizerImplicits._
 //    val optimizer = new GradientDescent()
 //      .setMaxIter(100)
-    val optimizer = new AdaGrad("adf", 0.3)
+//    val optimizer = new AdaGrad("adf", 0.3)
+    val optimizer = new OWLQN()//.setL1RegFunc((x: Int) => 0.0)
     val olr = new OptLinearRegression()
       .setSolver("l-bfgs")
       .setOptimizer(optimizer)
+      .setRegParam(0.5)
+      .setElasticNetParam(0.1)
 //      .setOptimizer(new LBFGS(Vectors.zeros(2).toDense))
-    val model = olr.fit(datasetWithWeight)
+    val model = olr.fit(datasetWithDenseFeature)
     println(model.coefficients)
     println(model.intercept)
-    val lr = new LinearRegression().setSolver("l-bfgs")
-    val model2 = lr.fit(datasetWithWeight)
+    println(model.summary.objectiveHistory.mkString(","))
+    val lr = new LinearRegression().setSolver("l-bfgs").setRegParam(0.5).setElasticNetParam(0.1)
+    val model2 = lr.fit(datasetWithDenseFeature)
     println(model2.coefficients)
     println(model2.intercept)
+    println(model2.summary.objectiveHistory.mkString(","))
   }
 
   /**

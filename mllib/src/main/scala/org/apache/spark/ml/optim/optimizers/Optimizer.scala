@@ -24,52 +24,31 @@ import org.apache.spark.ml.param.Params
 import scala.language.implicitConversions
 
 /**
+ * Base trait for implementing optimization algorithms in Spark ML.
  *
  * @tparam T The type of parameters to be optimized.
- * @tparam S The type of loss function.
+ * @tparam F The type of loss function.
  */
-trait Optimizer[T, S <: (T => Any)] extends Params {
+trait Optimizer[T, F <: (T => Any)] extends Params {
 
-  // TODO: we also want to track the objective history in most spark algos so
-  // it might be good to have a sub trait that is iterative optimizer which has a way
-  // to grab that history
-
-  def optimize(lossFunction: S, initialParameters: T): T
+  def optimize(lossFunction: F, initialParameters: T): T
 
 }
 
-trait IterativeOptimizer[T, S <: (T => Any)] extends Optimizer[T, S] {
+trait IterativeOptimizer[T, F <: (T => Any)] extends Optimizer[T, F] {
 
-  type State <: OptimizerState[T]
+  type State = IterativeOptimizerState[T]
 
-  def initialState(lossFunction: DifferentiableFunction[T], initialParams: T): State
+  def iterations(lossFunction: F, initialParams: T): Iterator[State]
 
-  /**
-   * For iterative optimizers this represents an infinite number of optimization steps.
-   *
-   * In practice, we take from this iterator only until convergence is achieved.
-   */
-  def infiniteIterations(
-      lossFunction: DifferentiableFunction[T],
-      start: State): Iterator[State] = {
-    Iterator.iterate(start)(iterateOnce(lossFunction))
+  def optimize(lossFunction: F, initialParameters: T): T = {
+    val allIterations = iterations(lossFunction, initialParameters)
+    var lastIteration: State = null
+    while (allIterations.hasNext) {
+      lastIteration = allIterations.next()
+    }
+    lastIteration.params
   }
-
-  def converged(state: State): Boolean
-
-  def optimize(lossFunction: DifferentiableFunction[T], initialParameters: T): T = {
-
-    val allIterations =
-      infiniteIterations(lossFunction, initialState(lossFunction, initialParameters))
-        .takeWhile(!converged(_))
-//    var lastIteration: State = _
-//    while (allIterations.hasNext) {
-//      lastIteration = allIterations.next()
-//    }
-    allIterations.toList.last.params
-  }
-
-  def iterateOnce(lossFunction: DifferentiableFunction[T])(state: State): State
 }
 
 trait NormedInnerProductSpace[T, F] {

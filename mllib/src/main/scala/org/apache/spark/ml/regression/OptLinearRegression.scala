@@ -17,7 +17,7 @@
 
 package org.apache.spark.ml.regression
 
-import org.apache.spark.ml.optim.optimizers.Optimizer
+import org.apache.spark.ml.optim.optimizers.{HasL1Reg, IterativeOptimizer, Optimizer}
 
 import scala.collection.mutable
 
@@ -57,16 +57,23 @@ private[regression] trait OptLinearRegressionParams extends PredictorParams
   with HasAggregationDepth {
 
 
+  /*
+   * TODO: we don't make this firstorder optimizer right now because we don't have access to
+   * TODO: the low level stuff in breeze that would be required to implement all of the functions
+   * TODO: for first order optimizer. Though we would ideally like to specify that the optimizer
+   * TODO: for linear regression is a FirstOrderOptimizer[DenseVector]
+   */
   /**
-   *
    * @group param
    */
-  final val optimizer: Param[Optimizer[DenseVector, DifferentiableFunction[DenseVector]]] =
+  final val optimizer: Param[IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]]] =
     new Param(this, "optimizer", "the ElasticNet mixing parameter, in range [0, 1]. " +
       "For alpha = 0, the penalty is an L2 penalty. For alpha = 1, it is an L1 penalty")
 
   /** @group getParam */
-  final def getOptimizer: Optimizer[DenseVector, DifferentiableFunction[DenseVector]] = $(optimizer)
+  final def getOptimizer: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]] = {
+    $(optimizer)
+  }
 
 }
 
@@ -208,8 +215,10 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
   def setAggregationDepth(value: Int): this.type = set(aggregationDepth, value)
   setDefault(aggregationDepth -> 2)
 
-  def setOptimizer(value: Optimizer[DenseVector, DifferentiableFunction[DenseVector]]): this.type =
+  def setOptimizer(
+      value: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]]): this.type = {
     set(optimizer, value)
+  }
 
   override protected def train(dataset: Dataset[_]): OptLinearRegressionModel = {
     // Extract the number of features before deciding optimization solver.
@@ -330,31 +339,30 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
     val costFun = new LeastSquaresCostFun(instances, yStd, yMean, $(fitIntercept),
       $(standardization), bcFeaturesStd, bcFeaturesMean, effectiveL2RegParam, $(aggregationDepth))
 
-    val opt = if ($(elasticNetParam) == 0.0 || effectiveRegParam == 0.0) {
-//      new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
-      getOptimizer
-    } else {
-      throw new Exception("L1 not supported right now")
-//      val standardizationParam = $(standardization)
-//      def effectiveL1RegFun = (index: Int) => {
-//        if (standardizationParam) {
-//          effectiveL1RegParam
-//        } else {
-//          // If `standardization` is false, we still standardize the data
-//          // to improve the rate of convergence; as a result, we have to
-//          // perform this reverse standardization by penalizing each component
-//          // differently to get effectively the same objective function when
-//          // the training dataset is not standardized.
-//          if (featuresStd(index) != 0.0) effectiveL1RegParam / featuresStd(index) else 0.0
-//        }
-//      }
-//      new BreezeOWLQN[Int, BDV[Double]]($(maxIter), 10, effectiveL1RegFun, $(tol))
+    val opt = getOptimizer match {
+      case l1Opt: IterativeOptimizer[DenseVector,
+        DifferentiableFunction[DenseVector]] with HasL1Reg if $(elasticNetParam) > 0.0 &&
+        effectiveRegParam > 0.0 =>
+          val standardizationParam = $(standardization)
+          def effectiveL1RegFun = (index: Int) => {
+            if (standardizationParam) {
+              effectiveL1RegParam
+            } else {
+              // If `standardization` is false, we still standardize the data
+              // to improve the rate of convergence; as a result, we have to
+              // perform this reverse standardization by penalizing each component
+              // differently to get effectively the same objective function when
+              // the training dataset is not standardized.
+              if (featuresStd(index) != 0.0) effectiveL1RegParam / featuresStd(index) else 0.0
+            }
+          }
+        l1Opt.set(l1Opt.l1RegFunc, effectiveL1RegFun)
+      case l2Opt: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]] =>
+        l2Opt
+      case _ => throw new SparkException("optimizers didn't match up!")
     }
 
     val initialCoefficients = Vectors.zeros(numFeatures)
-//    val states = optimizer.iterations(new CachedDiffFunction(costFun),
-//      initialCoefficients.asBreeze.toDenseVector)
-//    val lossFunction = DifferentiableFunction.fromBreeze(costFun)
     val lossFunction = new DifferentiableFunction[DenseVector] {
       def apply(x: DenseVector) = costFun.valueAt(new BDV(x.values))
       def gradientAt(x: DenseVector) = {
@@ -366,7 +374,16 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
         (bf, new DenseVector(bgrad.data))
       }
 }
-    val optCoefficients = opt.optimize(lossFunction, initialCoefficients.toDense)
+    val optIterations = opt.iterations(lossFunction, initialCoefficients.toDense)
+
+    var lastIter: opt.State = null
+    val arrayBuilder = mutable.ArrayBuilder.make[Double]
+    while(optIterations.hasNext) {
+      lastIter = optIterations.next()
+      arrayBuilder += lastIter.loss
+    }
+    val objectiveHistory = arrayBuilder.result()
+
     bcFeaturesMean.destroy(blocking = false)
     bcFeaturesStd.destroy(blocking = false)
 
@@ -374,7 +391,7 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
        The coefficients are trained in the scaled space; we're converting them back to
        the original space.
      */
-    val rawCoefficients = optCoefficients.toArray.clone()
+    val rawCoefficients = lastIter.params.toArray.clone()
     var i = 0
     val len = rawCoefficients.length
     while (i < len) {
@@ -449,7 +466,7 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
       $(featuresCol),
       model,
       Array(0D),
-      Array(0D))
+      objectiveHistory)
     model.setSummary(Some(trainingSummary))
   }
 
