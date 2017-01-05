@@ -119,7 +119,7 @@ class LinearRegressionSuite
 //    val optimizer = new GradientDescent()
 //      .setMaxIter(100)
 //    val optimizer = new AdaGrad("adf", 0.3)
-    val optimizer = new OWLQN()//.setL1RegFunc((x: Int) => 0.0)
+    val optimizer = new OWLQN() // .setL1RegFunc((x: Int) => 0.0)
     val olr = new OptLinearRegression()
       .setSolver("l-bfgs")
       .setOptimizer(optimizer)
@@ -131,10 +131,12 @@ class LinearRegressionSuite
     println(model.intercept)
     println(model.summary.objectiveHistory.mkString(","))
     val lr = new LinearRegression().setSolver("l-bfgs").setRegParam(0.5).setElasticNetParam(0.1)
+      .setOptimizer(new OWLQN())
     val model2 = lr.fit(datasetWithDenseFeature)
     println(model2.coefficients)
     println(model2.intercept)
     println(model2.summary.objectiveHistory.mkString(","))
+    model2.transform(datasetWithDenseFeature).show()
   }
 
   /**

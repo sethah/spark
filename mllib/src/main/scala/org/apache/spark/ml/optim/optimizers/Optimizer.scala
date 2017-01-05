@@ -35,19 +35,22 @@ trait Optimizer[T, F <: (T => Any)] extends Params {
 
 }
 
-trait IterativeOptimizer[T, F <: (T => Any)] extends Optimizer[T, F] {
-
-  type State = IterativeOptimizerState[T]
+trait IterativeOptimizer[T, F <: (T => Any), +State <: IterativeOptimizerState[T]]
+  extends Optimizer[T, F] {
 
   def iterations(lossFunction: F, initialParams: T): Iterator[State]
 
   def optimize(lossFunction: F, initialParameters: T): T = {
     val allIterations = iterations(lossFunction, initialParameters)
-    var lastIteration: State = null
-    while (allIterations.hasNext) {
-      lastIteration = allIterations.next()
+    if (allIterations.hasNext) {
+      var lastIteration: State = allIterations.next()
+      while (allIterations.hasNext) {
+        lastIteration = allIterations.next()
+      }
+      lastIteration.params
+    } else {
+      initialParameters
     }
-    lastIteration.params
   }
 }
 

@@ -94,32 +94,21 @@ trait FirstOrderOptimizerParams extends Params with HasMaxIter
  * @tparam T The type of parameters being optimized.
  */
 trait OptimizerState[+T] {
-
-  def iter: Int
-
   def params: T
-
+}
+trait IterativeOptimizerState[+T] extends OptimizerState[T] {
+  def iter: Int
   def loss: Double
-
 }
 
-case class IterativeOptimizerState[+T](iter: Int, params: T, loss: Double) extends OptimizerState[T]
+case class BreezeWrapperState[T](
+    params: T,
+    iter: Int,
+    loss: Double) extends IterativeOptimizerState[T]
 
 case class FirstOrderOptimizerState[+T, +History](
     params: T,
     iter: Int,
     loss: Double,
     gradient: T,
-    history: History) extends OptimizerState[T]
-
-/**
- * Class representing stopping criteria for an iterative optimizer.
- *
- * @tparam State the type of optimization state required to evaluate the stopping conditions.
- */
-trait StoppingCriteria[-State <: OptimizerState[_]] {
-
-  def apply(state: State): Boolean
-
-}
-
+    history: History) extends IterativeOptimizerState[T]

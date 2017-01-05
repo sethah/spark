@@ -17,7 +17,7 @@
 
 package org.apache.spark.ml.regression
 
-import org.apache.spark.ml.optim.optimizers.{HasL1Reg, IterativeOptimizer, Optimizer}
+import org.apache.spark.ml.optim.optimizers.{IterativeOptimizerState, HasL1Reg, IterativeOptimizer, Optimizer}
 
 import scala.collection.mutable
 
@@ -56,6 +56,9 @@ private[regression] trait OptLinearRegressionParams extends PredictorParams
   with HasFitIntercept with HasStandardization with HasWeightCol with HasSolver
   with HasAggregationDepth {
 
+  type OptimizerType = IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
+    IterativeOptimizerState[DenseVector]]
+
 
   /*
    * TODO: we don't make this firstorder optimizer right now because we don't have access to
@@ -66,14 +69,10 @@ private[regression] trait OptLinearRegressionParams extends PredictorParams
   /**
    * @group param
    */
-  final val optimizer: Param[IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]]] =
-    new Param(this, "optimizer", "the ElasticNet mixing parameter, in range [0, 1]. " +
-      "For alpha = 0, the penalty is an L2 penalty. For alpha = 1, it is an L1 penalty")
+  final val optimizer: Param[OptimizerType] = new Param(this, "optimizer", "")
 
   /** @group getParam */
-  final def getOptimizer: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]] = {
-    $(optimizer)
-  }
+  final def getOptimizer: OptimizerType = $(optimizer)
 
 }
 
@@ -215,8 +214,7 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
   def setAggregationDepth(value: Int): this.type = set(aggregationDepth, value)
   setDefault(aggregationDepth -> 2)
 
-  def setOptimizer(
-      value: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]]): this.type = {
+  def setOptimizer(value: OptimizerType): this.type = {
     set(optimizer, value)
   }
 
@@ -341,7 +339,8 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
 
     val opt = getOptimizer match {
       case l1Opt: IterativeOptimizer[DenseVector,
-        DifferentiableFunction[DenseVector]] with HasL1Reg if $(elasticNetParam) > 0.0 &&
+        DifferentiableFunction[DenseVector],
+        IterativeOptimizerState[DenseVector]] with HasL1Reg if $(elasticNetParam) > 0.0 &&
         effectiveRegParam > 0.0 =>
           val standardizationParam = $(standardization)
           def effectiveL1RegFun = (index: Int) => {
@@ -357,7 +356,8 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
             }
           }
         l1Opt.set(l1Opt.l1RegFunc, effectiveL1RegFun)
-      case l2Opt: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]] =>
+      case l2Opt: IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
+        IterativeOptimizerState[DenseVector]] =>
         l2Opt
       case _ => throw new SparkException("optimizers didn't match up!")
     }
@@ -376,7 +376,7 @@ class OptLinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: Str
 }
     val optIterations = opt.iterations(lossFunction, initialCoefficients.toDense)
 
-    var lastIter: opt.State = null
+    var lastIter: IterativeOptimizerState[DenseVector] = null
     val arrayBuilder = mutable.ArrayBuilder.make[Double]
     while(optIterations.hasNext) {
       lastIter = optIterations.next()

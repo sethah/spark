@@ -27,6 +27,7 @@ import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.param.shared.{HasTol, HasMaxIter}
 import org.apache.spark.ml.param.{Param, Params, ParamMap}
+import org.apache.spark.ml.util.Identifiable
 
 import scala.collection.mutable
 
@@ -48,10 +49,14 @@ trait HasL1Reg extends Params {
 trait OWLQNParams extends Params with HasMaxIter with HasTol with HasL1Reg
 
 
-class OWLQN(override val uid: String = "owlqn")
-  extends IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]]
-  with OWLQNParams with Logging {
+class OWLQN(override val uid: String)
+  extends IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
+    BreezeWrapperState[DenseVector]] with OWLQNParams with Logging {
 
+  private type State = BreezeWrapperState[DenseVector]
+  private val lossHistoryLength = 5
+
+  def this() = this(Identifiable.randomUID("owlqn"))
 
   override def copy(extra: ParamMap): OWLQN = {
     new OWLQN()
@@ -65,19 +70,17 @@ class OWLQN(override val uid: String = "owlqn")
   def setTol(value: Double): this.type = set(tol, value)
   setDefault(tol -> 1e-6)
 
-  class OWLQNState(val iter: Int, val params: DenseVector, val loss: Double)
-    extends OptimizerState[DenseVector]
-
   def initialState(
                     lossFunction: DifferentiableFunction[DenseVector],
                     initialParams: DenseVector): State = {
     val (firstLoss, firstGradient) = lossFunction.compute(initialParams)
-    IterativeOptimizerState(0, initialParams, firstLoss)
+    BreezeWrapperState(initialParams, 0, firstLoss)
   }
 
 
   def converged(state: State): Boolean = {
-    state.iter > 10
+    val maxIterReached = state.iter > getMaxIter
+    maxIterReached
   }
 
   override def iterations(lossFunction: DifferentiableFunction[DenseVector],
@@ -97,10 +100,9 @@ class OWLQN(override val uid: String = "owlqn")
     }
     val breezeOptimizer = new BreezeOWLQN[Int, BDV[Double]](getMaxIter, 10, getL1RegFunc, getTol)
     val bIter = breezeOptimizer.iterations(breezeLoss, start.params.asBreeze.toDenseVector)
-    val tmp = bIter.map { bstate =>
-      IterativeOptimizerState(bstate.iter, new DenseVector(bstate.x.data), bstate.adjustedValue)
+    bIter.map { bstate =>
+      BreezeWrapperState(new DenseVector(bstate.x.data), bstate.iter + 1, bstate.adjustedValue)
     }
-    tmp
   }
 
 }

@@ -31,10 +31,15 @@ import scala.collection.mutable
 trait LBFGSParams extends Params with HasMaxIter with HasTol
 
 class LBFGS(override val uid: String)
-  extends IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector]]
+  extends IterativeOptimizer[DenseVector,
+    DifferentiableFunction[DenseVector],
+    BreezeWrapperState[DenseVector]]
     with LBFGSParams with Logging {
 
   def this() = this(Identifiable.randomUID("lbfgs"))
+
+  private type State = BreezeWrapperState[DenseVector]
+  private val lossHistoryLength = 5
 
   def setMaxIter(value: Int): this.type = set(maxIter, value)
   setDefault(maxIter -> 100)
@@ -46,14 +51,11 @@ class LBFGS(override val uid: String)
     new LBFGS(uid)
   }
 
-  class LBFGSState(val iter: Int, val params: DenseVector, val loss: Double)
-    extends OptimizerState[DenseVector]
-
   def initialState(
                     lossFunction: DifferentiableFunction[DenseVector],
                     initialParams: DenseVector): State = {
     val (firstLoss, firstGradient) = lossFunction.compute(initialParams)
-    IterativeOptimizerState(0, initialParams, firstLoss)
+    BreezeWrapperState(initialParams, 0, firstLoss)
   }
 
   override def iterations(lossFunction: DifferentiableFunction[DenseVector],
@@ -73,10 +75,9 @@ class LBFGS(override val uid: String)
     }
     val breezeOptimizer = new BreezeLBFGS[BDV[Double]](getMaxIter, 10, getTol)
     val bIter = breezeOptimizer.iterations(breezeLoss, start.params.asBreeze.toDenseVector)
-    val tmp = bIter.map { bstate =>
-      IterativeOptimizerState(bstate.iter, new DenseVector(bstate.x.data), bstate.value)
+    bIter.map { bstate =>
+      BreezeWrapperState(new DenseVector(bstate.x.data), bstate.iter + 1, bstate.adjustedValue)
     }
-    tmp
   }
 }
 
