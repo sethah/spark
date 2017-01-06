@@ -58,11 +58,19 @@ trait NormedInnerProductSpace[T, F] {
 
   def combine(v: Seq[(T, F)]): T
 
+  def scale(alpha: F, v: T): T = combine(Seq((v, alpha)))
+
+  def times(alpha: F, v: T, beta: F, u: T): T = {
+    combine(Seq((v, alpha), (u, beta)))
+  }
+
   def dot(x: T, y: T): F
 
   def norm(x: T): F
 
   def zero: T
+
+  def clean(x: T): Unit = {}
 
 }
 
