@@ -19,13 +19,22 @@ package org.apache.spark.ml.optim.optimizers
 import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.optim.linesearch.StrongWolfe
 import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
 import org.apache.spark.ml.util.Identifiable
 
 import scala.reflect.ClassTag
 
+/**
+ * Vector free L-BFGS algorithm for non-linear optimization, described here:
+ *   Chen, et al. "Larg-scale L-BFGS using MapReduce."
+ *
+ * The algorithm is generic in the type of parameters, enabling the use of distributed storage.
+ * This makes it capable of scaling up to billions of parameters.
+ */
 class VLBFGS[T: ClassTag](override val uid: String, m: Int)
-               (implicit space: NormedInnerProductSpace[T, Double])
-  extends IterativeOptimizer[T, DifferentiableFunction[T], IterativeOptimizerState[T]] {
+                         (implicit space: NormedInnerProductSpace[T, Double])
+  extends IterativeOptimizer[T, DifferentiableFunction[T], IterativeOptimizerState[T]]
+    with HasMaxIter with HasTol {
 
   type State = VLBFGS.VLBFGSState[T]
 
@@ -34,11 +43,20 @@ class VLBFGS[T: ClassTag](override val uid: String, m: Int)
   }
 
   def copy(extra: ParamMap): VLBFGS[T] = {
-    new VLBFGS[T](uid, m)
+    defaultCopy(extra)
   }
 
+  /**
+   * Optimization iterations for VL-BFGS algorithm. This should be basically identical to
+   * L-BFGS update. The difference comes as we compute the new search direction using the
+   * history.
+   *
+   * @param lossFunction Differentiable loss function for computing gradients.
+   * @param initialParams Initial parameters.
+   * @return Iterator[State]
+   */
   def iterations(lossFunction: DifferentiableFunction[T], initialParams: T): Iterator[State] = {
-    val initialHistory = new VLBFGS.History[T](m, 0, Array.ofDim[Double](2 * m + 1, 2 * m + 1),
+    val initialHistory = new VLBFGS.History[T](m, Array.ofDim[Double](2 * m + 1, 2 * m + 1),
       new Array[T](m), new Array[T](m))
     val (initialLoss, initialGradient) = lossFunction.compute(initialParams)
     val initialState = VLBFGS.VLBFGSState(0, initialLoss, initialParams, initialGradient,
@@ -69,30 +87,58 @@ class VLBFGS[T: ClassTag](override val uid: String, m: Int)
       val newHistory = state.history.update(nextGradient, posDelta, gradDelta)
       VLBFGS.VLBFGSState(state.iter + 1, nextLoss, nextPosition, nextGradient, newHistory)
     }.takeWhile { state =>
+      // TODO: convergence checks
       state.iter < 5
     }
   }
 }
 
 object VLBFGS {
+
+  /**
+   * The history required by the VL-BFGS algorithm. This is what differentiates it from L-BFGS.
+   * @param m Length of the gradient and position delta histories.
+   * @param innerProducts The matrix of basis vector inner products.
+   * @param posDeltas History of position deltas between iterations.
+   * @param gradDeltas History of gradient deltas between iterations.
+   * @tparam T The type the parameter vector.
+   */
   case class History[T: ClassTag](
       m: Int,
-      k: Int,
       innerProducts: Array[Array[Double]],
       posDeltas: Array[T],
       gradDeltas: Array[T])(implicit space: NormedInnerProductSpace[T, Double])
   extends Serializable {
-    private val numBasisVectors = 2 * m + 1
 
-    def getBasisVector(idx: Int, pds: Array[T], gds: Array[T], gradient: T): T = {
+    private val numBasisVectors = 2 * m + 1
+    private val k = posDeltas.takeWhile(_ != null).length
+
+    /**
+     * Get the appropriate basis vector from the raw index in range [0, 2m]
+     *
+     * @param idx Basis vector index.
+     * @param pds Position delta array.
+     * @param gds Gradient delta array.
+     * @param gradient The gradient for this history.
+     * @return Basis vector b_idx.
+     */
+    private def getBasisVector(idx: Int, pds: Array[T], gds: Array[T], gradient: T): T = {
       if (idx < m) pds(idx)
       else if (idx < 2 * m) gds(idx - m)
       else if (idx == 2 * m) gradient
       else throw new IndexOutOfBoundsException(s"Basis vector index was invalid: $idx")
     }
 
+    /**
+     * Create a copy of the array with each element shifted one to the right. Add a new
+     * element at position zero in the new array.
+     *   [a, b, null, null] -> [elem, a, b, null]
+     *
+     * @param elem The head element of the new array
+     * @param arr The unshifted array.
+     * @return The shifted array with elem.
+     */
     private def shiftArr(elem: T, arr: Array[T]): Array[T] = {
-      // TODO: using a seq or list or whatever is probably fine here since m is small
       val newArr = new Array[T](arr.length)
       for (i <- arr.length - 2 to 0 by (-1)) {
         newArr(i + 1) = arr(i)
@@ -101,6 +147,14 @@ object VLBFGS {
       newArr
     }
 
+    /**
+     * Shift all elements in the original matrix by one row and column, i.e.
+     *   (i, j) -> (i + 1, j + 1)
+     * The elements in the last row and column are shifted out of the matrix.
+     *
+     * @param matrix Unshifted matrix.
+     * @return Shifted matrix.
+     */
     private def shiftMatrix(matrix: Array[Array[Double]]): Array[Array[Double]] = {
       val newMatrix = Array.ofDim[Double](numBasisVectors, numBasisVectors)
       for (i <- numBasisVectors - 2 to 0 by (-1); j <- numBasisVectors - 2 to 0 by (-1)) {
@@ -109,36 +163,46 @@ object VLBFGS {
       newMatrix
     }
 
+    /**
+     * Produce the next history object from the current one, adding in the new position and
+     * gradient delta vectors, and updating the inner product matrix.
+     *
+     * @param gradient The gradient basis vector.
+     * @param posDelta The new position delta (x_{i + 1} - x_i)
+     * @param gradDelta The new gradient delta (g_{i + 1} - g+i)
+     * @return The next History.
+     */
     def update(gradient: T, posDelta: T, gradDelta: T): History[T] = {
       // add in the new history, shift out the old, and compute new dot products
       val newPosDeltas = shiftArr(posDelta, posDeltas)
       val newGradDeltas = shiftArr(gradDelta, gradDeltas)
       val shiftedInnerProducts = shiftMatrix(innerProducts)
+      // generate a list of inner product indices, and cast as set to avoid duplicate work
       val indices = (0 to 2 * m).flatMap { i =>
+        // Ensure that the tuples are ordered uniformly
         List((0, i), (math.min(m, i), math.max(m, i)), (i, 2 * m))
       }.toSet
-      indices.par.foreach {
-        case (i, j) =>
-          val v1 = getBasisVector(i, newPosDeltas, newGradDeltas, gradient)
-          val v2 = getBasisVector(j, newPosDeltas, newGradDeltas, gradient)
-          // TODO: fix this nonsense
-          if (v1 != null && v2 != null) {
-            val dotProd = space.dot(v1, v2)
-            shiftedInnerProducts(i)(j) = dotProd
-            shiftedInnerProducts(j)(i) = dotProd
-          }
+      indices.par.foreach { case (i, j) =>
+        val v1 = getBasisVector(i, newPosDeltas, newGradDeltas, gradient)
+        val v2 = getBasisVector(j, newPosDeltas, newGradDeltas, gradient)
+        // TODO: we can surely rid ourselves of null checks
+        if (v1 != null && v2 != null) {
+          val dotProd = space.dot(v1, v2)
+          shiftedInnerProducts(i)(j) = dotProd
+          shiftedInnerProducts(j)(i) = dotProd
+        }
       }
-      History(m, k + 1, shiftedInnerProducts, newPosDeltas, newGradDeltas)
+      History(m, shiftedInnerProducts, newPosDeltas, newGradDeltas)
     }
 
     /**
-     * Compute sum_j=1^2m+1^ delta_j * b_j
-     * @param gradient
-     * @return
+     * Compute the direction from the basis vectors and their coefficients.
+     *   sum_j=1^2m+1^ delta_j * b_j
+     * @param gradient The 2m + 1 basis vector.
+     * @return Next search direction.
      */
     def computeDirection(gradient: T): T = {
       val deltas = basisCoefficients
-//      println(deltas.mkString(","))
       val zipped = (0 until numBasisVectors).map { i =>
         (getBasisVector(i, posDeltas, gradDeltas, gradient), deltas(i))
       }.filter(_._1 != null)
@@ -146,8 +210,13 @@ object VLBFGS {
     }
 
     /**
-     * This should not be called until k > 1
-     * @return
+     * Lazily compute the basis coefficients using the algorithm 3 from:
+     *   Chen, et al. Large-scale L-BFGS using MapReduce.
+     *
+     * This is really just the typical L-BFGS recursive update formulated in terms of the
+     * decomposition of the search direction using {s_0, ..., s_m-1, y_0, ..., y_m-1, g}
+     * as a set of basis vectors. It involves only scalar operations since we have already
+     * computed all of the (2 * m + 1)^2^ inner products that are required by the computation.
      */
     lazy val basisCoefficients: Array[Double] = {
       val deltas = Array.tabulate(numBasisVectors) { i =>
@@ -184,8 +253,7 @@ object VLBFGS {
       }
     }
   }
-  case class VLBFGSState[T](iter: Int, loss: Double, params: T, gradient: T, history: History[T])
-    extends IterativeOptimizerState[T] {
 
-  }
+  case class VLBFGSState[T](iter: Int, loss: Double, params: T, gradient: T, history: History[T])
+    extends IterativeOptimizerState[T]
 }
