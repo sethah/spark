@@ -54,7 +54,7 @@ trait IterativeOptimizer[T, F <: (T => Any), +State <: IterativeOptimizerState[T
   }
 }
 
-trait NormedInnerProductSpace[T, F] {
+trait NormedInnerProductSpace[T, F] extends Serializable {
 
   def combine(v: Seq[(T, F)]): T
 
