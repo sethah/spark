@@ -21,12 +21,12 @@ import scala.collection.JavaConverters._
 import scala.language.existentials
 import scala.util.Random
 import scala.util.control.Breaks._
-
 import org.apache.spark.{SparkException, SparkFunSuite}
 import org.apache.spark.ml.attribute.NominalAttribute
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, LabeledPoint}
-import org.apache.spark.ml.linalg.{DenseMatrix, Matrices, SparseMatrix, SparseVector, Vector, Vectors}
+import org.apache.spark.ml.linalg.{DenseMatrix, DenseVector, Matrices, SparseMatrix, SparseVector, Vector, Vectors}
+import org.apache.spark.ml.optim.optimizers.{LBFGS, VLBFGS}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
@@ -374,6 +374,20 @@ class LogisticRegressionSuite
     resultsUsingPredict.zip(results.select("prediction").as[Double].collect()).foreach {
       case (pred1, pred2) => assert(pred1 === pred2)
     }
+  }
+
+  test("mytest") {
+    import org.apache.spark.ml.optim.optimizers.OptimizerImplicits._
+    val path = "/Users/sethhendrickson/Development/datasets/multinomialDataset/"
+    val df = spark.read.option("inferSchema", "true").parquet(path)
+      .filter("label < 2.0")
+    df.show()
+    val lr = new LogisticRegression()
+      .setMaxIter(2)
+      .setOptimizer(new VLBFGS[DenseVector](10).setMaxIter(2))
+//      .setOptimizer(new LBFGS().setMaxIter(2))
+    val model = lr.fit(df)
+    println(model.coefficientMatrix)
   }
 
   test("binary logistic regression: Predictor, Classifier methods") {

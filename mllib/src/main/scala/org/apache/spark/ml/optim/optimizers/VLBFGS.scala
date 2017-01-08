@@ -46,6 +46,8 @@ class VLBFGS[T: ClassTag](override val uid: String, m: Int)
     defaultCopy(extra)
   }
 
+  def setMaxIter(value: Int): this.type = set(maxIter, value)
+
   /**
    * Optimization iterations for VL-BFGS algorithm. This should be basically identical to
    * L-BFGS update. The difference comes as we compute the new search direction using the
@@ -62,7 +64,9 @@ class VLBFGS[T: ClassTag](override val uid: String, m: Int)
     val initialState = VLBFGS.VLBFGSState(0, initialLoss, initialParams, initialGradient,
       initialHistory)
     Iterator.iterate(initialState) { state =>
+      println(s"Iteration ${state.iter}: ${state.params}  ")
       val direction = state.history.computeDirection(state.gradient)
+      // TODO: persist direction
       val ls = new StrongWolfe()
       val lineSearchFunction = new DifferentiableFunction[Double] {
         def apply(x: Double): Double = {
@@ -81,14 +85,22 @@ class VLBFGS[T: ClassTag](override val uid: String, m: Int)
       val initialAlpha = if (state.iter == 0) 1.0 / dirNorm else 1.0
       val alpha = ls.optimize(lineSearchFunction, initialAlpha)
       val nextPosition = space.combine(Seq((state.params, 1.0), (direction, alpha)))
+//      println("next pos", nextPosition)
+      space.prepare(nextPosition)
+      // TODO: persist nextPosition
+      // TODO: now unpersist direction
       val (nextLoss, nextGradient) = lossFunction.compute(nextPosition)
       val posDelta = space.combine(Seq((nextPosition, 1.0), (state.params, -1.0)))
       val gradDelta = space.combine(Seq((nextGradient, 1.0), (state.gradient, -1.0)))
+      // TODO: unpersist state.params
+      space.clean(state.params)
+      // TODO: persist posDelta and gradDelta
+      // TODO: unpersist the shifted out history in `update`
       val newHistory = state.history.update(nextGradient, posDelta, gradDelta)
       VLBFGS.VLBFGSState(state.iter + 1, nextLoss, nextPosition, nextGradient, newHistory)
     }.takeWhile { state =>
       // TODO: convergence checks
-      state.iter < 5
+      state.iter <= getMaxIter
     }
   }
 }
@@ -139,6 +151,8 @@ object VLBFGS {
      * @return The shifted array with elem.
      */
     private def shiftArr(elem: T, arr: Array[T]): Array[T] = {
+      // TODO: here we would want to unpersist the ones that get shifted out
+      // TODO: and make sure that the new one is persisted
       val newArr = new Array[T](arr.length)
       for (i <- arr.length - 2 to 0 by (-1)) {
         newArr(i + 1) = arr(i)

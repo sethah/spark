@@ -39,7 +39,6 @@ class LBFGS(override val uid: String)
   def this() = this(Identifiable.randomUID("lbfgs"))
 
   private type State = BreezeWrapperState[DenseVector]
-  private val lossHistoryLength = 5
 
   def setMaxIter(value: Int): this.type = set(maxIter, value)
   setDefault(maxIter -> 100)
@@ -52,8 +51,8 @@ class LBFGS(override val uid: String)
   }
 
   def initialState(
-                    lossFunction: DifferentiableFunction[DenseVector],
-                    initialParams: DenseVector): State = {
+      lossFunction: DifferentiableFunction[DenseVector],
+      initialParams: DenseVector): State = {
     val (firstLoss, firstGradient) = lossFunction.compute(initialParams)
     BreezeWrapperState(initialParams, 0, firstLoss)
   }
@@ -80,55 +79,3 @@ class LBFGS(override val uid: String)
     }
   }
 }
-
-//class LBFGS[T](
-//    m: Int,
-//    override val stoppingCriteria: (FirstOrderOptimizerState[T, (IndexedSeq[T], IndexedSeq[T])]) => Boolean)
-//    (implicit space: NormedInnerProductSpace[T, Double],
-//     bspace: breeze.math.MutableInnerProductModule[T, Double])
-//  extends FirstOrderOptimizer[T] {
-//
-//  type History = (IndexedSeq[T], IndexedSeq[T])
-//
-//  override val uid: String = "asdf"
-//
-//  override def takeStep(position: T, stepDirection: T, stepSize: Double): T = {
-//    space.combine(Seq((position, 1.0), (stepDirection, stepSize)))
-//  }
-//
-//  override def chooseStepSize(lossFunction: DifferentiableFunction[T],
-//                              direction: T, state: State): Double = {
-//    val x = state.params
-//    val grad = state.gradient
-//    val breezeFunc = DifferentiableFunction.toBreeze(lossFunction)
-//
-//    val ff = LineSearch.functionFromSearchDirection(breezeFunc, x, direction)
-//    // TODO: Need good default values here.
-//    val search = new StrongWolfeLineSearch(maxZoomIter = 10, maxLineSearchIter = 10)
-//    val alpha = search.minimize(ff, if (state.iter == 0.0) 1.0 / space.norm(direction) else 1.0)
-//
-//    if(alpha * space.norm(grad) < 1E-10) throw new Exception("Step size underflow")
-//    alpha
-//  }
-//
-//  override def chooseDescentDirection(state: State): T = {
-//    val bHess = new ApproximateInverseHessian(m, state.history._1, state.history._2)
-//    bHess.*(state.gradient)
-//  }
-//
-//  override def initialHistory(lossFunction: DifferentiableFunction[T],
-//                              initialParams: T): History = {
-//    (IndexedSeq.empty[T], IndexedSeq.empty[T])
-//  }
-//
-//  override def updateHistory(position: T, gradient: T, value: Double, state: State): History = {
-//    val (oldDeltaPositions, oldDeltaGrads) = state.history
-//    val newDeltaGrad = space.combine(Seq((gradient, 1.0), (state.gradient, -1.0)))
-//    val newDeltaPosition = space.combine(Seq((position, 1.0), (state.params, -1.0)))
-//    ((oldDeltaPositions :+ newDeltaPosition).take(m), (oldDeltaGrads :+ newDeltaGrad).take(m))
-//  }
-//
-//  override def copy(extra: ParamMap): LBFGS[T] = {
-//    new LBFGS[T](m, stoppingCriteria)
-//  }
-//}
