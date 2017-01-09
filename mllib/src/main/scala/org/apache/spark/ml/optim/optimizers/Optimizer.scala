@@ -35,6 +35,9 @@ trait Optimizer[T, F <: (T => Any)] extends Params {
 
 }
 
+/**
+ * @tparam State Type that holds information about the state of the opimization at each iteration.
+ */
 trait IterativeOptimizer[T, F <: (T => Any), +State <: IterativeOptimizerState[T]]
   extends Optimizer[T, F] {
 

@@ -60,6 +60,7 @@ class VLBFGS[T: ClassTag](override val uid: String, m: Int)
   def iterations(lossFunction: DifferentiableFunction[T], initialParams: T): Iterator[State] = {
     val initialHistory = new VLBFGS.History[T](m, Array.ofDim[Double](2 * m + 1, 2 * m + 1),
       new Array[T](m), new Array[T](m))
+    space.prepare(initialParams)
     val (initialLoss, initialGradient) = lossFunction.compute(initialParams)
     val initialState = VLBFGS.VLBFGSState(0, initialLoss, initialParams, initialGradient,
       initialHistory)
@@ -77,7 +78,9 @@ class VLBFGS[T: ClassTag](override val uid: String, m: Int)
 
         def compute(x: Double): (Double, Double) = {
           val next = space.combine(Seq((state.params, 1.0), (direction, x)))
+          space.prepare(next)
           val (f, grad) = lossFunction.compute(next)
+          space.clean(next)
           (f, space.dot(grad, direction))
         }
       }
