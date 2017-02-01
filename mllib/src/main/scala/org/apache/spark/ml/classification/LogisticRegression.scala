@@ -567,6 +567,8 @@ class LogisticRegression @Since("1.2.0") (
           initialCoefWithInterceptMatrix.update(0, numFeatures,
             math.log(histogram(1) / histogram(0)))
         }
+        val initialCoefWithInterceptMatrix2 =
+          Matrices.zeros(numCoefficientSets, numFeaturesPlusIntercept)
         val lossFunction = new DifferentiableFunction[DenseVector] {
           def apply(x: DenseVector) = costFun.valueAt(new BDV(x.values))
           def gradientAt(x: DenseVector) = {
@@ -579,7 +581,7 @@ class LogisticRegression @Since("1.2.0") (
           }
         }
         val optIterations = opt.iterations(lossFunction,
-          new DenseVector(initialCoefWithInterceptMatrix.toArray))
+          new DenseVector(initialCoefWithInterceptMatrix2.toArray))
 
         var lastIter: IterativeOptimizerState[DenseVector] = null
         val arrayBuilder = mutable.ArrayBuilder.make[Double]

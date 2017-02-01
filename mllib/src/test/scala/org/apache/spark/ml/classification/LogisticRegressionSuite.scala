@@ -26,7 +26,7 @@ import org.apache.spark.ml.attribute.NominalAttribute
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, LabeledPoint}
 import org.apache.spark.ml.linalg.{DenseMatrix, DenseVector, Matrices, SparseMatrix, SparseVector, Vector, Vectors}
-import org.apache.spark.ml.optim.optimizers.{LBFGS, VLBFGS}
+import org.apache.spark.ml.optim.optimizers.{LBFGS, LBFGSB, VLBFGS}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
@@ -390,12 +390,18 @@ class LogisticRegressionSuite
     val df = spark.read.option("inferSchema", "true").parquet(path)
       .filter("label < 2.0")
     df.show()
+    val lr1 = new LogisticRegression()
+    val model1 = lr1.fit(df)
+    val lbs = Vectors.dense(Array.fill(5)(-1000.0))
+    lbs.toArray(0) = 0.0
+    val ubs = Vectors.dense(Array.fill(5)(1000.0))
     val lr = new LogisticRegression()
-      .setMaxIter(2)
-      .setOptimizer(new VLBFGS[DenseVector](10).setMaxIter(2))
+      .setOptimizer(new LBFGSB("myuid", lbs, ubs))
+//      .setOptimizer(new VLBFGS[DenseVector](10).setMaxIter(2))
 //      .setOptimizer(new LBFGS().setMaxIter(2))
     val model = lr.fit(df)
-    println(model.coefficientMatrix)
+    println("lbfgsb", model.coefficientMatrix)
+    println(model1.coefficientMatrix)
   }
 
   test("binary logistic regression: Predictor, Classifier methods") {
