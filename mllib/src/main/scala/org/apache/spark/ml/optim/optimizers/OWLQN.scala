@@ -18,18 +18,13 @@ package org.apache.spark.ml.optim.optimizers
 
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, DiffFunction, OWLQN => BreezeOWLQN}
-import org.apache.spark.SparkException
-import org.apache.spark.internal.Logging
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.linalg.DenseVector
-import org.apache.spark.ml.linalg.DenseVector
-import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.param.shared.{HasTol, HasMaxIter}
 import org.apache.spark.ml.param.{Param, Params, ParamMap}
 import org.apache.spark.ml.util.Identifiable
 
-import scala.collection.mutable
 
 trait HasL1Reg extends Params {
 
@@ -54,7 +49,6 @@ class OWLQN(override val uid: String)
     BreezeWrapperState[DenseVector]] with OWLQNParams with Logging {
 
   private type State = BreezeWrapperState[DenseVector]
-  private val lossHistoryLength = 5
 
   def this() = this(Identifiable.randomUID("owlqn"))
 
@@ -71,8 +65,8 @@ class OWLQN(override val uid: String)
   setDefault(tol -> 1e-6)
 
   def initialState(
-                    lossFunction: DifferentiableFunction[DenseVector],
-                    initialParams: DenseVector): State = {
+      lossFunction: DifferentiableFunction[DenseVector],
+      initialParams: DenseVector): State = {
     val (firstLoss, firstGradient) = lossFunction.compute(initialParams)
     BreezeWrapperState(initialParams, 0, firstLoss)
   }

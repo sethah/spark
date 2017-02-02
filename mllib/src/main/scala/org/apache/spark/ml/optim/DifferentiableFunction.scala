@@ -16,35 +16,48 @@
  */
 package org.apache.spark.ml.optim
 
-import breeze.optimize.DiffFunction
-
 /**
  *
  * @tparam T The type of the function's domain.
  */
-trait DifferentiableFunction[T] extends (T => Double) {
+trait DifferentiableFunction[T] extends (T => Double) { self =>
 
-  def apply(x: T): Double
+  def apply(x: T): Double = {
+    compute(x)._1
+  }
 
-  def gradientAt(x: T): T
+  def gradientAt(x: T): T = {
+    compute(x)._2
+  }
 
   def compute(x: T): (Double, T)
 
+  def cached(): CachedDifferentiableFunction[T] = new CachedDifferentiableFunction[T] {
+
+    def doCompute(x: T): (Double, T) = self.compute(x)
+  }
+
 }
 
-object DifferentiableFunction {
-  def toBreeze[T](f: DifferentiableFunction[T]): DiffFunction[T] = {
-    new DiffFunction[T] {
-      override def valueAt(x: T): Double = f(x)
-      override def gradientAt(x: T): T = f.gradientAt(x)
-      override def calculate(x: T): (Double, T) = f.compute(x)
+trait CachedDifferentiableFunction[T] extends DifferentiableFunction[T] {
+
+  private var lastData: (T, Double, T) = null
+
+  /** Calculates both the value and the gradient at a point */
+  override def compute(x: T): (Double, T) = {
+    var ld = lastData
+    if (ld == null || x != ld._1) {
+      val newData = doCompute(x: T)
+      ld = (x, newData._1, newData._2)
+      lastData = ld
     }
+    val (_, v, g) = ld
+    v -> g
   }
-  def fromBreeze[T](f: DiffFunction[T]): DifferentiableFunction[T] = {
-    new DifferentiableFunction[T] {
-      override def apply(x: T): Double = f.valueAt(x)
-      override def gradientAt(x: T): T = f.gradientAt(x)
-      override def compute(x: T): (Double, T) = f.calculate(x)
-    }
-  }
+
+  def doCompute(x: T): (Double, T)
+
+  override def cached(): CachedDifferentiableFunction[T] = this
+
 }
+

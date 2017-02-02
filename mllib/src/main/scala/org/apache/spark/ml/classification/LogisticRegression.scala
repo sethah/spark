@@ -28,7 +28,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.DifferentiableFunction
+import org.apache.spark.ml.optim.{DifferentiableFunction}
 import org.apache.spark.ml.optim.optimizers._
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
@@ -442,7 +442,7 @@ class LogisticRegression @Since("1.2.0") (
         val bcFeaturesStd = instances.context.broadcast(featuresStd)
         val costFun = new LogisticCostFun(instances, numClasses, $(fitIntercept),
           $(standardization), bcFeaturesStd, regParamL2, multinomial = isMultinomial,
-          $(aggregationDepth))
+          $(aggregationDepth)).cached()
 
         val standardizationParam = $(standardization)
         val regParamL1Fun = (index: Int) => {
@@ -569,18 +569,8 @@ class LogisticRegression @Since("1.2.0") (
         }
         val initialCoefWithInterceptMatrix2 =
           Matrices.zeros(numCoefficientSets, numFeaturesPlusIntercept)
-        val lossFunction = new DifferentiableFunction[DenseVector] {
-          def apply(x: DenseVector) = costFun.valueAt(new BDV(x.values))
-          def gradientAt(x: DenseVector) = {
-            val grad = costFun.gradientAt(new BDV(x.values))
-            new DenseVector(grad.data)
-          }
-          def compute(x: DenseVector) = {
-            val (bf, bgrad) = costFun.calculate(new BDV(x.values))
-            (bf, new DenseVector(bgrad.data))
-          }
-        }
-        val optIterations = opt.iterations(lossFunction,
+
+        val optIterations = opt.iterations(costFun,
           new DenseVector(initialCoefWithInterceptMatrix2.toArray))
 
         var lastIter: IterativeOptimizerState[DenseVector] = null
@@ -1657,12 +1647,10 @@ private class LogisticCostFun(
     bcFeaturesStd: Broadcast[Array[Double]],
     regParamL2: Double,
     multinomial: Boolean,
-    aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
+    aggregationDepth: Int) extends DifferentiableFunction[DenseVector] {
 
-  override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
-//    println(coefficients)
-    val coeffs = Vectors.fromBreeze(coefficients)
-    val bcCoeffs = instances.context.broadcast(coeffs)
+  override def compute(coefficients: DenseVector): (Double, DenseVector) = {
+    val bcCoeffs: Broadcast[Vector] = instances.context.broadcast(coefficients)
     val featuresStd = bcFeaturesStd.value
     val numFeatures = featuresStd.length
     val numCoefficientSets = if (multinomial) numClasses else 1
@@ -1679,7 +1667,8 @@ private class LogisticCostFun(
     }
 
     val totalGradientMatrix = logisticAggregator.gradient
-    val coefMatrix = new DenseMatrix(numCoefficientSets, numFeaturesPlusIntercept, coeffs.toArray)
+    val coefMatrix = new DenseMatrix(numCoefficientSets, numFeaturesPlusIntercept,
+      coefficients.toArray)
     // regVal is the sum of coefficients squares excluding intercept for L2 regularization.
     val regVal = if (regParamL2 == 0.0) {
       0.0
@@ -1718,6 +1707,6 @@ private class LogisticCostFun(
     }
     bcCoeffs.destroy(blocking = false)
 
-    (logisticAggregator.loss + regVal, new BDV(totalGradientMatrix.toArray))
+    (logisticAggregator.loss + regVal, new DenseVector(totalGradientMatrix.toArray))
   }
 }

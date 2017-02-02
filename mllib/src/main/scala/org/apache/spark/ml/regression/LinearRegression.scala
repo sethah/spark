@@ -374,18 +374,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     }
 
     val initialCoefficients = Vectors.zeros(numFeatures)
-    val lossFunction = new DifferentiableFunction[DenseVector] {
-      def apply(x: DenseVector) = costFun.valueAt(new BDV(x.values))
-      def gradientAt(x: DenseVector) = {
-        val grad = costFun.gradientAt(new BDV(x.values))
-        new DenseVector(grad.data)
-      }
-      def compute(x: DenseVector) = {
-        val (bf, bgrad) = costFun.calculate(new BDV(x.values))
-        (bf, new DenseVector(bgrad.data))
-      }
-    }
-    val optIterations = opt.iterations(lossFunction, initialCoefficients.toDense)
+    val optIterations = opt.iterations(costFun, initialCoefficients.toDense)
 
     var lastIter: IterativeOptimizerState[DenseVector] = null
     val arrayBuilder = mutable.ArrayBuilder.make[Double]
@@ -1080,11 +1069,10 @@ private class LeastSquaresCostFun(
     bcFeaturesStd: Broadcast[Array[Double]],
     bcFeaturesMean: Broadcast[Array[Double]],
     effectiveL2regParam: Double,
-    aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
+    aggregationDepth: Int) extends DifferentiableFunction[DenseVector] {
 
-  override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
-    val coeffs = Vectors.fromBreeze(coefficients)
-    val bcCoeffs = instances.context.broadcast(coeffs)
+  override def compute(coefficients: DenseVector): (Double, DenseVector) = {
+    val bcCoeffs: Broadcast[Vector] = instances.context.broadcast(coefficients)
     val localFeaturesStd = bcFeaturesStd.value
 
     val leastSquaresAggregator = {
@@ -1106,7 +1094,7 @@ private class LeastSquaresCostFun(
       0.0
     } else {
       var sum = 0.0
-      coeffs.foreachActive { (index, value) =>
+      coefficients.foreachActive { (index, value) =>
         // The following code will compute the loss of the regularization; also
         // the gradient of the regularization, and add back to totalGradientArray.
         sum += {
@@ -1132,6 +1120,6 @@ private class LeastSquaresCostFun(
       0.5 * effectiveL2regParam * sum
     }
 
-    (leastSquaresAggregator.loss + regVal, new BDV(totalGradientArray))
+    (leastSquaresAggregator.loss + regVal, new DenseVector(totalGradientArray))
   }
 }

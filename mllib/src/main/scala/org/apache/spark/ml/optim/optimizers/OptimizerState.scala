@@ -29,7 +29,7 @@ trait IterativeOptimizerState[+T] extends OptimizerState[T] {
   def loss: Double
 }
 
-case class BreezeWrapperState[+T](
+private[ml] case class BreezeWrapperState[+T](
     params: T,
     iter: Int,
     loss: Double) extends IterativeOptimizerState[T]

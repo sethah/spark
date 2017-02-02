@@ -18,7 +18,6 @@ package org.apache.spark.ml.optim.optimizers
 
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS}
-import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.linalg.DenseVector
 import org.apache.spark.ml.optim.DifferentiableFunction
@@ -26,12 +25,9 @@ import org.apache.spark.ml.param.{Params, ParamMap}
 import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
 import org.apache.spark.ml.util.Identifiable
 
-import scala.collection.mutable
-
 trait LBFGSParams extends Params with HasMaxIter with HasTol
 
-class LBFGS(override val uid: String)
-  extends IterativeOptimizer[DenseVector,
+class LBFGS(override val uid: String) extends IterativeOptimizer[DenseVector,
     DifferentiableFunction[DenseVector],
     BreezeWrapperState[DenseVector]]
     with LBFGSParams with Logging {

@@ -29,7 +29,7 @@ import scala.language.implicitConversions
  * @tparam T The type of parameters to be optimized.
  * @tparam F The type of loss function.
  */
-trait Optimizer[T, F <: (T => Any)] extends Params {
+trait Optimizer[T, F <: (T => Double)] extends Params {
 
   def optimize(lossFunction: F, initialParameters: T): T
 
@@ -38,7 +38,7 @@ trait Optimizer[T, F <: (T => Any)] extends Params {
 /**
  * @tparam State Type that holds information about the state of the opimization at each iteration.
  */
-trait IterativeOptimizer[T, F <: (T => Any), +State <: IterativeOptimizerState[T]]
+trait IterativeOptimizer[T, F <: (T => Double), +State <: IterativeOptimizerState[T]]
   extends Optimizer[T, F] {
 
   def iterations(lossFunction: F, initialParams: T): Iterator[State]
