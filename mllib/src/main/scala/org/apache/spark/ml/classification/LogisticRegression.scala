@@ -18,8 +18,6 @@
 package org.apache.spark.ml.classification
 
 import scala.collection.mutable
-import breeze.linalg.{DenseVector => BDV}
-import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
@@ -28,7 +26,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.{DifferentiableFunction}
+import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg}
 import org.apache.spark.ml.optim.optimizers._
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
@@ -197,8 +195,8 @@ class LogisticRegression @Since("1.2.0") (
   extends ProbabilisticClassifier[Vector, LogisticRegression, LogisticRegressionModel]
   with LogisticRegressionParams with DefaultParamsWritable with Logging {
 
-  type OptimizerType = IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
-    IterativeOptimizerState[DenseVector]]
+  type OptimizerType = IterativeMinimizer[DenseVector, DifferentiableFunction[DenseVector],
+    IterativeMinimizerState[DenseVector]]
 
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("logreg"))
@@ -567,15 +565,13 @@ class LogisticRegression @Since("1.2.0") (
           initialCoefWithInterceptMatrix.update(0, numFeatures,
             math.log(histogram(1) / histogram(0)))
         }
-        val initialCoefWithInterceptMatrix2 =
-          Matrices.zeros(numCoefficientSets, numFeaturesPlusIntercept)
 
         val optIterations = opt.iterations(costFun,
-          new DenseVector(initialCoefWithInterceptMatrix2.toArray))
+          new DenseVector(initialCoefWithInterceptMatrix.toArray))
 
-        var lastIter: IterativeOptimizerState[DenseVector] = null
+        var lastIter: IterativeMinimizerState[DenseVector] = null
         val arrayBuilder = mutable.ArrayBuilder.make[Double]
-        while(optIterations.hasNext) {
+        while (optIterations.hasNext) {
           lastIter = optIterations.next()
           arrayBuilder += lastIter.loss
         }

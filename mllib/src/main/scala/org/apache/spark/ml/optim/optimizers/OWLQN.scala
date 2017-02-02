@@ -17,87 +17,80 @@
 package org.apache.spark.ml.optim.optimizers
 
 import breeze.linalg.{DenseVector => BDV}
-import breeze.optimize.{CachedDiffFunction, DiffFunction, OWLQN => BreezeOWLQN}
+import breeze.optimize.{OWLQN => BreezeOWLQN}
+
+import org.apache.spark.annotation.Since
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.linalg.DenseVector
-import org.apache.spark.ml.optim.DifferentiableFunction
-import org.apache.spark.ml.param.shared.{HasTol, HasMaxIter}
-import org.apache.spark.ml.param.{Param, Params, ParamMap}
+import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg}
+import org.apache.spark.ml.param.{ParamMap, Params}
+import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
 import org.apache.spark.ml.util.Identifiable
-
-
-trait HasL1Reg extends Params {
-
-  /**
-   * Param for maximum number of iterations (&gt;= 0).
-   *
-   * @group param
-   */
-  final val l1RegFunc: Param[Int => Double] = new Param(this, "l1RegFunc",
-    "function for applying L1 regularization to parameters.")
-
-  /** @group getParam */
-  final def getL1RegFunc: Int => Double = $(l1RegFunc)
-
-}
 
 trait OWLQNParams extends Params with HasMaxIter with HasTol with HasL1Reg
 
-
-class OWLQN(override val uid: String)
-  extends IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
+@Since("2.2.0")
+class OWLQN @Since("2.2.0") (@Since("2.2.0") override val uid: String)
+  extends IterativeMinimizer[DenseVector, DifferentiableFunction[DenseVector],
     BreezeWrapperState[DenseVector]] with OWLQNParams with Logging {
+  // TODO: We can make it inherit from first order minimizer in the future, right?
+
+  @Since("2.2.0")
+  def this() = this(Identifiable.randomUID("owlqn"))
 
   private type State = BreezeWrapperState[DenseVector]
 
-  def this() = this(Identifiable.randomUID("owlqn"))
-
-  override def copy(extra: ParamMap): OWLQN = {
-    new OWLQN()
-  }
-
+  /**
+   * Sets the L1 regularization function, mapping feature index to regularization.
+   *
+   * @group setParam
+   */
+  @Since("2.2.0")
   def setL1RegFunc(value: Int => Double): this.type = set(l1RegFunc, value)
 
+  /**
+   * Sets the maximum number of iterations.
+   *
+   * @group setParam
+   */
+  @Since("2.2.0")
   def setMaxIter(value: Int): this.type = set(maxIter, value)
   setDefault(maxIter -> 100)
 
+  /**
+   * Sets the convergence tolerance for this minimizer.
+   *
+   * @group setParam
+   */
+  @Since("2.2.0")
   def setTol(value: Double): this.type = set(tol, value)
   setDefault(tol -> 1e-6)
 
-  def initialState(
+  private def initialState(
       lossFunction: DifferentiableFunction[DenseVector],
       initialParams: DenseVector): State = {
-    val (firstLoss, firstGradient) = lossFunction.compute(initialParams)
+    val (firstLoss, _) = lossFunction.compute(initialParams)
     BreezeWrapperState(initialParams, 0, firstLoss)
   }
 
-
-  def converged(state: State): Boolean = {
-    val maxIterReached = state.iter > getMaxIter
-    maxIterReached
-  }
-
-  override def iterations(lossFunction: DifferentiableFunction[DenseVector],
-                          initialParameters: DenseVector): Iterator[State] = {
-    val start = initialState(lossFunction, initialParameters)
-    val breezeLoss = new DiffFunction[BDV[Double]] {
-      override def valueAt(x: BDV[Double]): Double = {
-        lossFunction.apply(new DenseVector(x.data))
-      }
-      override def gradientAt(x: BDV[Double]): BDV[Double] = {
-        lossFunction.gradientAt(new DenseVector(x.data)).asBreeze.toDenseVector
-      }
-      override def calculate(x: BDV[Double]): (Double, BDV[Double]) = {
-        val (f, grad) = lossFunction.compute(new DenseVector(x.data))
-        (f, grad.asBreeze.toDenseVector)
-      }
-    }
+  @Since("2.2.0")
+  override def iterations(
+      lossFunction: DifferentiableFunction[DenseVector],
+      initialParameters: DenseVector): Iterator[State] = {
+    val firstState = initialState(lossFunction, initialParameters)
+    val breezeLoss = DifferentiableFunction.toBreeze(lossFunction,
+      (x: DenseVector) => new BDV[Double](x.values),
+      (x: BDV[Double]) => new DenseVector(x.data))
     val breezeOptimizer = new BreezeOWLQN[Int, BDV[Double]](getMaxIter, 10, getL1RegFunc, getTol)
-    val bIter = breezeOptimizer.iterations(breezeLoss, start.params.asBreeze.toDenseVector)
-    bIter.map { bstate =>
-      BreezeWrapperState(new DenseVector(bstate.x.data), bstate.iter + 1, bstate.adjustedValue)
+    val breezeIterations = breezeOptimizer.iterations(breezeLoss,
+      firstState.params.asBreeze.toDenseVector)
+    breezeIterations.map { breezeState =>
+      BreezeWrapperState(new DenseVector(breezeState.x.data), breezeState.iter + 1,
+        breezeState.adjustedValue)
     }
   }
 
+  @Since("2.2.0")
+  override def copy(extra: ParamMap): OWLQN = defaultCopy(extra)
 }
 

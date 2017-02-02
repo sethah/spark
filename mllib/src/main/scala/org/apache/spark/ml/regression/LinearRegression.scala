@@ -18,8 +18,6 @@
 package org.apache.spark.ml.regression
 
 import scala.collection.mutable
-import breeze.linalg.{DenseVector => BDV}
-import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import breeze.stats.distributions.StudentsT
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkException
@@ -29,7 +27,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.{DifferentiableFunction, WeightedLeastSquares}
+import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg, WeightedLeastSquares}
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.optim.optimizers._
 import org.apache.spark.ml.param.{Param, ParamMap, Params}
@@ -91,8 +89,8 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
   extends Regressor[Vector, LinearRegression, LinearRegressionModel]
   with LinearRegressionParams with DefaultParamsWritable with Logging {
 
-  type OptimizerType = IterativeOptimizer[DenseVector, DifferentiableFunction[DenseVector],
-    IterativeOptimizerState[DenseVector]]
+  type OptimizerType = IterativeMinimizer[DenseVector, DifferentiableFunction[DenseVector],
+    IterativeMinimizerState[DenseVector]]
 
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("linReg"))
@@ -376,9 +374,9 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     val initialCoefficients = Vectors.zeros(numFeatures)
     val optIterations = opt.iterations(costFun, initialCoefficients.toDense)
 
-    var lastIter: IterativeOptimizerState[DenseVector] = null
+    var lastIter: IterativeMinimizerState[DenseVector] = null
     val arrayBuilder = mutable.ArrayBuilder.make[Double]
-    while(optIterations.hasNext) {
+    while (optIterations.hasNext) {
       lastIter = optIterations.next()
       arrayBuilder += lastIter.loss
     }

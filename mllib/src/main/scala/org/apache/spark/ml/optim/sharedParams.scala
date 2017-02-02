@@ -14,29 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.ml.optim.optimizers
+package org.apache.spark.ml.optim
 
-/**
- * Data structure holding pertinent information about the optimizer state.
- *
- * @tparam T The type of parameters being optimized.
- */
-trait MinimizerState[+T] {
+import org.apache.spark.ml.param.{Param, Params}
 
-  def params: T
+trait HasL1Reg extends Params {
 
-}
+ /**
+  * Param for maximum number of iterations (&gt;= 0).
+  *
+  * @group param
+  */
+ final val l1RegFunc: Param[Int => Double] = new Param(this, "l1RegFunc",
+  "function for applying L1 regularization to parameters.")
 
-trait IterativeMinimizerState[+T] extends MinimizerState[T] {
-
-  def iter: Int
-
-  def loss: Double
+ /** @group getParam */
+ final def getL1RegFunc: Int => Double = $(l1RegFunc)
 
 }
-
-private[ml] case class BreezeWrapperState[+T](
-    params: T,
-    iter: Int,
-    loss: Double) extends IterativeMinimizerState[T]
-

@@ -16,6 +16,8 @@
  */
 package org.apache.spark.ml.optim
 
+import breeze.optimize.DiffFunction
+
 /**
  *
  * @tparam T The type of the function's domain.
@@ -33,17 +35,36 @@ trait DifferentiableFunction[T] extends (T => Double) { self =>
   def compute(x: T): (Double, T)
 
   def cached(): CachedDifferentiableFunction[T] = new CachedDifferentiableFunction[T] {
-
     def doCompute(x: T): (Double, T) = self.compute(x)
   }
 
+}
+
+object DifferentiableFunction {
+
+  def toBreeze[BT, T](
+      diffFun: DifferentiableFunction[T],
+      sparkToBreeze: T => BT,
+      breezeToSpark: BT => T): DiffFunction[BT] = {
+    new DiffFunction[BT] {
+      override def valueAt(x: BT): Double = {
+        diffFun.apply(breezeToSpark(x))
+      }
+      override def gradientAt(x: BT): BT = {
+        sparkToBreeze(diffFun.gradientAt(breezeToSpark(x)))
+      }
+      override def calculate(x: BT): (Double, BT) = {
+        val (f, grad) = diffFun.compute(breezeToSpark(x))
+        (f, sparkToBreeze(grad))
+      }
+    }
+  }
 }
 
 trait CachedDifferentiableFunction[T] extends DifferentiableFunction[T] {
 
   private var lastData: (T, Double, T) = null
 
-  /** Calculates both the value and the gradient at a point */
   override def compute(x: T): (Double, T) = {
     var ld = lastData
     if (ld == null || x != ld._1) {

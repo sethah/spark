@@ -29,21 +29,34 @@ import scala.language.implicitConversions
  * @tparam T The type of parameters to be optimized.
  * @tparam F The type of loss function.
  */
-trait Optimizer[T, F <: (T => Double)] extends Params {
+trait Minimizer[T, F <: (T => Double)] extends Params {
 
-  def optimize(lossFunction: F, initialParameters: T): T
+  /**
+   * Minimize a loss function over the parameter space.
+   *
+   * @param lossFunction Real-valued loss function to minimize.
+   * @param initialParameters Initial point in the parameter space.
+   */
+  def minimize(lossFunction: F, initialParameters: T): T
 
 }
 
 /**
- * @tparam State Type that holds information about the state of the opimization at each iteration.
+ *
+ * @tparam State Type that holds information about the state of the minimization at each iteration.
  */
-trait IterativeOptimizer[T, F <: (T => Double), +State <: IterativeOptimizerState[T]]
-  extends Optimizer[T, F] {
+trait IterativeMinimizer[T, F <: (T => Double), +State <: IterativeMinimizerState[T]]
+  extends Minimizer[T, F] {
 
-  def iterations(lossFunction: F, initialParams: T): Iterator[State]
+  /**
+   * Produces an iterator of states which hold information about the progress of the optimization.
+   *
+   * @param lossFunction Real-valued loss function to minimize.
+   * @param initialParameters Initial point in the parameter space.
+   */
+  def iterations(lossFunction: F, initialParameters: T): Iterator[State]
 
-  def optimize(lossFunction: F, initialParameters: T): T = {
+  override def minimize(lossFunction: F, initialParameters: T): T = {
     val allIterations = iterations(lossFunction, initialParameters)
     if (allIterations.hasNext) {
       var lastIteration: State = allIterations.next()
