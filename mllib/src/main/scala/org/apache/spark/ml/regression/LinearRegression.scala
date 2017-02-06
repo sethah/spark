@@ -89,8 +89,8 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
   extends Regressor[Vector, LinearRegression, LinearRegressionModel]
   with LinearRegressionParams with DefaultParamsWritable with Logging {
 
-  type OptimizerType = IterativeMinimizer[DenseVector, DifferentiableFunction[DenseVector],
-    IterativeMinimizerState[DenseVector]]
+  type OptimizerType = IterativeMinimizer[Vector, DifferentiableFunction[Vector],
+    IterativeMinimizerState[Vector]]
 
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("linReg"))
@@ -374,7 +374,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     val initialCoefficients = Vectors.zeros(numFeatures)
     val optIterations = opt.iterations(costFun, initialCoefficients.toDense)
 
-    var lastIter: IterativeMinimizerState[DenseVector] = null
+    var lastIter: IterativeMinimizerState[Vector] = null
     val arrayBuilder = mutable.ArrayBuilder.make[Double]
     while (optIterations.hasNext) {
       lastIter = optIterations.next()
@@ -1067,9 +1067,9 @@ private class LeastSquaresCostFun(
     bcFeaturesStd: Broadcast[Array[Double]],
     bcFeaturesMean: Broadcast[Array[Double]],
     effectiveL2regParam: Double,
-    aggregationDepth: Int) extends DifferentiableFunction[DenseVector] {
+    aggregationDepth: Int) extends DifferentiableFunction[Vector] {
 
-  override def compute(coefficients: DenseVector): (Double, DenseVector) = {
+  override def compute(coefficients: Vector): (Double, Vector) = {
     val bcCoeffs: Broadcast[Vector] = instances.context.broadcast(coefficients)
     val localFeaturesStd = bcFeaturesStd.value
 

@@ -21,7 +21,7 @@ import breeze.optimize.{OWLQN => BreezeOWLQN}
 
 import org.apache.spark.annotation.Since
 import org.apache.spark.internal.Logging
-import org.apache.spark.ml.linalg.DenseVector
+import org.apache.spark.ml.linalg.{DenseVector, Vector}
 import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg}
 import org.apache.spark.ml.param.{ParamMap, Params}
 import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
@@ -31,14 +31,14 @@ trait OWLQNParams extends Params with HasMaxIter with HasTol with HasL1Reg
 
 @Since("2.2.0")
 class OWLQN @Since("2.2.0") (@Since("2.2.0") override val uid: String)
-  extends IterativeMinimizer[DenseVector, DifferentiableFunction[DenseVector],
-    BreezeWrapperState[DenseVector]] with OWLQNParams with Logging {
+  extends IterativeMinimizer[Vector, DifferentiableFunction[Vector],
+    BreezeWrapperState[Vector]] with OWLQNParams with Logging {
   // TODO: We can make it inherit from first order minimizer in the future, right?
 
   @Since("2.2.0")
   def this() = this(Identifiable.randomUID("owlqn"))
 
-  private type State = BreezeWrapperState[DenseVector]
+  private type State = BreezeWrapperState[Vector]
 
   /**
    * Sets the L1 regularization function, mapping feature index to regularization.
@@ -67,19 +67,19 @@ class OWLQN @Since("2.2.0") (@Since("2.2.0") override val uid: String)
   setDefault(tol -> 1e-6)
 
   private def initialState(
-      lossFunction: DifferentiableFunction[DenseVector],
-      initialParams: DenseVector): State = {
+      lossFunction: DifferentiableFunction[Vector],
+      initialParams: Vector): State = {
     val (firstLoss, _) = lossFunction.compute(initialParams)
     BreezeWrapperState(initialParams, 0, firstLoss)
   }
 
   @Since("2.2.0")
   override def iterations(
-      lossFunction: DifferentiableFunction[DenseVector],
-      initialParameters: DenseVector): Iterator[State] = {
+      lossFunction: DifferentiableFunction[Vector],
+      initialParameters: Vector): Iterator[State] = {
     val firstState = initialState(lossFunction, initialParameters)
     val breezeLoss = DifferentiableFunction.toBreeze(lossFunction,
-      (x: DenseVector) => new BDV[Double](x.values),
+      (x: Vector) => new BDV[Double](x.toArray),
       (x: BDV[Double]) => new DenseVector(x.data))
     val breezeOptimizer = new BreezeOWLQN[Int, BDV[Double]](getMaxIter, 10, getL1RegFunc, getTol)
     val breezeIterations = breezeOptimizer.iterations(breezeLoss,

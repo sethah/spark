@@ -195,8 +195,8 @@ class LogisticRegression @Since("1.2.0") (
   extends ProbabilisticClassifier[Vector, LogisticRegression, LogisticRegressionModel]
   with LogisticRegressionParams with DefaultParamsWritable with Logging {
 
-  type OptimizerType = IterativeMinimizer[DenseVector, DifferentiableFunction[DenseVector],
-    IterativeMinimizerState[DenseVector]]
+  type OptimizerType = IterativeMinimizer[Vector, DifferentiableFunction[Vector],
+    IterativeMinimizerState[Vector]]
 
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("logreg"))
@@ -569,7 +569,7 @@ class LogisticRegression @Since("1.2.0") (
         val optIterations = opt.iterations(costFun,
           new DenseVector(initialCoefWithInterceptMatrix.toArray))
 
-        var lastIter: IterativeMinimizerState[DenseVector] = null
+        var lastIter: IterativeMinimizerState[Vector] = null
         val arrayBuilder = mutable.ArrayBuilder.make[Double]
         while (optIterations.hasNext) {
           lastIter = optIterations.next()
@@ -1643,9 +1643,9 @@ private class LogisticCostFun(
     bcFeaturesStd: Broadcast[Array[Double]],
     regParamL2: Double,
     multinomial: Boolean,
-    aggregationDepth: Int) extends DifferentiableFunction[DenseVector] {
+    aggregationDepth: Int) extends DifferentiableFunction[Vector] {
 
-  override def compute(coefficients: DenseVector): (Double, DenseVector) = {
+  override def compute(coefficients: Vector): (Double, Vector) = {
     val bcCoeffs: Broadcast[Vector] = instances.context.broadcast(coefficients)
     val featuresStd = bcFeaturesStd.value
     val numFeatures = featuresStd.length

@@ -21,7 +21,7 @@ import breeze.optimize.{LBFGS => BreezeLBFGS}
 
 import org.apache.spark.annotation.Since
 import org.apache.spark.internal.Logging
-import org.apache.spark.ml.linalg.DenseVector
+import org.apache.spark.ml.linalg.{DenseVector, Vector}
 import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.param.{ParamMap, Params}
 import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
@@ -31,13 +31,13 @@ trait LBFGSParams extends Params with HasMaxIter with HasTol
 
 @Since("2.2.0")
 class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
-  extends IterativeMinimizer[DenseVector, DifferentiableFunction[DenseVector],
-    BreezeWrapperState[DenseVector]] with LBFGSParams with Logging {
+  extends IterativeMinimizer[Vector, DifferentiableFunction[Vector],
+    BreezeWrapperState[Vector]] with LBFGSParams with Logging {
 
   @Since("2.2.0")
   def this() = this(Identifiable.randomUID("lbfgs"))
 
-  private type State = BreezeWrapperState[DenseVector]
+  private type State = BreezeWrapperState[Vector]
 
   /**
    * Sets the maximum number of iterations.
@@ -58,19 +58,19 @@ class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
   setDefault(tol -> 1e-6)
 
   private def initialState(
-      lossFunction: DifferentiableFunction[DenseVector],
-      initialParams: DenseVector): State = {
+      lossFunction: DifferentiableFunction[Vector],
+      initialParams: Vector): State = {
     val (firstLoss, _) = lossFunction.compute(initialParams)
     BreezeWrapperState(initialParams, 0, firstLoss)
   }
 
   @Since("2.2.0")
   override def iterations(
-      lossFunction: DifferentiableFunction[DenseVector],
-      initialParameters: DenseVector): Iterator[State] = {
+      lossFunction: DifferentiableFunction[Vector],
+      initialParameters: Vector): Iterator[State] = {
     val start = initialState(lossFunction, initialParameters)
     val breezeLoss = DifferentiableFunction.toBreeze(lossFunction,
-      (x: DenseVector) => new BDV[Double](x.values),
+      (x: Vector) => new BDV[Double](x.toArray),
       (x: BDV[Double]) => new DenseVector(x.data))
     val breezeOptimizer = new BreezeLBFGS[BDV[Double]](getMaxIter, 10, getTol)
     val breezeIterations = breezeOptimizer.iterations(breezeLoss,
