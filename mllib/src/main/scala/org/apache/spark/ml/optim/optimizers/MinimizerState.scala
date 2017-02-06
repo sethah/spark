@@ -19,22 +19,28 @@ package org.apache.spark.ml.optim.optimizers
 /**
  * Data structure holding pertinent information about the optimizer state.
  *
- * @tparam T The type of parameters being optimized.
+ * @tparam T The type of minimized function's domain.
  */
 trait MinimizerState[+T] {
 
+  /** The current value of the minimization parameters. */
   def params: T
 
 }
 
 trait IterativeMinimizerState[+T] extends MinimizerState[T] {
 
+  /** The number of completed iterations. */
   def iter: Int
 
+  /** The loss function value at this iteration. */
   def loss: Double
 
 }
 
+/**
+ * An minimizer state implementation designed for minimizers that wrap Breeze.
+ */
 private[ml] case class BreezeWrapperState[+T](
     params: T,
     iter: Int,
