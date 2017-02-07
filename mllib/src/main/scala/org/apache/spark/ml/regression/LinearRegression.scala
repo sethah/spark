@@ -18,19 +18,22 @@
 package org.apache.spark.ml.regression
 
 import scala.collection.mutable
+
+import breeze.linalg.{DenseVector => BDV}
+import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import breeze.stats.distributions.StudentsT
 import org.apache.hadoop.fs.Path
+
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
-import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
+import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg, WeightedLeastSquares}
+import org.apache.spark.ml.optim.WeightedLeastSquares
 import org.apache.spark.ml.PredictorParams
-import org.apache.spark.ml.optim.optimizers._
-import org.apache.spark.ml.param.{Param, ParamMap, Params}
+import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util._
 import org.apache.spark.mllib.evaluation.RegressionMetrics
@@ -43,28 +46,13 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.storage.StorageLevel
 
-trait HasOptimizer extends Params {
-
-  type OptimizerType
-
-  /**
-   * @group param
-   */
-  final val optimizer: Param[OptimizerType] = new Param(this, "optimizer", "")
-
-  /** @group getParam */
-  final def getOptimizer: OptimizerType = $(optimizer)
-}
-
 /**
  * Params for linear regression.
  */
 private[regression] trait LinearRegressionParams extends PredictorParams
     with HasRegParam with HasElasticNetParam with HasMaxIter with HasTol
     with HasFitIntercept with HasStandardization with HasWeightCol with HasSolver
-    with HasAggregationDepth with HasOptimizer
-
-
+    with HasAggregationDepth
 
 /**
  * Linear regression.
@@ -88,9 +76,6 @@ private[regression] trait LinearRegressionParams extends PredictorParams
 class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String)
   extends Regressor[Vector, LinearRegression, LinearRegressionModel]
   with LinearRegressionParams with DefaultParamsWritable with Logging {
-
-  type OptimizerType = IterativeMinimizer[Vector, DifferentiableFunction[Vector],
-    IterativeMinimizerState[Vector]]
 
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("linReg"))
@@ -207,9 +192,6 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
   @Since("2.1.0")
   def setAggregationDepth(value: Int): this.type = set(aggregationDepth, value)
   setDefault(aggregationDepth -> 2)
-
-  @Since("2.2.0")
-  def setOptimizer(value: OptimizerType): this.type = set(optimizer, value)
 
   override protected def train(dataset: Dataset[_]): LinearRegressionModel = {
     // Extract the number of features before deciding optimization solver.
@@ -340,64 +322,69 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     val costFun = new LeastSquaresCostFun(instances, yStd, yMean, $(fitIntercept),
       $(standardization), bcFeaturesStd, bcFeaturesMean, effectiveL2RegParam, $(aggregationDepth))
 
-    val standardizationParam = $(standardization)
-    val effectiveL1RegFun = (index: Int) => {
-      if (standardizationParam) {
-        effectiveL1RegParam
-      } else {
-        // If `standardization` is false, we still standardize the data
-        // to improve the rate of convergence; as a result, we have to
-        // perform this reverse standardization by penalizing each component
-        // differently to get effectively the same objective function when
-        // the training dataset is not standardized.
-        if (featuresStd(index) != 0.0) effectiveL1RegParam / featuresStd(index) else 0.0
-      }
-    }
-
-    val opt = if (!isSet(optimizer)) {
-      if ($(elasticNetParam) > 0.0 && effectiveRegParam > 0.0) {
-        new OWLQN().setL1RegFunc(effectiveL1RegFun).setMaxIter(getMaxIter).setTol(getTol)
-      } else {
-        new LBFGS().setMaxIter(getMaxIter).setTol(getTol)
-      }
+    val optimizer = if ($(elasticNetParam) == 0.0 || effectiveRegParam == 0.0) {
+      new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
     } else {
-      getOptimizer match {
-        case l1Opt: OptimizerType with HasL1Reg if $(elasticNetParam) > 0.0 &&
-          effectiveRegParam > 0.0 =>
-          l1Opt.set(l1Opt.l1RegFunc, effectiveL1RegFun)
-        case l2Opt: OptimizerType if $(elasticNetParam) == 0.0 => l2Opt
-        case _ => throw new SparkException(s"Wrong type of optimizer for elasticNetParam: " +
-          s"${$(elasticNetParam)}")
+      val standardizationParam = $(standardization)
+      def effectiveL1RegFun = (index: Int) => {
+        if (standardizationParam) {
+          effectiveL1RegParam
+        } else {
+          // If `standardization` is false, we still standardize the data
+          // to improve the rate of convergence; as a result, we have to
+          // perform this reverse standardization by penalizing each component
+          // differently to get effectively the same objective function when
+          // the training dataset is not standardized.
+          if (featuresStd(index) != 0.0) effectiveL1RegParam / featuresStd(index) else 0.0
+        }
       }
+      new BreezeOWLQN[Int, BDV[Double]]($(maxIter), 10, effectiveL1RegFun, $(tol))
     }
 
     val initialCoefficients = Vectors.zeros(numFeatures)
-    val optIterations = opt.iterations(costFun, initialCoefficients.toDense)
+    val states = optimizer.iterations(new CachedDiffFunction(costFun),
+      initialCoefficients.asBreeze.toDenseVector)
 
-    var lastIter: IterativeMinimizerState[Vector] = null
-    val arrayBuilder = mutable.ArrayBuilder.make[Double]
-    while (optIterations.hasNext) {
-      lastIter = optIterations.next()
-      arrayBuilder += lastIter.loss
+    val (coefficients, objectiveHistory) = {
+      /*
+         Note that in Linear Regression, the objective history (loss + regularization) returned
+         from optimizer is computed in the scaled space given by the following formula.
+         <blockquote>
+            $$
+            L &= 1/2n||\sum_i w_i(x_i - \bar{x_i}) / \hat{x_i} - (y - \bar{y}) / \hat{y}||^2
+                 + regTerms \\
+            $$
+         </blockquote>
+       */
+      val arrayBuilder = mutable.ArrayBuilder.make[Double]
+      var state: optimizer.State = null
+      while (states.hasNext) {
+        state = states.next()
+        arrayBuilder += state.adjustedValue
+      }
+      if (state == null) {
+        val msg = s"${optimizer.getClass.getName} failed."
+        logError(msg)
+        throw new SparkException(msg)
+      }
+
+      bcFeaturesMean.destroy(blocking = false)
+      bcFeaturesStd.destroy(blocking = false)
+
+      /*
+         The coefficients are trained in the scaled space; we're converting them back to
+         the original space.
+       */
+      val rawCoefficients = state.x.toArray.clone()
+      var i = 0
+      val len = rawCoefficients.length
+      while (i < len) {
+        rawCoefficients(i) *= { if (featuresStd(i) != 0.0) yStd / featuresStd(i) else 0.0 }
+        i += 1
+      }
+
+      (Vectors.dense(rawCoefficients).compressed, arrayBuilder.result())
     }
-    val objectiveHistory = arrayBuilder.result()
-
-
-    bcFeaturesMean.destroy(blocking = false)
-    bcFeaturesStd.destroy(blocking = false)
-
-    /*
-       The coefficients are trained in the scaled space; we're converting them back to
-       the original space.
-     */
-    val rawCoefficients = lastIter.params.toArray.clone()
-    var i = 0
-    val len = rawCoefficients.length
-    while (i < len) {
-      rawCoefficients(i) *= { if (featuresStd(i) != 0.0) yStd / featuresStd(i) else 0.0 }
-      i += 1
-    }
-    val coefficients = Vectors.dense(rawCoefficients).compressed
 
     /*
        The intercept in R's GLMNET is computed using closed form after the coefficients are
@@ -1067,10 +1054,11 @@ private class LeastSquaresCostFun(
     bcFeaturesStd: Broadcast[Array[Double]],
     bcFeaturesMean: Broadcast[Array[Double]],
     effectiveL2regParam: Double,
-    aggregationDepth: Int) extends DifferentiableFunction[Vector] {
+    aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
 
-  override def compute(coefficients: Vector): (Double, Vector) = {
-    val bcCoeffs: Broadcast[Vector] = instances.context.broadcast(coefficients)
+  override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
+    val coeffs = Vectors.fromBreeze(coefficients)
+    val bcCoeffs = instances.context.broadcast(coeffs)
     val localFeaturesStd = bcFeaturesStd.value
 
     val leastSquaresAggregator = {
@@ -1083,16 +1071,13 @@ private class LeastSquaresCostFun(
     }
 
     val totalGradientArray = leastSquaresAggregator.gradient.toArray
-//    println(coefficients)
-//    println(totalGradientArray.mkString(","))
-//    println(leastSquaresAggregator.loss)
     bcCoeffs.destroy(blocking = false)
 
     val regVal = if (effectiveL2regParam == 0.0) {
       0.0
     } else {
       var sum = 0.0
-      coefficients.foreachActive { (index, value) =>
+      coeffs.foreachActive { (index, value) =>
         // The following code will compute the loss of the regularization; also
         // the gradient of the regularization, and add back to totalGradientArray.
         sum += {
@@ -1118,6 +1103,6 @@ private class LeastSquaresCostFun(
       0.5 * effectiveL2regParam * sum
     }
 
-    (leastSquaresAggregator.loss + regVal, new DenseVector(totalGradientArray))
+    (leastSquaresAggregator.loss + regVal, new BDV(totalGradientArray))
   }
 }

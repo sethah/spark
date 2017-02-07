@@ -113,31 +113,6 @@ class LinearRegressionSuite
     ), 2).toDF()
   }
 
-  test("opt test") {
-//    val optimizer = new GradientDescent()
-//      .setMaxIter(100)
-//    val optimizer = new AdaGrad("adf", 0.3)
-//    val optimizer = new OWLQN() // .setL1RegFunc((x: Int) => 0.0)
-//    val optimizer = new VLBFGS[DenseVector](7)
-//    val olr = new LinearRegression()
-//      .setSolver("l-bfgs")
-//      .setOptimizer(optimizer)
-//      .setRegParam(0.5)
-//      .setElasticNetParam(0.1)
-//      .setOptimizer(new LBFGS(Vectors.zeros(2).toDense))
-//    val model = olr.fit(datasetWithDenseFeature)
-//    println(model.coefficients)
-//    println(model.intercept)
-//    println(model.summary.objectiveHistory.mkString(","))
-    val lr = new LinearRegression().setSolver("l-bfgs").setRegParam(0.5).setElasticNetParam(0.0)
-      .setOptimizer(new LBFGS())
-    val model2 = lr.fit(datasetWithDenseFeature)
-    println(model2.coefficients)
-    println(model2.intercept)
-    println(model2.summary.objectiveHistory.mkString(","))
-    model2.transform(datasetWithDenseFeature).show()
-  }
-
   /**
    * Enable the ignored test to export the dataset into CSV format,
    * so we can validate the training accuracy compared with R's glmnet package.

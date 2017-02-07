@@ -761,7 +761,7 @@ trait Params extends Identifiable with Serializable {
    * @param extra extra params to be copied to the target's `paramMap`
    * @return the target instance with param values copied
    */
-  protected def copyValues[T <: Params](to: T, extra: ParamMap = ParamMap.empty): T = {
+  def copyValues[T <: Params](to: T, extra: ParamMap = ParamMap.empty): T = {
     val map = paramMap ++ extra
     params.foreach { param =>
       // copy default Params

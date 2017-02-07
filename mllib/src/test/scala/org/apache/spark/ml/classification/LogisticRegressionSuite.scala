@@ -26,7 +26,7 @@ import org.apache.spark.ml.attribute.NominalAttribute
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, LabeledPoint}
 import org.apache.spark.ml.linalg.{DenseMatrix, DenseVector, Matrices, SparseMatrix, SparseVector, Vector, Vectors}
-import org.apache.spark.ml.optim.optimizers.{LBFGS}
+import org.apache.spark.ml.optim.optimizers.{LBFGS, OWLQN}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
@@ -390,12 +390,76 @@ class LogisticRegressionSuite
       .filter("label < 2.0")
     df.show()
     val lr1 = new LogisticRegression()
+      .setMaxIter(12)
     val model1 = lr1.fit(df)
     val lr = new LogisticRegression()
-      .setOptimizer(new LBFGS().setMaxIter(100))
+//      .setOptimizer(new LBFGS().setMaxIter(100))
     val model = lr.fit(df)
     println("lbfgsb", model.coefficientMatrix)
     println(model1.coefficientMatrix)
+  }
+
+  test("optimizer params") {
+    val opt = new LBFGS()
+    val lr = new LogisticRegression().setOptimizer(opt)
+    // test ignores maxTol and maxIter
+    val defaultIters = lr.getMaxIter
+    val defaultTol = lr.getTol
+    lr.setMaxIter(defaultIters + 1).setTol(defaultTol * 2)
+    assert(lr.getMaxIter === defaultIters)
+    assert(lr.getTol === defaultTol)
+
+    // clear optimizer and params should take effect
+    lr.clear(lr.optimizer)
+    lr.setMaxIter(defaultIters + 1).setTol(defaultTol * 2)
+    assert(lr.getMaxIter === defaultIters + 1)
+    assert(lr.getTol === defaultTol * 2)
+
+    // copies maxIter and maxTol
+    lr.setOptimizer(opt)
+    val model = lr.fit(smallBinaryDataset)
+    assert(model.summary.totalIterations > 2)
+
+    opt.setMaxIter(1)
+    val model1 = lr.fit(smallBinaryDataset)
+    assert(model1.summary.totalIterations === 2)
+
+    opt.setMaxIter(100).setTol(Double.MaxValue)
+    val model2 = lr.fit(smallBinaryDataset)
+    assert(model2.summary.totalIterations === 1)
+
+    // when no optimizer is set, use estimator params
+    lr.clear(lr.optimizer).clear(lr.maxIter).clear(lr.tol)
+    lr.setMaxIter(1)
+    val model3 = lr.fit(smallBinaryDataset)
+    assert(model3.summary.totalIterations === 2)
+
+    lr.clear(lr.maxIter).setTol(Double.MaxValue)
+    val model4 = lr.fit(smallBinaryDataset)
+    assert(model4.summary.totalIterations === 1)
+
+  }
+
+  test("logistic regression with different optimizers") {
+    val lr = new LogisticRegression()
+      .setRegParam(0.05)
+      .setElasticNetParam(0.5)
+      .setOptimizer(new LBFGS())
+
+    withClue("LBFGS cannot be used for L1 regularization") {
+      intercept[IllegalArgumentException] {
+        lr.fit(smallBinaryDataset)
+      }
+    }
+
+    // can train with L2 optimizer since regParam is zero
+    lr.setRegParam(0.0).fit(smallBinaryDataset)
+
+    // can train with an L1 minimizer
+    lr.setRegParam(0.05).setOptimizer(new OWLQN()).fit(smallBinaryDataset)
+
+    // can train with L1 minimizer when no L1 applied
+    lr.setElasticNetParam(0.0).fit(smallBinaryDataset)
   }
 
   test("binary logistic regression: Predictor, Classifier methods") {

@@ -72,7 +72,8 @@ class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
     val breezeLoss = DifferentiableFunction.toBreeze(lossFunction,
       (x: Vector) => new BDV[Double](x.toArray),
       (x: BDV[Double]) => new DenseVector(x.data))
-    val breezeOptimizer = new BreezeLBFGS[BDV[Double]](getMaxIter, 10, getTol)
+    val breezeOptimizer =
+      new BreezeLBFGS[BDV[Double]](maxIter = getMaxIter, m = 10, tolerance = getTol)
     val breezeIterations = breezeOptimizer.iterations(breezeLoss,
       start.params.asBreeze.toDenseVector)
     breezeIterations.map { breezeState =>

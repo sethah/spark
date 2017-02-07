@@ -19,6 +19,7 @@ package org.apache.spark.ml.classification
 
 import scala.collection.mutable
 import org.apache.hadoop.fs.Path
+
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.broadcast.Broadcast
@@ -30,7 +31,6 @@ import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg}
 import org.apache.spark.ml.optim.optimizers._
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
-import org.apache.spark.ml.regression.HasOptimizer
 import org.apache.spark.ml.util._
 import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.mllib.linalg.VectorImplicits._
@@ -42,6 +42,19 @@ import org.apache.spark.sql.functions.{col, lit}
 import org.apache.spark.sql.types.{DataType, DoubleType, StructType}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.VersionUtils
+
+trait HasOptimizer extends Params {
+
+  type OptimizerType
+
+  /**
+   * @group param
+   */
+  final val optimizer: Param[OptimizerType] = new Param(this, "optimizer", "")
+
+  /** @group getParam */
+  final def getOptimizer: OptimizerType = $(optimizer)
+}
 
 /**
  * Params for logistic regression.
@@ -231,7 +244,14 @@ class LogisticRegression @Since("1.2.0") (
    * @group setParam
    */
   @Since("1.2.0")
-  def setMaxIter(value: Int): this.type = set(maxIter, value)
+  def setMaxIter(value: Int): this.type = {
+    if (isSet(optimizer)) {
+      logWarning("Optimizer is set, so maxIter will be ignored.")
+      this
+    } else {
+      set(maxIter, value)
+    }
+  }
   setDefault(maxIter -> 100)
 
   /**
@@ -242,7 +262,14 @@ class LogisticRegression @Since("1.2.0") (
    * @group setParam
    */
   @Since("1.4.0")
-  def setTol(value: Double): this.type = set(tol, value)
+  def setTol(value: Double): this.type = {
+    if (isSet(optimizer)) {
+      logWarning("Optimizer is set, so tol will be ignored.")
+      this
+    } else {
+      set(tol, value)
+    }
+  }
   setDefault(tol -> 1E-6)
 
   /**
@@ -469,18 +496,20 @@ class LogisticRegression @Since("1.2.0") (
 
         val opt = if (!isSet(optimizer)) {
           if ($(elasticNetParam) > 0.0 && $(regParam) > 0.0) {
-            new OWLQN().setL1RegFunc(regParamL1Fun).setMaxIter(getMaxIter).setTol(getTol)
+            copyValues(new OWLQN()).setL1RegFunc(regParamL1Fun)
           } else {
-            new LBFGS().setMaxIter(getMaxIter).setTol(getTol)
+            copyValues(new LBFGS())
           }
         } else {
           getOptimizer match {
+              // what if I set optimizer to be an L1 and there is no L1??? invalid???
+              // it will still work here, but will match the second case
             case l1Opt: OptimizerType with HasL1Reg if $(elasticNetParam) > 0.0 &&
               $(regParam) > 0.0 =>
               l1Opt.set(l1Opt.l1RegFunc, regParamL1Fun)
-            case l2Opt: OptimizerType if $(elasticNetParam) == 0.0 => l2Opt
-            case _ => throw new SparkException(s"Wrong type of optimizer for elasticNetParam: " +
-              s"${$(elasticNetParam)}")
+            case l2Opt: OptimizerType if $(elasticNetParam) == 0.0 || $(regParam) == 0.0 => l2Opt
+            case _ => throw new IllegalArgumentException(s"Wrong type of optimizer for " +
+              s"elasticNetParam: ${$(elasticNetParam)}")
           }
         }
 
