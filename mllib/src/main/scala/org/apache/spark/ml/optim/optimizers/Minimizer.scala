@@ -24,7 +24,7 @@ import org.apache.spark.ml.param.Params
  * @tparam T The type of parameters to be optimized.
  * @tparam F The type of loss function.
  */
-trait Minimizer[T, -F <: (T => Double)] extends Params {
+trait Minimizer[T, F <: (T => Double)] extends Params {
 
   /**
    * Minimize a loss function over the parameter space.
@@ -39,11 +39,9 @@ trait Minimizer[T, -F <: (T => Double)] extends Params {
 /**
  * A minimizer that iteratively minimizes a set of parameters.
  *
- * TODO: think about type variance here
- *
  * @tparam State Type that holds information about the state of the minimization at each iteration.
  */
-trait IterativeMinimizer[T, -F <: (T => Double), +State <: IterativeMinimizerState[T]]
+trait IterativeMinimizer[T, F <: (T => Double), +State <: IterativeMinimizerState[T]]
   extends Minimizer[T, F] {
 
   /**

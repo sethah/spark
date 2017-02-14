@@ -384,21 +384,6 @@ class LogisticRegressionSuite
     }
   }
 
-  test("mytest") {
-    val path = "/Users/sethhendrickson/Development/datasets/multinomialDataset/"
-    val df = spark.read.option("inferSchema", "true").parquet(path)
-      .filter("label < 2.0")
-    df.show()
-    val lr1 = new LogisticRegression()
-      .setMaxIter(12)
-    val model1 = lr1.fit(df)
-    val lr = new LogisticRegression()
-//      .setOptimizer(new LBFGS().setMaxIter(100))
-    val model = lr.fit(df)
-    println("lbfgsb", model.coefficientMatrix)
-    println(model1.coefficientMatrix)
-  }
-
   test("optimizer params") {
     val opt = new LBFGS()
     val lr = new LogisticRegression().setMinimizer(opt)
