@@ -19,7 +19,6 @@ package org.apache.spark.ml.classification
 
 import scala.collection.mutable
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.broadcast.Broadcast
@@ -27,7 +26,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg}
+import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg, HasMinimizer}
 import org.apache.spark.ml.optim.optimizers._
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
@@ -43,26 +42,13 @@ import org.apache.spark.sql.types.{DataType, DoubleType, StructType}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.VersionUtils
 
-trait HasOptimizer extends Params {
-
-  type OptimizerType
-
-  /**
-   * @group param
-   */
-  final val optimizer: Param[OptimizerType] = new Param(this, "optimizer", "")
-
-  /** @group getParam */
-  final def getOptimizer: OptimizerType = $(optimizer)
-}
-
 /**
  * Params for logistic regression.
  */
 private[classification] trait LogisticRegressionParams extends ProbabilisticClassifierParams
   with HasRegParam with HasElasticNetParam with HasMaxIter with HasFitIntercept with HasTol
   with HasStandardization with HasWeightCol with HasThreshold with HasAggregationDepth
-  with HasOptimizer {
+  with HasMinimizer {
 
   import org.apache.spark.ml.classification.LogisticRegression.supportedFamilyNames
 
@@ -208,7 +194,7 @@ class LogisticRegression @Since("1.2.0") (
   extends ProbabilisticClassifier[Vector, LogisticRegression, LogisticRegressionModel]
   with LogisticRegressionParams with DefaultParamsWritable with Logging {
 
-  type OptimizerType = IterativeMinimizer[Vector, DifferentiableFunction[Vector],
+  override type MinimizerType = IterativeMinimizer[Vector, DifferentiableFunction[Vector],
     IterativeMinimizerState[Vector]]
 
   @Since("1.4.0")
@@ -245,8 +231,8 @@ class LogisticRegression @Since("1.2.0") (
    */
   @Since("1.2.0")
   def setMaxIter(value: Int): this.type = {
-    if (isSet(optimizer)) {
-      logWarning("Optimizer is set, so maxIter will be ignored.")
+    if (isSet(minimizer)) {
+      logWarning("Minimizer is set, so maxIter will be ignored.")
       this
     } else {
       set(maxIter, value)
@@ -263,8 +249,8 @@ class LogisticRegression @Since("1.2.0") (
    */
   @Since("1.4.0")
   def setTol(value: Double): this.type = {
-    if (isSet(optimizer)) {
-      logWarning("Optimizer is set, so tol will be ignored.")
+    if (isSet(minimizer)) {
+      logWarning("Minimizer is set, so tol will be ignored.")
       this
     } else {
       set(tol, value)
@@ -309,7 +295,7 @@ class LogisticRegression @Since("1.2.0") (
   @Since("1.5.0")
   override def setThreshold(value: Double): this.type = super.setThreshold(value)
 
-  def setOptimizer(value: OptimizerType): this.type = set(optimizer, value)
+  def setMinimizer(value: MinimizerType): this.type = set(minimizer, value)
 
   @Since("1.5.0")
   override def getThreshold: Double = super.getThreshold
@@ -494,20 +480,18 @@ class LogisticRegression @Since("1.2.0") (
           }
         }
 
-        val opt = if (!isSet(optimizer)) {
+        val opt = if (!isSet(minimizer)) {
           if ($(elasticNetParam) > 0.0 && $(regParam) > 0.0) {
             copyValues(new OWLQN()).setL1RegFunc(regParamL1Fun)
           } else {
             copyValues(new LBFGS())
           }
         } else {
-          getOptimizer match {
-              // what if I set optimizer to be an L1 and there is no L1??? invalid???
-              // it will still work here, but will match the second case
-            case l1Opt: OptimizerType with HasL1Reg if $(elasticNetParam) > 0.0 &&
+          getMinimizer match {
+            case l1Opt: MinimizerType with HasL1Reg if $(elasticNetParam) > 0.0 &&
               $(regParam) > 0.0 =>
               l1Opt.set(l1Opt.l1RegFunc, regParamL1Fun)
-            case l2Opt: OptimizerType if $(elasticNetParam) == 0.0 || $(regParam) == 0.0 => l2Opt
+            case l2Opt: MinimizerType if $(elasticNetParam) == 0.0 || $(regParam) == 0.0 => l2Opt
             case _ => throw new IllegalArgumentException(s"Wrong type of optimizer for " +
               s"elasticNetParam: ${$(elasticNetParam)}")
           }
@@ -1674,7 +1658,7 @@ private class LogisticCostFun(
     multinomial: Boolean,
     aggregationDepth: Int) extends DifferentiableFunction[Vector] {
 
-  override def compute(coefficients: Vector): (Double, Vector) = {
+  override protected def doCompute(coefficients: Vector): (Double, Vector) = {
     val bcCoeffs: Broadcast[Vector] = instances.context.broadcast(coefficients)
     val featuresStd = bcFeaturesStd.value
     val numFeatures = featuresStd.length

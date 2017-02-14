@@ -401,7 +401,7 @@ class LogisticRegressionSuite
 
   test("optimizer params") {
     val opt = new LBFGS()
-    val lr = new LogisticRegression().setOptimizer(opt)
+    val lr = new LogisticRegression().setMinimizer(opt)
     // test ignores maxTol and maxIter
     val defaultIters = lr.getMaxIter
     val defaultTol = lr.getTol
@@ -410,13 +410,13 @@ class LogisticRegressionSuite
     assert(lr.getTol === defaultTol)
 
     // clear optimizer and params should take effect
-    lr.clear(lr.optimizer)
+    lr.clear(lr.minimizer)
     lr.setMaxIter(defaultIters + 1).setTol(defaultTol * 2)
     assert(lr.getMaxIter === defaultIters + 1)
     assert(lr.getTol === defaultTol * 2)
 
     // copies maxIter and maxTol
-    lr.setOptimizer(opt)
+    lr.setMinimizer(opt)
     val model = lr.fit(smallBinaryDataset)
     assert(model.summary.totalIterations > 2)
 
@@ -429,7 +429,7 @@ class LogisticRegressionSuite
     assert(model2.summary.totalIterations === 1)
 
     // when no optimizer is set, use estimator params
-    lr.clear(lr.optimizer).clear(lr.maxIter).clear(lr.tol)
+    lr.clear(lr.minimizer).clear(lr.maxIter).clear(lr.tol)
     lr.setMaxIter(1)
     val model3 = lr.fit(smallBinaryDataset)
     assert(model3.summary.totalIterations === 2)
@@ -444,7 +444,7 @@ class LogisticRegressionSuite
     val lr = new LogisticRegression()
       .setRegParam(0.05)
       .setElasticNetParam(0.5)
-      .setOptimizer(new LBFGS())
+      .setMinimizer(new LBFGS())
 
     withClue("LBFGS cannot be used for L1 regularization") {
       intercept[IllegalArgumentException] {
@@ -456,7 +456,7 @@ class LogisticRegressionSuite
     lr.setRegParam(0.0).fit(smallBinaryDataset)
 
     // can train with an L1 minimizer
-    lr.setRegParam(0.05).setOptimizer(new OWLQN()).fit(smallBinaryDataset)
+    lr.setRegParam(0.05).setMinimizer(new OWLQN()).fit(smallBinaryDataset)
 
     // can train with L1 minimizer when no L1 applied
     lr.setElasticNetParam(0.0).fit(smallBinaryDataset)

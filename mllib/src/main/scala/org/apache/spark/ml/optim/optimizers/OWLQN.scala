@@ -33,11 +33,11 @@ trait OWLQNParams extends Params with HasMaxIter with HasTol with HasL1Reg
 class OWLQN @Since("2.2.0") (@Since("2.2.0") override val uid: String)
   extends IterativeMinimizer[Vector, DifferentiableFunction[Vector],
     BreezeWrapperState[Vector]] with OWLQNParams with Logging {
-  // TODO: We can make it inherit from first order minimizer in the future, right?
 
   @Since("2.2.0")
   def this() = this(Identifiable.randomUID("owlqn"))
 
+  /** Type alias for convenience */
   private type State = BreezeWrapperState[Vector]
 
   /**
@@ -50,6 +50,7 @@ class OWLQN @Since("2.2.0") (@Since("2.2.0") override val uid: String)
 
   /**
    * Sets the maximum number of iterations.
+   * Default is 100.
    *
    * @group setParam
    */
@@ -59,6 +60,7 @@ class OWLQN @Since("2.2.0") (@Since("2.2.0") override val uid: String)
 
   /**
    * Sets the convergence tolerance for this minimizer.
+   * Default is 1e-6.
    *
    * @group setParam
    */
@@ -69,7 +71,7 @@ class OWLQN @Since("2.2.0") (@Since("2.2.0") override val uid: String)
   private def initialState(
       lossFunction: DifferentiableFunction[Vector],
       initialParams: Vector): State = {
-    val (firstLoss, _) = lossFunction.compute(initialParams)
+    val firstLoss = lossFunction.apply(initialParams)
     BreezeWrapperState(initialParams, 0, firstLoss)
   }
 

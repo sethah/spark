@@ -14,35 +14,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.spark.ml.optim
 
-import org.apache.spark.ml.param.{Param, Params}
+import org.apache.spark.SparkFunSuite
 
+class DifferentiableFunctionSuite extends SparkFunSuite {
 
-trait HasMinimizer extends Params {
-
- type MinimizerType
-
- /**
-  * @group param
-  */
- final val minimizer: Param[MinimizerType] = new Param(this, "minimizer", "")
-
- /** @group getParam */
- final def getMinimizer: MinimizerType = $(minimizer)
-}
-
-trait HasL1Reg extends Params {
-
- /**
-  * Param for maximum number of iterations (&gt;= 0).
-  *
-  * @group param
-  */
- final val l1RegFunc: Param[Int => Double] = new Param(this, "l1RegFunc",
-  "function for applying L1 regularization to parameters.")
-
- /** @group getParam */
- final def getL1RegFunc: Int => Double = $(l1RegFunc)
-
+  test("cached differentiable function") {
+    var counter = 0
+    val testDiffFun = new DifferentiableFunction[Double] {
+      override def doCompute(x: Double) = {
+        counter += 1
+        (2.0 * x, 2.0)
+      }
+    }
+    val cachedTestFun = testDiffFun.cached()
+    val testValues = Seq(0, 0, 1, 2, 2, 2, 2, 1, 3)
+    testValues.foreach { x =>
+      testDiffFun.compute(x)
+    }
+    assert(counter === 9)
+    counter = 0
+    testValues.foreach { x =>
+      cachedTestFun.compute(x)
+    }
+    assert(counter === 5)
+  }
 }

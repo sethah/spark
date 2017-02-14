@@ -16,12 +16,7 @@
  */
 package org.apache.spark.ml.optim.optimizers
 
-import breeze.linalg.{DenseVector => BDV}
-import org.apache.spark.ml.linalg.{BLAS, DenseVector}
-import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.param.Params
-
-import scala.language.implicitConversions
 
 /**
  * Base trait for implementing optimization algorithms in Spark ML.
@@ -29,7 +24,7 @@ import scala.language.implicitConversions
  * @tparam T The type of parameters to be optimized.
  * @tparam F The type of loss function.
  */
-trait Minimizer[T, F <: (T => Double)] extends Params {
+trait Minimizer[T, -F <: (T => Double)] extends Params {
 
   /**
    * Minimize a loss function over the parameter space.
@@ -42,14 +37,17 @@ trait Minimizer[T, F <: (T => Double)] extends Params {
 }
 
 /**
+ * A minimizer that iteratively minimizes a set of parameters.
+ *
+ * TODO: think about type variance here
  *
  * @tparam State Type that holds information about the state of the minimization at each iteration.
  */
-trait IterativeMinimizer[T, F <: (T => Double), +State <: IterativeMinimizerState[T]]
+trait IterativeMinimizer[T, -F <: (T => Double), +State <: IterativeMinimizerState[T]]
   extends Minimizer[T, F] {
 
   /**
-   * Produces an iterator of states which hold information about the progress of the optimization.
+   * Produces an iterator of states which hold information about the progress of the minimization.
    *
    * @param lossFunction Real-valued loss function to minimize.
    * @param initialParameters Initial point in the parameter space.

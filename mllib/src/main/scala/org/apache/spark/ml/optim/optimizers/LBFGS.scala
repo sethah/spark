@@ -37,10 +37,12 @@ class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
   @Since("2.2.0")
   def this() = this(Identifiable.randomUID("lbfgs"))
 
+  /** Type alias for convenience */
   private type State = BreezeWrapperState[Vector]
 
   /**
    * Sets the maximum number of iterations.
+   * Default is 100.
    *
    * @group setParam
    */
@@ -50,6 +52,7 @@ class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
 
   /**
    * Sets the convergence tolerance for this minimizer.
+   * Default is 1e-6.
    *
    * @group setParam
    */
@@ -60,7 +63,7 @@ class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
   private def initialState(
       lossFunction: DifferentiableFunction[Vector],
       initialParams: Vector): State = {
-    val (firstLoss, _) = lossFunction.compute(initialParams)
+    val firstLoss = lossFunction.apply(initialParams)
     BreezeWrapperState(initialParams, 0, firstLoss)
   }
 

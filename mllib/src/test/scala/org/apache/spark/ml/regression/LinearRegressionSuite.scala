@@ -17,11 +17,8 @@
 
 package org.apache.spark.ml.regression
 
-import org.apache.spark.ml.optim._
-import breeze.linalg.{DenseVector => BDV}
-import org.apache.spark.ml.optim.optimizers.{LBFGS}
-
 import scala.util.Random
+
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.feature.LabeledPoint

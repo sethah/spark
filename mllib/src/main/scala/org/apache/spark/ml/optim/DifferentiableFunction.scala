@@ -19,29 +19,55 @@ package org.apache.spark.ml.optim
 import breeze.optimize.DiffFunction
 
 /**
+ * A [[Function1]] that can be differentiated with respect its input.
  *
  * @tparam T The type of the function's domain.
  */
 trait DifferentiableFunction[T] extends (T => Double) { self =>
 
-  def apply(x: T): Double = {
+  /**
+   * Evaluate the function at a point in the function domain.
+   *
+   * @param x Point in the parameter space where function is evaluated.
+   * @return f(x)
+   */
+  override def apply(x: T): Double = {
     compute(x)._1
   }
 
+  /**
+   * The first derivative of the function evaluated at a point in the function domain.
+   *
+   * @param x Point in the parameter space where gradient is evaluated.
+   * @return d/dx f(x)
+   */
   def gradientAt(x: T): T = {
     compute(x)._2
   }
 
-  def compute(x: T): (Double, T)
+  /**
+   * Compute the gradient and the function value at a point in the function domain.
+   *
+   * @param x Point in the parameter space where function and gradient are evaluated.
+   * @return Tuple of (f(x), d/dx f(x))
+   */
+  def compute(x: T): (Double, T) = doCompute(x)
 
-  def cached(): CachedDifferentiableFunction[T] = new CachedDifferentiableFunction[T] {
-    def doCompute(x: T): (Double, T) = self.compute(x)
+  protected def doCompute(x: T): (Double, T)
+
+  /** Get a version of this [[DifferentiableFunction]] which caches the most recent computation. */
+  def cached(): CachedDifferentiableFunction[T] = {
+    new CachedDifferentiableFunction[T](this)
   }
-
 }
 
 object DifferentiableFunction {
 
+  /**
+   * Convert a [[DifferentiableFunction]] to a [[breeze.optimize.DiffFunction]]
+   * @tparam BT Breeze parameter type.
+   * @tparam T Spark parameter type.
+   */
   def toBreeze[BT, T](
       diffFun: DifferentiableFunction[T],
       sparkToBreeze: T => BT,
@@ -61,24 +87,38 @@ object DifferentiableFunction {
   }
 }
 
-trait CachedDifferentiableFunction[T] extends DifferentiableFunction[T] {
+/**
+ * A [[DifferentiableFunction]] that can caches the most recent result for potential re-use.
+ * Minimization algorithms that use line-searches usually compute a zero value, which often has
+ * already been computed in the process of finding the descent direction.
+ *
+ * @tparam T The type of the function's domain.
+ */
+class CachedDifferentiableFunction[T](private[ml] val diffFun: DifferentiableFunction[T])
+  extends DifferentiableFunction[T] {
 
-  private var lastData: (T, Double, T) = null
+  private[this] var lastData: Option[(T, Double, T)] = None
 
+  /**
+   * Get the function value and gradient, potentially re-using the last result if the point of
+   * evaluation has not changed.
+   */
   override def compute(x: T): (Double, T) = {
-    var ld = lastData
-    if (ld == null || x != ld._1) {
-      val newData = doCompute(x: T)
-      ld = (x, newData._1, newData._2)
-      lastData = ld
-    }
-    val (_, v, g) = ld
-    v -> g
+    val (fx, gx) = lastData
+      .filter(_._1 == x)
+      .map { case (_, lastFx, lastGx) => (lastFx, lastGx) }
+      .getOrElse(doCompute(x))
+    lastData = Some(x, fx, gx)
+    (fx, gx)
   }
 
-  def doCompute(x: T): (Double, T)
+  /**
+   * Compute function value and gradient at a new point in the function domain.
+   */
+  protected override def doCompute(x: T): (Double, T) = {
+    diffFun.compute(x)
+  }
 
   override def cached(): CachedDifferentiableFunction[T] = this
-
 }
 
