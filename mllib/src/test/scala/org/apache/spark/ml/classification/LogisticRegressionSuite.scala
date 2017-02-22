@@ -21,7 +21,7 @@ import scala.collection.JavaConverters._
 import scala.language.existentials
 import scala.util.Random
 import scala.util.control.Breaks._
-import org.apache.spark.{SparkException, SparkFunSuite}
+import org.apache.spark.{SparkEnv, SparkException, SparkFunSuite}
 import org.apache.spark.ml.attribute.NominalAttribute
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, LabeledPoint}
@@ -32,8 +32,10 @@ import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.{Dataset, Row}
-import org.apache.spark.sql.functions.{col, lit, rand}
+import org.apache.spark.sql.functions.{col, lit, rand, sum}
 import org.apache.spark.sql.types.LongType
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.memory.{DeserializedMemoryEntry, SerializedMemoryEntry}
 
 class LogisticRegressionSuite
   extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
@@ -112,6 +114,85 @@ class LogisticRegressionSuite
       label + "," + weight + "," + features.toArray.mkString(",")
     }.repartition(1).saveAsTextFile("target/tmp/LogisticRegressionSuite/multinomialDataset")
   }
+
+  test("sum") {
+    import org.apache.spark.sql.execution.debug._
+    val ctx = spark.sqlContext
+    import ctx.implicits._
+    val df = (0 to 10).toDF("x")
+    val df2 = df.select(sum("x"))
+    df2.debugCodegen()
+  }
+
+  test("blocks") {
+//    val rdd = sc.parallelize(0 to 10, 1)
+//    rdd.cache()
+//    rdd.persist(StorageLevel.MEMORY_ONLY)
+    import org.apache.spark.sql.execution.debug._
+    val ctx = spark.sqlContext
+    import ctx.implicits._
+    spark.sparkContext.taskScheduler
+//    spark.conf.set("spark.memory.offHeap.size", 1024)
+//    spark.conf.set("spark.memory.sto", 1024)
+    val path = "/Users/sethhendrickson/Development/datasets/multinomialDataset"
+//    val df = spark.read.option("inferSchema", "true").parquet(path).limit(100)
+    val df = (0 to 10).zip(0 to 10).toDF("x", "y")
+    df.persist(StorageLevel.OFF_HEAP)
+    println(df.rdd.getNumPartitions)
+    println(df.count())
+//    rdd.persist(StorageLevel.OFF_HEAP)
+//    rdd.count()
+    val df2 = df.select(col("x") * 3.4, col("y") - 3).persist(StorageLevel.OFF_HEAP)
+    df2.count()
+    printMemoryEntries()
+    df2.show()
+
+    def printMemoryEntries(): Unit = {
+      val bm = SparkEnv.get.blockManager
+      val store = bm.memoryStore
+      val dstore = bm.diskStore
+      val values = store.entries.values().asScala
+      val keys = store.entries.keySet().asScala
+      keys.zip(values).foreach { case (k, v) =>
+        v match  {
+          case dm: DeserializedMemoryEntry[_] => println(k, dm.value.mkString(","))
+          case sm: SerializedMemoryEntry[_] =>
+            if (k.name.contains("rdd")) {
+              val bytes = sm.buffer.chunks.head
+              //            (0 until bytes.capacity()).foreach { i =>
+              //              println(bytes.get(i))
+              //            }
+              println("serialized", k, bytes)
+            }
+        }
+      }
+    }
+//    println(df2.debugCodegen)
+//    val bms = rdd.mapPartitions { iterable =>
+//      import scala.collection.JavaConverters
+//      val bm = SparkEnv.get.blockManager
+//      val store = bm.memoryStore
+//      val values = store.entries.values().asScala
+//      val keys = store.entries.keySet().asScala
+//      keys.zip(values).foreach { case (k, v) =>
+//        v match  {
+//          case dm: DeserializedMemoryEntry[_] => println(k, dm.value.mkString(","))
+//          case sm: SerializedMemoryEntry[_] => println(k, sm.size)
+//        }
+//      }
+////      println(store.entries)
+//      Iterator.single(4)
+//    }.collect()
+//    println(bms.mkString(","))
+  }
+
+//  test("gsa") {
+//    val ctx = spark.sqlContext
+//    import ctx.implicits._
+//    val path = "/Users/sethhendrickson/Development/datasets/multinomialDataset"
+//    val df = spark.read.option("inferSchema", "true").parquet(path)
+//    EMSOOptimization.run(df.as[Instance].rdd)
+//  }
 
   test("params") {
     ParamsSuite.checkParams(new LogisticRegression)

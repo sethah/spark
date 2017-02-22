@@ -454,6 +454,7 @@ private[spark] class BlockManager(
           val iter: Iterator[Any] = if (level.deserialized) {
             memoryStore.getValues(blockId).get
           } else {
+            println("getting the local values")
             serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
           }
@@ -529,6 +530,7 @@ private[spark] class BlockManager(
       }
     } else {  // storage level is serialized
       if (level.useMemory && memoryStore.contains(blockId)) {
+        println("GETTING SOME LOCAL BYTES")
         memoryStore.getBytes(blockId).get
       } else if (level.useDisk && diskStore.contains(blockId)) {
         val diskBytes = diskStore.getBytes(blockId)
@@ -632,6 +634,7 @@ private[spark] class BlockManager(
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
+      println("get", local.get.data)
       return local
     }
     val remote = getRemoteValues[T](blockId)

@@ -16,7 +16,12 @@
  */
 package org.apache.spark.ml.optim.optimizers
 
-import org.apache.spark.ml.param.Params
+import org.apache.spark.ml.optim.DifferentiableFunction
+import org.apache.spark.ml.param.{ParamMap, Params}
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.{DataFrame, Row}
+
+import scala.reflect.ClassTag
 
 /**
  * Base trait for implementing optimization algorithms in Spark ML.
@@ -35,6 +40,134 @@ trait Minimizer[T, F <: (T => Double)] extends Params {
   def minimize(lossFunction: F, initialParameters: T): T
 
 }
+
+//trait DataSpecificMinimizer[Features, Label, T, F <: (T => Double)] extends Minimizer[T, F] {
+//
+//  def minimize(lossFunction: (Features, Label, T) => Double, initialParameters: T): T
+//
+//}
+
+//trait CanAggregate[U, T, Collection] {
+//  def aggregate(data: Collection)(zeroValue: U)(seqOp: (U, T) => U, combOp: (U, U) => U): U
+//}
+//
+//class RDDCanAggregate[U, T] extends CanAggregate[U, T, RDD[T]] {
+//  def aggregate(data: RDD[T])(zeroValue: U)(seqOp: (U, T) => U, combOp: (U, U) => U): U = {
+//    data.treeAggregate(zeroValue)(seqOp, combOp)
+//  }
+//}
+//
+//class DataFrameCanAggregate[U, T: ClassTag] extends CanAggregate[U, T, DataFrame] {
+//  def aggregate(data: DataFrame)(zeroValue: U)(seqOp: (U, T) => U, combOp: (U, U) => U): U = {
+//    data.as[T].rdd.treeAggregate(zeroValue)(seqOp, combOp)
+//  }
+//}
+
+//trait CollectionMinimizer[Datum, Params, Collection] extends Minimizer[Params, (Params => Double)] {
+//  def datumCostFun: Datum => (Params, Double)
+//  def minimize(init: Params): Params
+//  def getCostFun(singleCost: Datum => (Params, Double)): (Params => Double)
+//  def minimize(loss: Params => Double, init: Params): Params
+//}
+//
+//class FullGradientMinimizer[Datum, Params,
+//Collection: CanAggregate[DifferentiableLossFunctionAggregator[Params, Datum], Datum, Collection]]
+//(data: Collection, aggregator: DifferentiableLossFunctionAggregator[Params, Datum],
+// minimizer: IterativeMinimizer[Params, DifferentiableFunction[Params],
+//   IterativeMinimizerState[Params]])
+//  extends CollectionMinimizer[Datum, Params, Collection] {
+//
+//  val ev = implicitly[CanAggregate[Agg, Datum, Collection]]
+//  type Agg = _ <: DifferentiableLossFunctionAggregator[Params, Datum]
+//  val costFun = new DifferentiableFunction[Params] {
+//    def doCompute(x: Params): (Params, Double) = {
+//      val aggregator = {
+//        val seqOp = (c: Agg, instance: Datum) => c.add(instance)
+//        val combOp =
+//          (c1: Agg, c2: Agg) => c1.merge(c2)
+//        ev.aggregate(data)(aggregator)(seqOp, combOp)
+//      }
+//      (aggregator.gradient, aggregator.loss)
+//    }
+//  }
+//
+//  override def minimize(lossFunction: (Params => Double), initialParameters: Params): Params = {
+//
+//  }
+//
+//
+//}
+
+//class FullGradientMinimizer2[Datum, Params,
+//  Collection: CanAggregate[DifferentiableLossFunctionAggregator[Params, Datum],
+//    Datum, Collection]](data: Collection,
+//                        aggregator: DifferentiableLossFunctionAggregator[Params, Datum])
+//  extends IterativeMinimizer[Params, DifferentiableFunction[Params],
+//  IterativeMinimizerState[Params]] {
+//  /** Type alias for convenience */
+//  private type State = BreezeWrapperState[Params]
+//  type Agg = _ <: DifferentiableLossFunctionAggregator[Params, Datum]
+//  val ev = implicitly[CanAggregate[Agg, Datum, Collection]]
+//  val costFun = new DifferentiableFunction[Params] {
+//    def doCompute(x: Params): (Params, Double) = {
+//      val aggregator = {
+//        val seqOp = (c: Agg, instance: Datum) => c.add(instance)
+//        val combOp =
+//          (c1: Agg, c2: Agg) => c1.merge(c2)
+//        ev.aggregate(data)(aggregator)(seqOp, combOp)
+//      }
+//      (aggregator.gradient, aggregator.loss)
+//    }
+//  }
+////  def minimize(lossFunctionAggregator: Agg, initialParameters: T): T = {
+////    val ev = implicitly[CanAggregate[Agg, Datum, Collection]]
+////    initialParameters
+////  }
+////  override def iterations(lossFunction: DifferentiableFunction[T],
+////                          initialParameters: T): Iterator[State] = {
+//
+////}
+//
+//
+//  override def copy(extra: ParamMap): this.type = {
+//    defaultCopy(extra)
+//  }
+//}
+
+//class FullGradientCostFun[T, C](data: C) extends DifferentiableFunction[T] {
+//  def doCompute(x: T): (T, Double) = {
+//
+//  }
+//}
+
+/*
+  val lr = new LogisticRegression()
+    .setOptimizationStrategy("full") // or "sgd", "emso", "cd"
+    .setOptimizer(new LFBGS())
+
+  val minimizer = new FullGradientMinimizer(lbfgs, data)
+  minimizer.minimize(logisticCostFun
+ */
+
+
+//trait LossFunctionAggregator[Datum] {
+//  def add(instance: Datum): this.type
+//  def merge(other: this.type): this.type
+//  def loss: Double
+//}
+//
+//trait DifferentiableLossFunctionAggregator[T, Datum] extends LossFunctionAggregator[Datum] {
+//  def gradient: T
+//}
+/*
+  val addGradient(instance: Instance, weights: Vector): (Double, Vector) = {
+    blas.dot(features, weights) +
+  val agg =
+ */
+
+
+
+
 
 /**
  * A minimizer that iteratively minimizes a set of parameters.

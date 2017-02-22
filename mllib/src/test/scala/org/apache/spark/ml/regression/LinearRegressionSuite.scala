@@ -18,8 +18,8 @@
 package org.apache.spark.ml.regression
 
 import scala.util.Random
-
 import org.apache.spark.SparkFunSuite
+//import org.apache.spark.ml.classification.EMSOOptimization
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
@@ -28,6 +28,7 @@ import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.util.{LinearDataGenerator, MLlibTestSparkContext}
 import org.apache.spark.sql.{DataFrame, Row}
+import org.apache.spark.sql.functions._
 
 class LinearRegressionSuite
   extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
@@ -36,6 +37,7 @@ class LinearRegressionSuite
 
   private val seed: Int = 42
   @transient var datasetWithDenseFeature: DataFrame = _
+  @transient var mydataset: DataFrame = _
   @transient var datasetWithStrongNoise: DataFrame = _
   @transient var datasetWithDenseFeatureWithoutIntercept: DataFrame = _
   @transient var datasetWithSparseFeature: DataFrame = _
@@ -48,6 +50,10 @@ class LinearRegressionSuite
     datasetWithDenseFeature = sc.parallelize(LinearDataGenerator.generateLinearInput(
       intercept = 6.3, weights = Array(4.7, 7.2), xMean = Array(0.9, -1.3),
       xVariance = Array(0.7, 1.2), nPoints = 10000, seed, eps = 0.1), 2).map(_.asML).toDF()
+
+    mydataset = sc.parallelize(LinearDataGenerator.generateLinearInput(
+      intercept = 6.3, weights = Array(14.7, 7.2), xMean = Array(0.9, -1.3),
+      xVariance = Array(0.7, 1.2), nPoints = 10000, seed, eps = 5.0), 2).map(_.asML).toDF()
 
     datasetWithStrongNoise = sc.parallelize(LinearDataGenerator.generateLinearInput(
       intercept = 6.3, weights = Array(4.7, 7.2), xMean = Array(0.9, -1.3),
@@ -135,6 +141,18 @@ class LinearRegressionSuite
     val model = new LinearRegressionModel("linearReg", Vectors.dense(0.0), 0.0)
     ParamsSuite.checkParams(model)
   }
+
+//  test("mytest") {
+//    val df = mydataset.limit(10000)
+//      .withColumn("weight", lit(1.0)).as[Instance]
+//    val rdd = df.rdd.map { case Instance(l, w, f) =>
+//        Instance(l, w, Vectors.dense(f.toArray :+ 1.0))
+//    }
+//    println(rdd.first())
+//    EMSOOptimization.run(rdd)
+//    val lr = new LinearRegression().setSolver("l-bfgs")
+//    val model = lr.fit(df)
+//  }
 
   test("linear regression: default params") {
     val lir = new LinearRegression

@@ -93,11 +93,15 @@ private[ml] class WeightedLeastSquares(
   require(maxIter >= 0, s"maxIter must be a positive integer: $maxIter")
   require(tol >= 0.0, s"tol must be >= 0, but was set to $tol")
 
+  def fit(instances: RDD[Instance]): WeightedLeastSquaresModel = {
+    val summary = instances.treeAggregate(new Aggregator)(_.add(_), _.merge(_))
+    fitLocal(summary)
+  }
+
   /**
    * Creates a [[WeightedLeastSquaresModel]] from an RDD of [[Instance]]s.
    */
-  def fit(instances: RDD[Instance]): WeightedLeastSquaresModel = {
-    val summary = instances.treeAggregate(new Aggregator)(_.add(_), _.merge(_))
+  def fitLocal(summary: Aggregator): WeightedLeastSquaresModel = {
     summary.validate()
     logInfo(s"Number of instances: ${summary.count}.")
     val k = if (fitIntercept) summary.k + 1 else summary.k
@@ -337,7 +341,7 @@ private[ml] object WeightedLeastSquares {
    * Aggregator to provide necessary summary statistics for solving [[WeightedLeastSquares]].
    */
   // TODO: consolidate aggregates for summary statistics
-  private class Aggregator extends Serializable {
+  class Aggregator extends Serializable {
     var initialized: Boolean = false
     var k: Int = _
     var count: Long = _

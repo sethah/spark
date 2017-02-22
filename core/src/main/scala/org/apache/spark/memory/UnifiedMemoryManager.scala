@@ -157,7 +157,9 @@ private[spark] class UnifiedMemoryManager private[memory] (
         onHeapExecutionMemoryPool,
         onHeapStorageMemoryPool,
         maxOnHeapStorageMemory)
-      case MemoryMode.OFF_HEAP => (
+      case MemoryMode.OFF_HEAP =>
+        println(offHeapStorageMemoryPool.poolSize, maxOffHeapMemory, numBytes, "asdf")
+        (
         offHeapExecutionMemoryPool,
         offHeapStorageMemoryPool,
         maxOffHeapMemory)

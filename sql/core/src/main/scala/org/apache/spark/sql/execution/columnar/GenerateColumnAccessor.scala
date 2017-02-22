@@ -68,6 +68,7 @@ object GenerateColumnAccessor extends CodeGenerator[Seq[DataType], ColumnarItera
   protected def bind(in: Seq[DataType], inputSchema: Seq[Attribute]): Seq[DataType] = in
 
   protected def create(columnTypes: Seq[DataType]): ColumnarIterator = {
+    println("dtypes", columnTypes.mkString(","))
     val ctx = newCodeGenContext()
     val numFields = columnTypes.size
     val (initializeAccessors, extractors) = columnTypes.zipWithIndex.map { case (dt, index) =>
@@ -225,6 +226,8 @@ object GenerateColumnAccessor extends CodeGenerator[Seq[DataType], ColumnarItera
           return unsafeRow;
         }
       }"""
+
+    println(codeBody)
 
     val code = CodeFormatter.stripOverlappingComments(
       new CodeAndComment(codeBody, ctx.getPlaceHolderToComments()))

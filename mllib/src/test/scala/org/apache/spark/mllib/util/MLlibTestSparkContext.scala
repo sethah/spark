@@ -34,6 +34,7 @@ trait MLlibTestSparkContext extends TempDirectory { self: Suite =>
   override def beforeAll() {
     super.beforeAll()
     spark = SparkSession.builder
+        .config("spark.memory.offHeap.size", 1024 * 1024)
       .master("local[2]")
       .appName("MLlibUnitTest")
       .getOrCreate()

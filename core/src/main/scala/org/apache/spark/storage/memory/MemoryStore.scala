@@ -37,18 +37,18 @@ import org.apache.spark.util.{SizeEstimator, Utils}
 import org.apache.spark.util.collection.SizeTrackingVector
 import org.apache.spark.util.io.{ChunkedByteBuffer, ChunkedByteBufferOutputStream}
 
-private sealed trait MemoryEntry[T] {
+sealed trait MemoryEntry[T] {
   def size: Long
   def memoryMode: MemoryMode
   def classTag: ClassTag[T]
 }
-private case class DeserializedMemoryEntry[T](
+case class DeserializedMemoryEntry[T](
     value: Array[T],
     size: Long,
     classTag: ClassTag[T]) extends MemoryEntry[T] {
   val memoryMode: MemoryMode = MemoryMode.ON_HEAP
 }
-private case class SerializedMemoryEntry[T](
+case class SerializedMemoryEntry[T](
     buffer: ChunkedByteBuffer,
     memoryMode: MemoryMode,
     classTag: ClassTag[T]) extends MemoryEntry[T] {
@@ -87,7 +87,7 @@ private[spark] class MemoryStore(
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
 
-  private val entries = new LinkedHashMap[BlockId, MemoryEntry[_]](32, 0.75f, true)
+  val entries = new LinkedHashMap[BlockId, MemoryEntry[_]](32, 0.75f, true)
 
   // A mapping from taskAttemptId to amount of memory used for unrolling a block (in bytes)
   // All accesses of this map are assumed to have manually synchronized on `memoryManager`
@@ -415,6 +415,7 @@ private[spark] class MemoryStore(
   }
 
   def getBytes(blockId: BlockId): Option[ChunkedByteBuffer] = {
+    println("GETTING THE BYTES")
     val entry = entries.synchronized { entries.get(blockId) }
     entry match {
       case null => None

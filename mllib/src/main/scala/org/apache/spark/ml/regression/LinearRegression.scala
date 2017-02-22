@@ -18,12 +18,10 @@
 package org.apache.spark.ml.regression
 
 import scala.collection.mutable
-
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import breeze.stats.distributions.StudentsT
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.broadcast.Broadcast
@@ -31,7 +29,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.WeightedLeastSquares
+import org.apache.spark.ml.optim.{DifferentiableLossAggregator, WeightedLeastSquares}
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.param.shared._
@@ -360,6 +358,7 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
       var state: optimizer.State = null
       while (states.hasNext) {
         state = states.next()
+        println(state.x(0) / featuresStd(0) * yStd)
         arrayBuilder += state.adjustedValue
       }
       if (state == null) {
@@ -922,19 +921,138 @@ class LinearRegressionSummary private[regression] (
  * @param bcFeaturesStd The broadcast standard deviation values of the features.
  * @param bcFeaturesMean The broadcast mean values of the features.
  */
-private class LeastSquaresAggregator(
+//class LeastSquaresAggregator(
+//    bcCoefficients: Broadcast[Vector],
+//    labelStd: Double,
+//    labelMean: Double,
+//    fitIntercept: Boolean,
+//    bcFeaturesStd: Broadcast[Array[Double]],
+//    bcFeaturesMean: Broadcast[Array[Double]]) extends Serializable {
+//
+//  private var totalCnt: Long = 0L
+//  private var weightSum: Double = 0.0
+//  private var lossSum = 0.0
+//
+//  private val dim = bcCoefficients.value.size
+//  // make transient so we do not serialize between aggregation stages
+//  @transient private lazy val featuresStd = bcFeaturesStd.value
+//  @transient private lazy val effectiveCoefAndOffset = {
+//    val coefficientsArray = bcCoefficients.value.toArray.clone()
+//    val featuresMean = bcFeaturesMean.value
+//    var sum = 0.0
+//    var i = 0
+//    val len = coefficientsArray.length
+//    while (i < len) {
+//      if (featuresStd(i) != 0.0) {
+//        coefficientsArray(i) /=  featuresStd(i)
+//        sum += coefficientsArray(i) * featuresMean(i)
+//      } else {
+//        coefficientsArray(i) = 0.0
+//      }
+//      i += 1
+//    }
+//    val offset = if (fitIntercept) labelMean / labelStd - sum else 0.0
+//    (Vectors.dense(coefficientsArray), offset)
+//  }
+//  // do not use tuple assignment above because it will circumvent the @transient tag
+//  @transient private lazy val effectiveCoefficientsVector = effectiveCoefAndOffset._1
+//  @transient private lazy val offset = effectiveCoefAndOffset._2
+//
+//  private val gradientSumArray = Array.ofDim[Double](dim)
+//
+//  /**
+//   * Add a new training instance to this LeastSquaresAggregator, and update the loss and gradient
+//   * of the objective function.
+//   *
+//   * @param instance The instance of data point to be added.
+//   * @return This LeastSquaresAggregator object.
+//   */
+//  def add(instance: Instance): this.type = {
+//    instance match { case Instance(label, weight, features) =>
+//      require(dim == features.size, s"Dimensions mismatch when adding new sample." +
+//        s" Expecting $dim but got ${features.size}.")
+//      require(weight >= 0.0, s"instance weight, $weight has to be >= 0.0")
+//
+//      if (weight == 0.0) return this
+//
+//      val diff = dot(features, effectiveCoefficientsVector) - label / labelStd + offset
+//
+//      if (diff != 0) {
+//        val localGradientSumArray = gradientSumArray
+//        val localFeaturesStd = featuresStd
+//        features.foreachActive { (index, value) =>
+//          if (localFeaturesStd(index) != 0.0 && value != 0.0) {
+//            localGradientSumArray(index) += weight * diff * value / localFeaturesStd(index)
+//          }
+//        }
+//        lossSum += weight * diff * diff / 2.0
+//      }
+//
+//      totalCnt += 1
+//      weightSum += weight
+//      this
+//    }
+//  }
+//
+//  /**
+//   * Merge another LeastSquaresAggregator, and update the loss and gradient
+//   * of the objective function.
+//   * (Note that it's in place merging; as a result, `this` object will be modified.)
+//   *
+//   * @param other The other LeastSquaresAggregator to be merged.
+//   * @return This LeastSquaresAggregator object.
+//   */
+//  def merge(other: LeastSquaresAggregator): this.type = {
+//    require(dim == other.dim, s"Dimensions mismatch when merging with another " +
+//      s"LeastSquaresAggregator. Expecting $dim but got ${other.dim}.")
+//
+//    if (other.weightSum != 0) {
+//      totalCnt += other.totalCnt
+//      weightSum += other.weightSum
+//      lossSum += other.lossSum
+//
+//      var i = 0
+//      val localThisGradientSumArray = this.gradientSumArray
+//      val localOtherGradientSumArray = other.gradientSumArray
+//      while (i < dim) {
+//        localThisGradientSumArray(i) += localOtherGradientSumArray(i)
+//        i += 1
+//      }
+//    }
+//    this
+//  }
+//
+//  def count: Long = totalCnt
+//
+//  def loss: Double = {
+//    require(weightSum > 0.0, s"The effective number of instances should be " +
+//      s"greater than 0.0, but $weightSum.")
+//    lossSum / weightSum
+//  }
+//
+//  def gradient: Vector = {
+//    require(weightSum > 0.0, s"The effective number of instances should be " +
+//      s"greater than 0.0, but $weightSum.")
+//    val result = Vectors.dense(gradientSumArray.clone())
+//    scal(1.0 / weightSum, result)
+//    result
+//  }
+//}
+
+final class LeastSquaresAggregator(
     bcCoefficients: Broadcast[Vector],
     labelStd: Double,
     labelMean: Double,
     fitIntercept: Boolean,
     bcFeaturesStd: Broadcast[Array[Double]],
-    bcFeaturesMean: Broadcast[Array[Double]]) extends Serializable {
+    bcFeaturesMean: Broadcast[Array[Double]]) extends DifferentiableLossAggregator[Instance,
+  LeastSquaresAggregator]
+  with Serializable {
 
-  private var totalCnt: Long = 0L
-  private var weightSum: Double = 0.0
-  private var lossSum = 0.0
+  protected var weightSum: Double = 0.0
+  protected var lossSum = 0.0
 
-  private val dim = bcCoefficients.value.size
+  protected val dim = bcCoefficients.value.size
   // make transient so we do not serialize between aggregation stages
   @transient private lazy val featuresStd = bcFeaturesStd.value
   @transient private lazy val effectiveCoefAndOffset = {
@@ -959,8 +1077,6 @@ private class LeastSquaresAggregator(
   @transient private lazy val effectiveCoefficientsVector = effectiveCoefAndOffset._1
   @transient private lazy val offset = effectiveCoefAndOffset._2
 
-  private val gradientSumArray = Array.ofDim[Double](dim)
-
   /**
    * Add a new training instance to this LeastSquaresAggregator, and update the loss and gradient
    * of the objective function.
@@ -968,7 +1084,7 @@ private class LeastSquaresAggregator(
    * @param instance The instance of data point to be added.
    * @return This LeastSquaresAggregator object.
    */
-  def add(instance: Instance): this.type = {
+  override def addInPlace(instance: Instance): this.type = {
     instance match { case Instance(label, weight, features) =>
       require(dim == features.size, s"Dimensions mismatch when adding new sample." +
         s" Expecting $dim but got ${features.size}.")
@@ -989,56 +1105,12 @@ private class LeastSquaresAggregator(
         lossSum += weight * diff * diff / 2.0
       }
 
-      totalCnt += 1
       weightSum += weight
       this
     }
   }
-
-  /**
-   * Merge another LeastSquaresAggregator, and update the loss and gradient
-   * of the objective function.
-   * (Note that it's in place merging; as a result, `this` object will be modified.)
-   *
-   * @param other The other LeastSquaresAggregator to be merged.
-   * @return This LeastSquaresAggregator object.
-   */
-  def merge(other: LeastSquaresAggregator): this.type = {
-    require(dim == other.dim, s"Dimensions mismatch when merging with another " +
-      s"LeastSquaresAggregator. Expecting $dim but got ${other.dim}.")
-
-    if (other.weightSum != 0) {
-      totalCnt += other.totalCnt
-      weightSum += other.weightSum
-      lossSum += other.lossSum
-
-      var i = 0
-      val localThisGradientSumArray = this.gradientSumArray
-      val localOtherGradientSumArray = other.gradientSumArray
-      while (i < dim) {
-        localThisGradientSumArray(i) += localOtherGradientSumArray(i)
-        i += 1
-      }
-    }
-    this
-  }
-
-  def count: Long = totalCnt
-
-  def loss: Double = {
-    require(weightSum > 0.0, s"The effective number of instances should be " +
-      s"greater than 0.0, but $weightSum.")
-    lossSum / weightSum
-  }
-
-  def gradient: Vector = {
-    require(weightSum > 0.0, s"The effective number of instances should be " +
-      s"greater than 0.0, but $weightSum.")
-    val result = Vectors.dense(gradientSumArray.clone())
-    scal(1.0 / weightSum, result)
-    result
-  }
 }
+
 
 /**
  * LeastSquaresCostFun implements Breeze's DiffFunction[T] for Least Squares cost.

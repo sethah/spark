@@ -130,6 +130,7 @@ case class InMemoryTableScanExec(
     val schema = relation.partitionStatistics.schema
     val schemaIndex = schema.zipWithIndex
     val relOutput: AttributeSeq = relation.output
+    println("IN MEMORY TABLE SCAN")
     val buffers = relation.cachedColumnBuffers
 
     buffers.mapPartitionsWithIndexInternal { (index, cachedBatchIterator) =>
