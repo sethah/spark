@@ -16,6 +16,7 @@
  */
 package org.apache.spark.ml.optim.optimizers
 
+import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.param.{ParamMap, Params}
 import org.apache.spark.rdd.RDD
@@ -38,6 +39,53 @@ trait Minimizer[T, F <: (T => Double)] extends Params {
    * @param initialParameters Initial point in the parameter space.
    */
   def minimize(lossFunction: F, initialParameters: T): T
+
+}
+
+//trait Applicative[F[_]] {
+//  def ap[A, B](ff: F[A => B])(fa: F[A]): F[B]
+//
+//  def pure[A](a: A): F[A]
+//
+//  def map[A, B](fa: F[A])(f: A => B): F[B] = ap(pure(f))(fa)
+//}
+
+trait Functor[F[_]] {
+  def map[A, B](fa: F[A])(f: A => B): F[B]
+}
+
+trait SubMinimizer[T, F <: (T => Double), M[_]] extends Minimizer[T, F] {
+
+
+  def combine(subProblemSolutions: M[T]): T
+
+  def pure(f: F): M[F]
+
+  override def minimize(lossFunction: F, initialParameters: T): T = {
+    combine(minimize(pure(lossFunction), initialParameters))
+  }
+
+  def minimize(lossFunctions: M[F], initialParameters: T): M[T]
+}
+
+class EMSOMinimizer[T](override val uid: String, optimizer: Minimizer[T, DifferentiableFunction[T]])
+  extends SubMinimizer[T, DifferentiableFunction[T], RDD] {
+
+//  def minimize(differentiableFunction: DifferentiableFunction[T], initialParameters: T): T = {
+//    initialParameters
+//  }
+
+  def minimize(lossFunctions: RDD[DifferentiableFunction[T]], initialParameters: T): RDD[T] = {
+    lossFunctions.map(optimizer.minimize(_, initialParameters))
+  }
+
+//  def pure(f: DifferentiableFunction[T]):
+
+  def combine(subProblemSolutions: RDD[T]): T = subProblemSolutions.first()
+
+  override def copy(extra: ParamMap): EMSOMinimizer[T] = {
+    defaultCopy(extra)
+  }
 
 }
 
