@@ -18,13 +18,12 @@
 package org.apache.spark.sql.streaming
 
 import scala.collection.JavaConverters._
-
 import org.apache.spark.annotation.{Experimental, InterfaceStability}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{AnalysisException, DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.execution.command.DDLUtils
 import org.apache.spark.sql.execution.datasources.DataSource
-import org.apache.spark.sql.execution.streaming.StreamingRelation
+import org.apache.spark.sql.execution.streaming.{StatefulAgg, StatefulAggExec, StreamingRelation}
 import org.apache.spark.sql.types.StructType
 
 /**

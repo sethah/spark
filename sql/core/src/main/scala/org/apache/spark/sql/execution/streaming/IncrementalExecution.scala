@@ -20,6 +20,7 @@ package org.apache.spark.sql.execution.streaming
 import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql
 import org.apache.spark.sql.catalyst.expressions.{CurrentBatchTimestamp, Literal}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.plans.logical._
@@ -45,6 +46,7 @@ class IncrementalExecution(
     sparkSession.sessionState.planner.StatefulAggregationStrategy +:
     sparkSession.sessionState.planner.MapGroupsWithStateStrategy +:
     sparkSession.sessionState.planner.StreamingRelationStrategy +:
+      sparkSession.sessionState.planner.MyStrategy +:
     sparkSession.sessionState.experimentalMethods.extraStrategies
 
   // Modified planner with stateful operations.
@@ -93,6 +95,15 @@ class IncrementalExecution(
               keys,
               Some(stateId),
               child) :: Nil))
+      case StatefulAggExec(None, child) =>
+        val stateId =
+          OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
+        StatefulAggExec(Some(stateId), child)
+      case StatefulAggSaveExec(keys, child, None) =>
+        val stateId =
+          OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
+        StatefulAggSaveExec(keys, child, Some(stateId))
+
       case MapGroupsWithStateExec(
              f, kDeser, vDeser, group, data, output, None, stateDeser, stateSer, child) =>
         val stateId =
@@ -106,4 +117,31 @@ class IncrementalExecution(
 
   /** No need assert supported, as this check has already been done */
   override def assertSupported(): Unit = { }
+}
+
+
+class IncrementalModelExecution(
+                            sparkSession: SparkSession,
+                            logicalPlan: LogicalPlan)
+  extends QueryExecution(sparkSession, logicalPlan) with Logging {
+
+  // TODO: make this always part of planning.
+  val streamingExtraStrategies: Seq[sql.Strategy] =
+    sparkSession.sessionState.planner.MyStrategy +:
+      sparkSession.sessionState.experimentalMethods.extraStrategies
+
+//  val myrule = new Rule[SparkPlan] {
+
+//    override def apply(plan: SparkPlan): SparkPlan = plan transform {
+//      case ModelA
+//    }
+//  }
+
+  override def planner: SparkPlanner =
+    new SparkPlanner(
+      sparkSession.sparkContext,
+      sparkSession.sessionState.conf,
+      streamingExtraStrategies)
+
+
 }

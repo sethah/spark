@@ -148,6 +148,12 @@ class StreamExecution(
         // "df.logicalPlan" has already used attributes of the previous `output`.
         StreamingExecutionRelation(source, output)
     }
+//    val lp = _logicalPlan transform {
+//      case StreamingExecutionRelation(src, output) => {
+//        println("stateful agggggg")
+//        StatefulAgg(StreamingExecutionRelation(src, output))
+//      }
+//    }
     sources = _logicalPlan.collect { case s: StreamingExecutionRelation => s.source }
     uniqueSources = sources.distinct
     _logicalPlan
@@ -501,6 +507,14 @@ class StreamExecution(
     // A list of attributes that will need to be updated.
     var replacements = new ArrayBuffer[(Attribute, Attribute)]
     // Replace sources in the logical plan with data that has arrived since the last batch.
+    println("lp", logicalPlan.treeString(true))
+    println(logicalPlan.children)
+    println("___________")
+//    val tmp = logicalPlan transform {
+//      case StatefulAgg(child) =>
+//        println("I'm replacing this agg")
+//        child
+//    }
     val withNewSources = logicalPlan transform {
       case StreamingExecutionRelation(source, output) =>
         newData.get(source).map { data =>
@@ -535,6 +549,7 @@ class StreamExecution(
         checkpointFile("state"),
         currentBatchId,
         offsetSeqMetadata.batchWatermarkMs)
+      println("triggerplan", triggerLogicalPlan)
       lastExecution.executedPlan // Force the lazy generation of execution plan
     }
 
@@ -542,6 +557,11 @@ class StreamExecution(
       new Dataset(sparkSession, lastExecution, RowEncoder(lastExecution.analyzed.schema))
 
     reportTimeTaken("addBatch") {
+      /*
+      Now that we have a defined set of execution tasks for this particular micro batch, we can
+      send the plan to the sink, and the sink will do it's commit stuff. When it executes our plan,
+      automtically we'll do things like read state, shuffle, write state, etc... Then the sink can
+       */
       sink.addBatch(currentBatchId, nextBatch)
     }
 

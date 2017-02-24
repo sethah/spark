@@ -24,16 +24,19 @@ import org.scalactic.TolerantNumerics
 import org.scalatest.concurrent.Eventually._
 import org.scalatest.BeforeAndAfter
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
-
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.{DataFrame, Dataset}
-import org.apache.spark.sql.types.StructType
-import org.apache.spark.SparkException
+import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, SpecialSum}
+import org.apache.spark.sql.execution.{SparkPlan, SparkStrategy}
+import org.apache.spark.sql.{DataFrame, Dataset, Row}
+import org.apache.spark.sql.types._
+import org.apache.spark.{SparkEnv, SparkException}
 import org.apache.spark.sql.execution.streaming._
+import org.apache.spark.sql.expressions.{MutableAggregationBuffer, UserDefinedAggregateFunction}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.streaming.util.BlockingSource
 import org.apache.spark.util.ManualClock
+import org.apache.spark.sql.execution.debug._
 
 
 class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
@@ -77,6 +80,42 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
       q2.stop()
       q3.stop()
     }
+  }
+
+  test("mytest") {
+//    val mystrategy = new SparkStrategy {
+//      override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+//        case SpecialSum(child) =>
+//          SpecialSumExec(planLater(child)) :: Nil
+//        case _ => Nil
+//      }
+//    }
+//    spark.experimental.extraStrategies = mystrategy :: Nil
+//    val dataset = spark.sparkContext.parallelize(Seq("a", "b", "c", "a", "a", "c", "c", "b"), 4)
+//      .map(Tuple1.apply).toDF("x")
+    val dataset = spark.sparkContext.parallelize(0 to 4)
+      .map(Tuple1.apply).toDF("x")
+//    val df = dataset.groupBy("x").count()
+//    val df = dataset.specialsum(col("x"))
+    val df = dataset.agg((new ModelAgg())(col("x")))
+//    val df = dataset.agg(sum(col("x")))
+//    println(df.debugCodegen())
+    df.show()
+//    val myExecution = new IncrementalModelExecution(spark, df.logicalPlan)
+//    myExecution.sparkPlan
+
+//    val inputData = MemoryStream[Int]
+//    val query = inputData.toDS
+//      .groupBy("value")
+//        .agg((new ModelAgg())(col("value")))
+//      .writeStream
+//      .outputMode("complete")
+//      .format("console")
+//      .start()
+//    inputData.addData(Seq(1, 2, 3))
+//    Thread.sleep(1000)
+//    inputData.addData(Seq(1, 2, 4))
+//    query.awaitTermination(5000)
   }
 
   test(
@@ -562,4 +601,42 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
 object StreamingQuerySuite {
   // Singleton reference to clock that does not get serialized in task closures
   var clock: ManualClock = null
+}
+
+class ModelAgg() extends UserDefinedAggregateFunction {
+
+  // Input Data Type Schema
+  def inputSchema: StructType = StructType(Array(StructField("item", IntegerType)))
+
+  // Intermediate Schema
+  def bufferSchema: StructType = StructType(Array(
+    StructField("sum", IntegerType)
+  ))
+
+  // Returned Data Type .
+  def dataType: DataType = IntegerType
+
+  // Self-explaining
+  def deterministic: Boolean = true
+
+  // This function is called whenever key changes
+  def initialize(buffer: MutableAggregationBuffer): Unit = {
+    buffer(0) = 0 // set sum to zero
+  }
+
+  // Iterate over each entry of a group
+  def update(buffer: MutableAggregationBuffer, input: Row): Unit = {
+    buffer(0) = buffer.getInt(0) + 3
+  }
+
+  // Merge two partial aggregates
+  def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
+    buffer1(0) = buffer1.getInt(0) + buffer2.getInt(0)
+  }
+
+  // Called after all the entries are exhausted.
+  def evaluate(buffer: Row): Integer = {
+    buffer.getInt(0)
+  }
+
 }

@@ -20,7 +20,7 @@ package org.apache.spark.sql.execution.aggregate
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
 import org.apache.spark.sql.execution.SparkPlan
-import org.apache.spark.sql.execution.streaming.{StateStoreRestoreExec, StateStoreSaveExec}
+import org.apache.spark.sql.execution.streaming.{StateStoreRestoreExec, StateStoreSaveExec, StatefulAggExec, StatefulAggSaveExec}
 import org.apache.spark.sql.internal.SQLConf
 
 /**
@@ -82,7 +82,9 @@ object AggUtils {
     // 1. Create an Aggregate Operator for partial aggregations.
 
     val groupingAttributes = groupingExpressions.map(_.toAttribute)
+    // partial aggs are just copies of the complete aggs with the mode changed to partial
     val partialAggregateExpressions = aggregateExpressions.map(_.copy(mode = Partial))
+    println("partial aggs", partialAggregateExpressions.head.getClass().getName())
     val partialAggregateAttributes =
       partialAggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes)
     val partialResultExpressions =
@@ -103,6 +105,9 @@ object AggUtils {
     // The attributes of the final aggregation buffer, which is presented as input to the result
     // projection:
     val finalAggregateAttributes = finalAggregateExpressions.map(_.resultAttribute)
+    println("plan aggregate")
+    println(partialAggregate)
+    partialAggregate.children.foreach { println }
 
     val finalAggregate = createAggregate(
         requiredChildDistributionExpressions = Some(groupingAttributes),
@@ -112,6 +117,11 @@ object AggUtils {
         initialInputBufferOffset = groupingExpressions.length,
         resultExpressions = resultExpressions,
         child = partialAggregate)
+
+    println("plan aggregate")
+    println(finalAggregate.getClass().getName())
+    println(finalAggregate.treeString(true))
+//    finalAggregate.children.foreach { println }
 
     finalAggregate :: Nil
   }
@@ -316,6 +326,7 @@ object AggUtils {
         eventTimeWatermark = None,
         partialMerged2)
 
+
     val finalAndCompleteAggregate: SparkPlan = {
       val finalAggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = Final))
       // The attributes of the final aggregation buffer, which is presented as input to the result
@@ -333,5 +344,10 @@ object AggUtils {
     }
 
     finalAndCompleteAggregate :: Nil
+  }
+  def planModelStreamingAggregation(child: SparkPlan): Seq[SparkPlan] = {
+
+    Nil
+
   }
 }

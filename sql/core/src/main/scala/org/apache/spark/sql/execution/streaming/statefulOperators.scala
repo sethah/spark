@@ -17,11 +17,12 @@
 
 package org.apache.spark.sql.execution.streaming
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.codegen.{GenerateUnsafeProjection, Predicate}
+import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, GenerateUnsafeProjection, Predicate, UnsafeRowWriter}
 import org.apache.spark.sql.catalyst.plans.logical.{EventTimeWatermark, LogicalKeyedState}
 import org.apache.spark.sql.catalyst.plans.physical.{ClusteredDistribution, Distribution, Partitioning}
 import org.apache.spark.sql.catalyst.streaming.InternalOutputModes._
@@ -30,7 +31,8 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.metric.SQLMetrics
 import org.apache.spark.sql.execution.streaming.state._
 import org.apache.spark.sql.streaming.OutputMode
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types._
+import org.apache.spark.storage.{StorageLevel, StreamingModelBlockId}
 import org.apache.spark.util.CompletionIterator
 
 
@@ -48,6 +50,7 @@ trait StatefulOperator extends SparkPlan {
   def stateId: Option[OperatorStateId]
 
   protected def getStateId: OperatorStateId = attachTree(this) {
+    println(stateId.get.batchId, Thread.currentThread().getId())
     stateId.getOrElse {
       throw new IllegalStateException("State location not present for execution")
     }
@@ -80,6 +83,8 @@ case class StateStoreRestoreExec(
 
   override protected def doExecute(): RDD[InternalRow] = {
     val numOutputRows = longMetric("numOutputRows")
+//    println(keyExpressions)
+//    println(keyExpressions.toStructType)
 
     child.execute().mapPartitionsWithStateStore(
       getStateId.checkpointLocation,
@@ -90,8 +95,12 @@ case class StateStoreRestoreExec(
       sqlContext.sessionState,
       Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
         val getKey = GenerateUnsafeProjection.generate(keyExpressions, child.output)
+        val e = SparkEnv.get.executorId
+//        println("GET KEY", getKey.
         iter.flatMap { row =>
           val key = getKey(row)
+//          println("key size", key.getSizeInBytes(), key.numFields(), key.getInt(0), e,
+//            Thread.currentThread().getId())
           val savedState = store.get(key)
           numOutputRows += 1
           row +: savedState.toSeq
@@ -102,6 +111,152 @@ case class StateStoreRestoreExec(
   override def output: Seq[Attribute] = child.output
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
+}
+
+case class SpecialSumExec(child: SparkPlan) extends execution.UnaryExecNode {
+  override def doExecute(): RDD[InternalRow] = {
+    child.execute().mapPartitions { it =>
+      val result = new UnsafeRow(1)
+      val buff = new BufferHolder(result, 0)
+      val rowWriter = new UnsafeRowWriter(buff, 1)
+      var sum = 0L
+      while (it.hasNext) {
+        val next = it.next().getInt(0)
+        sum += next
+      }
+      rowWriter.write(0, sum)
+      Iterator.single(result)
+    }.coalesce(1, true).mapPartitions { it =>
+      val result = new UnsafeRow(1)
+      val buff = new BufferHolder(result, 0)
+      val rowWriter = new UnsafeRowWriter(buff, 1)
+      var sum = 0L
+      while (it.hasNext) {
+        sum += it.next().getInt(0)
+      }
+      rowWriter.write(0, sum)
+      Iterator.single(result)
+    }
+  }
+
+  override def output: Seq[Attribute] = child.output
+}
+
+case class StatefulAggExec(
+                            stateId: Option[OperatorStateId] = None,
+                            child: SparkPlan)
+  extends execution.UnaryExecNode with StateStoreWriter {
+
+  override def doExecute(): RDD[InternalRow] = {
+    println("agg exec DO EXECUTE")
+    val data = child.execute().mapPartitions { it =>
+      println("map partitions", Thread.currentThread().getId())
+      val bm = SparkEnv.get.blockManager
+      val blockId = StreamingModelBlockId(0, getStateId.batchId - 1)
+      val previousModel = bm.getLocalBytes(blockId) match {
+        case Some(block) => println("OMG I FOUND IT")
+        case None => println("WOMP WOMP")
+      }
+      it
+    }
+    data
+  }
+  override def output: Seq[Attribute] = child.output
+}
+
+//case class SGDExec(
+//                    stateId: Option[OperatorStateId] = None,
+//                    f: Iterator[InternalRow] => InternalRow,
+//                    m: InternalRow => InternalRow,
+//                   child: SparkPlan)
+//  extends execution.UnaryExecNode with StateStoreWriter {
+//  override def doExecute(): RDD[InternalRow] = {
+//    val data = child.execute()
+//    data.mapPartitions { it =>
+//      val blockId = StreamingModelBlockId(0, getStateId.batchId)
+//      val model = SparkEnv.get.blockManager.getLocalBytes(blockId).get
+//      f(it)
+//      val key = "asdf"
+//      Iterator.single((key, m(f, model)))
+//    }.groupByKey().mapPartitionsWithStateStore(
+//      getStateId.checkpointLocation,
+//      getStateId.operatorId,
+//      getStateId.batchId,
+//      keyStruct,
+//      child.output.toStructType,
+//      sqlContext.sessionState,
+//      Some(sqlContext.streams.stateStoreCoordinator)) { (store, iter) =>
+//      println("save store id: ", store.id, Thread.currentThread().getId())
+//      while (iter.hasNext) {
+//        val row = iter.next()
+//        val key = row._1
+//        store.put(key.copy(), row.copy())
+//      }
+//      val blockId = StreamingModelBlockId(getStateId.operatorId, getStateId.batchId)
+//      println(s"BLOCK ID: $blockId")
+//      SparkEnv.get.blockManager.putSingle(blockId, 3.14, StorageLevel.MEMORY_AND_DISK)
+//      store.commit()
+//      store.iterator().map { case (k, v) =>
+//        v.asInstanceOf[InternalRow]
+//      }
+//      // we have to save something to the store, otherwise on the first iteration
+//      // it will just create the store. The next iteration thought it will find that
+//      // there is a store, but it won't be able to load it...?
+//    }
+//  }
+//
+//  // not sure about this yet
+//  override def output: Seq[Attribute] = child.output
+//}
+
+case class StatefulAggSaveExec(
+                              keyExpressions: Seq[Attribute],
+                                child: SparkPlan,
+                               stateId: Option[OperatorStateId] = None)
+  extends execution.UnaryExecNode with StateStoreWriter {
+//  val keyStruct = StructType(Seq(
+//    StructField("modelid", StringType, false),
+//    StructField("modelweights", ArrayType(DoubleType), false)
+//  ))
+
+  val keyStruct = StructType(Seq(
+    StructField("key", IntegerType, false),
+    StructField("count", IntegerType, false)
+  ))
+  override def output = child.output
+
+  override protected def doExecute(): RDD[InternalRow] = {
+    var numUpdatedStateRows = 0
+    child.execute().mapPartitionsWithStateStore(
+      getStateId.checkpointLocation,
+      getStateId.operatorId,
+      getStateId.batchId,
+      keyStruct,
+      child.output.toStructType,
+      sqlContext.sessionState,
+      Some(sqlContext.streams.stateStoreCoordinator)) { (store, iter) =>
+      println("save store id: ", store.id, Thread.currentThread().getId())
+      val getKey = GenerateUnsafeProjection.generate(keyExpressions,
+        child.output)
+      while (iter.hasNext) {
+        val row = iter.next().asInstanceOf[UnsafeRow]
+        val key = getKey(row)
+        key.setInt(0, 123)
+        store.put(key.copy(), row.copy())
+        numUpdatedStateRows += 1
+      }
+      val blockId = StreamingModelBlockId(getStateId.operatorId, getStateId.batchId)
+      println(s"BLOCK ID: $blockId")
+      SparkEnv.get.blockManager.putSingle(blockId, 3.14, StorageLevel.MEMORY_AND_DISK)
+      store.commit()
+      store.iterator().map { case (k, v) =>
+        v.asInstanceOf[InternalRow]
+      }
+      // we have to save something to the store, otherwise on the first iteration
+      // it will just create the store. The next iteration thought it will find that
+      // there is a store, but it won't be able to load it...?
+    }
+  }
 }
 
 /**

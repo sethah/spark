@@ -100,6 +100,12 @@ private[state] class HDFSBackedStateStoreProvider(
     }
 
     override def put(key: UnsafeRow, value: UnsafeRow): Unit = {
+      /*
+      put the key in the all updates map, which just tracks new things added in this batch (version)
+      Also, write them to file so we can store them. Note that writing to file here is not yet
+      literally writing to disk. It writes to an output stream that will be all flushed to disk at
+      once when things are committed.
+       */
       verify(state == UPDATING, "Cannot put after already committed or aborted")
 
       val isNewKey = !mapToUpdate.containsKey(key)
@@ -317,6 +323,11 @@ private[state] class HDFSBackedStateStoreProvider(
 
   /** Load the required version of the map data from the backing files */
   private def loadMap(version: Long): MapType = {
+    /*
+    loadedMaps tracks the state stores that are currently loaded in memory. Try to get
+    the version requested from the loaded state stores, but read from disk if it doesn't exist.
+    Then put the loaded-from-disk version in the loaded maps.
+     */
     if (version <= 0) return new MapType
     synchronized { loadedMaps.get(version) }.getOrElse {
       val mapFromFile = readSnapshotFile(version).getOrElse {

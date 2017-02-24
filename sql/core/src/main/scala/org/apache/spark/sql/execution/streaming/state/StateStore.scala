@@ -182,6 +182,7 @@ object StateStore extends Logging {
     require(version >= 0)
     val storeProvider = loadedProviders.synchronized {
       startMaintenanceIfNeeded()
+//      println(storeId, loadedProviders.keySet.mkString(","))
       val provider = loadedProviders.getOrElseUpdate(
         storeId,
         new HDFSBackedStateStoreProvider(storeId, keySchema, valueSchema, storeConf, hadoopConf))

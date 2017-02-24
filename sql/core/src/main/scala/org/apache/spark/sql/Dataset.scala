@@ -1601,6 +1601,19 @@ class Dataset[T] private[sql](
   @scala.annotation.varargs
   def agg(expr: Column, exprs: Column*): DataFrame = groupBy().agg(expr, exprs : _*)
 
+  def specialsum(expr: Column): DataFrame = withPlan {
+    SpecialSum(Project(Seq(expr.named), logicalPlan))
+  }
+
+  def sgd(label: Column, features: Column): DataFrame = withPlan {
+    ModelAggregate(Project(Seq(label.named, features.named), logicalPlan))
+  }
+
+//  def statefulAgg(expr: Column, exprs: Column*): DataFrame = Dataset.ofRows(sparkSession,
+//    ModelAggregate(logicalPlan))
+//
+//  def statuefulAgg()
+
   /**
    * Returns a new Dataset by taking the first `n` rows. The difference between this function
    * and `head` is that `head` is an action and returns an array (by triggering query execution)

@@ -24,7 +24,7 @@ import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.planning._
 import org.apache.spark.sql.catalyst.plans._
-import org.apache.spark.sql.catalyst.plans.logical.{BroadcastHint, EventTimeWatermark, LogicalPlan, MapGroupsWithState}
+import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.execution
 import org.apache.spark.sql.execution.columnar.{InMemoryRelation, InMemoryTableScanExec}
@@ -231,8 +231,13 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
       case EventTimeWatermark(columnName, delay, child) =>
         EventTimeWatermarkExec(columnName, delay, planLater(child)) :: Nil
 
+      case StatefulAgg(child) =>
+        println("HEY HERE's a thing I did!", child)
+        StatefulAggExec(None, planLater(child)) :: Nil
+
       case PhysicalAggregation(
         namedGroupingExpressions, aggregateExpressions, rewrittenResultExpressions, child) =>
+        println("phys agg", child)
 
         aggregate.AggUtils.planStreamingAggregation(
           namedGroupingExpressions,
@@ -241,6 +246,23 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
           planLater(child))
 
       case _ => Nil
+    }
+  }
+
+  object MyStrategy extends Strategy {
+    override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+      case ModelAggregate(child) =>
+        child match {
+          case PhysicalAggregation(
+          namedGroupingExpressions, aggregateExpressions, rewrittenResultExpressions, child) =>
+            aggregate.AggUtils.planModelStreamingAggregation(planLater(child))
+        }
+
+      case _ => {
+        println(plan)
+        println("APPLYING MY STRATEGY")
+        Nil
+      }
     }
   }
 

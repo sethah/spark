@@ -20,9 +20,12 @@ package org.apache.spark.sql.execution.streaming
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
-import org.apache.spark.sql.catalyst.plans.logical.LeafNode
-import org.apache.spark.sql.execution.LeafExecNode
+import org.apache.spark.sql.catalyst.plans.logical.{LeafNode, LogicalPlan, UnaryNode}
+import org.apache.spark.sql.execution
+import org.apache.spark.sql.execution.streaming.state._
+import org.apache.spark.sql.execution.{LeafExecNode, SparkPlan}
 import org.apache.spark.sql.execution.datasources.DataSource
+import org.apache.spark.sql.types.{StringType, StructField, StructType}
 
 object StreamingRelation {
   def apply(dataSource: DataSource): StreamingRelation = {
@@ -42,6 +45,12 @@ case class StreamingRelation(dataSource: DataSource, sourceName: String, output:
   extends LeafNode {
   override def isStreaming: Boolean = true
   override def toString: String = sourceName
+}
+
+case class StatefulAgg(child: LogicalPlan) extends UnaryNode {
+  override def output: Seq[Attribute] = child.output
+  override def isStreaming: Boolean = true
+  override def toString: String = "stateful agg!"
 }
 
 /**

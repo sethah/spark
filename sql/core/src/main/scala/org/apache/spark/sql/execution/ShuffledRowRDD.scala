@@ -114,6 +114,7 @@ class ShuffledRowRDD(
     var dependency: ShuffleDependency[Int, InternalRow, InternalRow],
     specifiedPartitionStartIndices: Option[Array[Int]] = None)
   extends RDD[InternalRow](dependency.rdd.context, Nil) {
+  println("CREATE SHUFFLEDROW RDD")
 
   private[this] val numPreShufflePartitions = dependency.partitioner.numPartitions
 
