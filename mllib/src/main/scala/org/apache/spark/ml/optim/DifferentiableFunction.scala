@@ -23,7 +23,7 @@ import breeze.optimize.DiffFunction
  *
  * @tparam T The type of the function's domain.
  */
-trait DifferentiableFunction[T] extends (T => Double) { self =>
+trait DifferentiableFunction[T] extends (T => Double) with Serializable { self =>
 
   /**
    * Evaluate the function at a point in the function domain.

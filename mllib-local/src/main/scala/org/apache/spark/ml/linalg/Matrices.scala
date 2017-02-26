@@ -79,7 +79,7 @@ sealed trait Matrix extends Serializable {
   private[ml] def index(i: Int, j: Int): Int
 
   /** Update element at (i, j) */
-  private[ml] def update(i: Int, j: Int, v: Double): Unit
+  def update(i: Int, j: Int, v: Double): Unit
 
   /** Get a deep copy of the matrix. */
   @Since("2.0.0")
@@ -138,7 +138,7 @@ sealed trait Matrix extends Serializable {
    * backing array. For example, an operation such as addition or subtraction will only be
    * performed on the non-zero values in a `SparseMatrix`.
    */
-  private[ml] def update(f: Double => Double): Matrix
+  def update(f: Double => Double): Matrix
 
   /**
    * Applies a function `f` to all the active elements of dense and sparse matrix. The ordering
@@ -148,7 +148,7 @@ sealed trait Matrix extends Serializable {
    *          and column indices respectively with the type `Int`, and the final parameter is the
    *          corresponding value in the matrix with type `Double`.
    */
-  private[spark] def foreachActive(f: (Int, Int, Double) => Unit)
+  def foreachActive(f: (Int, Int, Double) => Unit)
 
   /**
    * Find the number of non-zero active values.
@@ -237,7 +237,7 @@ class DenseMatrix @Since("2.0.0") (
     if (!isTransposed) i + numRows * j else j + numCols * i
   }
 
-  private[ml] def update(i: Int, j: Int, v: Double): Unit = {
+  def update(i: Int, j: Int, v: Double): Unit = {
     values(index(i, j)) = v
   }
 
@@ -246,7 +246,7 @@ class DenseMatrix @Since("2.0.0") (
   private[spark] def map(f: Double => Double) = new DenseMatrix(numRows, numCols, values.map(f),
     isTransposed)
 
-  private[ml] def update(f: Double => Double): DenseMatrix = {
+  def update(f: Double => Double): DenseMatrix = {
     val len = values.length
     var i = 0
     while (i < len) {
@@ -258,7 +258,7 @@ class DenseMatrix @Since("2.0.0") (
 
   override def transpose: DenseMatrix = new DenseMatrix(numCols, numRows, values, !isTransposed)
 
-  private[spark] override def foreachActive(f: (Int, Int, Double) => Unit): Unit = {
+  override def foreachActive(f: (Int, Int, Double) => Unit): Unit = {
     if (!isTransposed) {
       // outer loop over columns
       var j = 0
@@ -530,7 +530,7 @@ class SparseMatrix @Since("2.0.0") (
     }
   }
 
-  private[ml] def update(i: Int, j: Int, v: Double): Unit = {
+  def update(i: Int, j: Int, v: Double): Unit = {
     val ind = index(i, j)
     if (ind < 0) {
       throw new NoSuchElementException("The given row and column indices correspond to a zero " +
@@ -547,7 +547,7 @@ class SparseMatrix @Since("2.0.0") (
   private[spark] def map(f: Double => Double) =
     new SparseMatrix(numRows, numCols, colPtrs, rowIndices, values.map(f), isTransposed)
 
-  private[ml] def update(f: Double => Double): SparseMatrix = {
+  def update(f: Double => Double): SparseMatrix = {
     val len = values.length
     var i = 0
     while (i < len) {
@@ -560,7 +560,7 @@ class SparseMatrix @Since("2.0.0") (
   override def transpose: SparseMatrix =
     new SparseMatrix(numCols, numRows, colPtrs, rowIndices, values, !isTransposed)
 
-  private[spark] override def foreachActive(f: (Int, Int, Double) => Unit): Unit = {
+  override def foreachActive(f: (Int, Int, Double) => Unit): Unit = {
     if (!isTransposed) {
       var j = 0
       while (j < numCols) {

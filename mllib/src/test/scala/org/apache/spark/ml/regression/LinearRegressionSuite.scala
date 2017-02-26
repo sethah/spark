@@ -142,18 +142,6 @@ class LinearRegressionSuite
     ParamsSuite.checkParams(model)
   }
 
-//  test("mytest") {
-//    val df = mydataset.limit(10000)
-//      .withColumn("weight", lit(1.0)).as[Instance]
-//    val rdd = df.rdd.map { case Instance(l, w, f) =>
-//        Instance(l, w, Vectors.dense(f.toArray :+ 1.0))
-//    }
-//    println(rdd.first())
-//    EMSOOptimization.run(rdd)
-//    val lr = new LinearRegression().setSolver("l-bfgs")
-//    val model = lr.fit(df)
-//  }
-
   test("linear regression: default params") {
     val lir = new LinearRegression
     assert(lir.getLabelCol === "label")
