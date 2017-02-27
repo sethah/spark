@@ -27,9 +27,9 @@ import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
-import org.apache.spark.ml.linalg.{Vector, Vectors}
+import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.ml.linalg.BLAS._
-import org.apache.spark.ml.optim.{DifferentiableLossAggregator, WeightedLeastSquares}
+import org.apache.spark.ml.optim.{CostFunction, DifferentiableLossAggregator, WeightedLeastSquares}
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.param.shared._
@@ -317,8 +317,66 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     val effectiveL1RegParam = $(elasticNetParam) * effectiveRegParam
     val effectiveL2RegParam = (1.0 - $(elasticNetParam)) * effectiveRegParam
 
-    val costFun = new LeastSquaresCostFun(instances, yStd, yMean, $(fitIntercept),
-      $(standardization), bcFeaturesStd, bcFeaturesMean, effectiveL2RegParam, $(aggregationDepth))
+//    val costFun = new LeastSquaresCostFun(instances, yStd, yMean, $(fitIntercept),
+//      $(standardization), bcFeaturesStd, bcFeaturesMean, effectiveL2RegParam, $(aggregationDepth))
+    /*
+    tures: Int,
+    labelStd: Double,
+    labelMean: Double,
+    fitIntercept: Boolean,
+    bcFeaturesStd: Broadcast[Array[Double]],
+    bcFeaturesMean: Broadcast[Array[D
+     */
+
+    //
+//    val regFun = (index: Int) => {
+//      val standardizationParam = $(standardization)
+//      if (standardizationParam) {
+//        effectiveL2RegParam
+//      } else {
+//        if (featuresStd(index) != 0.0) effectiveL2RegParam /
+//          (featuresStd(index) * featuresStd(index)) else 0.0
+//      }
+//    }
+
+
+    val regFun = (gradient: Vector, coeffs: Vector) => {
+      val totalGradientArray = gradient.toArray
+      val regVal = if (effectiveL2RegParam == 0.0) {
+        0.0
+      } else {
+        var sum = 0.0
+        coeffs.foreachActive { (index, value) =>
+          // The following code will compute the loss of the regularization; also
+          // the gradient of the regularization, and add back to totalGradientArray.
+          sum += {
+            if ($(standardization)) {
+              totalGradientArray(index) += effectiveL2RegParam * value
+              value * value
+            } else {
+              if (featuresStd(index) != 0.0) {
+                // If `standardization` is false, we still standardize the data
+                // to improve the rate of convergence; as a result, we have to
+                // perform this reverse standardization by penalizing each component
+                // differently to get effectively the same objective function when
+                // the training dataset is not standardized.
+                val temp = value / (featuresStd(index) * featuresStd(index))
+                totalGradientArray(index) += effectiveL2RegParam * temp
+                value * temp
+              } else {
+                0.0
+              }
+            }
+          }
+        }
+        0.5 * effectiveL2RegParam * sum
+      }
+      regVal
+    }
+
+  val agg = new LeastSquaresAggregator(null, numFeatures, yStd, yMean, $(fitIntercept),
+      bcFeaturesStd, bcFeaturesMean)
+    val costFun = new CostFunction[LeastSquaresAggregator](instances, agg, regFun)
 
     val optimizer = if ($(elasticNetParam) == 0.0 || effectiveRegParam == 0.0) {
       new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
@@ -358,7 +416,6 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
       var state: optimizer.State = null
       while (states.hasNext) {
         state = states.next()
-        println(state.x(0) / featuresStd(0) * yStd)
         arrayBuilder += state.adjustedValue
       }
       if (state == null) {
@@ -1040,23 +1097,26 @@ class LinearRegressionSummary private[regression] (
 //}
 
 final class LeastSquaresAggregator(
-    bcCoefficients: Broadcast[Vector],
+    coefficients: Broadcast[Vector] = null,
+    numFeatures: Int,
     labelStd: Double,
     labelMean: Double,
     fitIntercept: Boolean,
     bcFeaturesStd: Broadcast[Array[Double]],
     bcFeaturesMean: Broadcast[Array[Double]]) extends DifferentiableLossAggregator[Instance,
-  LeastSquaresAggregator]
+  Vector, LeastSquaresAggregator]
   with Serializable {
 
   protected var weightSum: Double = 0.0
   protected var lossSum = 0.0
 
-  protected val dim = bcCoefficients.value.size
+//  protected val dim = bcCoefficients.value.size
+//  protected val dim = if (fitIntercept) numFeatures + 1 else numFeatures
+  protected val dim = numFeatures
   // make transient so we do not serialize between aggregation stages
   @transient private lazy val featuresStd = bcFeaturesStd.value
   @transient private lazy val effectiveCoefAndOffset = {
-    val coefficientsArray = bcCoefficients.value.toArray.clone()
+    val coefficientsArray = coefficients.value.toArray.clone()
     val featuresMean = bcFeaturesMean.value
     var sum = 0.0
     var i = 0
@@ -1084,7 +1144,7 @@ final class LeastSquaresAggregator(
    * @param instance The instance of data point to be added.
    * @return This LeastSquaresAggregator object.
    */
-  override def addInPlace(instance: Instance): this.type = {
+  override def add(instance: Instance): this.type = {
     instance match { case Instance(label, weight, features) =>
       require(dim == features.size, s"Dimensions mismatch when adding new sample." +
         s" Expecting $dim but got ${features.size}.")
@@ -1109,6 +1169,11 @@ final class LeastSquaresAggregator(
       this
     }
   }
+
+  override def create(coeff: Broadcast[Vector]): LeastSquaresAggregator = {
+    new LeastSquaresAggregator(coeff, numFeatures, labelStd, labelMean,
+      fitIntercept, bcFeaturesStd, bcFeaturesMean)
+  }
 }
 
 
@@ -1129,52 +1194,57 @@ private class LeastSquaresCostFun(
     aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
 
   override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
-    val coeffs = Vectors.fromBreeze(coefficients)
-    val bcCoeffs = instances.context.broadcast(coeffs)
-    val localFeaturesStd = bcFeaturesStd.value
-
-    val leastSquaresAggregator = {
-      val seqOp = (c: LeastSquaresAggregator, instance: Instance) => c.add(instance)
-      val combOp = (c1: LeastSquaresAggregator, c2: LeastSquaresAggregator) => c1.merge(c2)
-
-      instances.treeAggregate(
-        new LeastSquaresAggregator(bcCoeffs, labelStd, labelMean, fitIntercept, bcFeaturesStd,
-          bcFeaturesMean))(seqOp, combOp, aggregationDepth)
-    }
-
-    val totalGradientArray = leastSquaresAggregator.gradient.toArray
-    bcCoeffs.destroy(blocking = false)
-
-    val regVal = if (effectiveL2regParam == 0.0) {
-      0.0
-    } else {
-      var sum = 0.0
-      coeffs.foreachActive { (index, value) =>
-        // The following code will compute the loss of the regularization; also
-        // the gradient of the regularization, and add back to totalGradientArray.
-        sum += {
-          if (standardization) {
-            totalGradientArray(index) += effectiveL2regParam * value
-            value * value
-          } else {
-            if (localFeaturesStd(index) != 0.0) {
-              // If `standardization` is false, we still standardize the data
-              // to improve the rate of convergence; as a result, we have to
-              // perform this reverse standardization by penalizing each component
-              // differently to get effectively the same objective function when
-              // the training dataset is not standardized.
-              val temp = value / (localFeaturesStd(index) * localFeaturesStd(index))
-              totalGradientArray(index) += effectiveL2regParam * temp
-              value * temp
-            } else {
-              0.0
-            }
-          }
-        }
-      }
-      0.5 * effectiveL2regParam * sum
-    }
-
-    (leastSquaresAggregator.loss + regVal, new BDV(totalGradientArray))
+    (0.0, coefficients)
+//    val coeffs = Vectors.fromBreeze(coefficients)
+//    val bcCoeffs = instances.context.broadcast(coeffs)
+//    val localFeaturesStd = bcFeaturesStd.value
+//
+//    val leastSquaresAggregator = {
+//      val seqOp = (c: LeastSquaresAggregator, instance: Instance) => c.add(instance)
+//      val combOp = (c1: LeastSquaresAggregator, c2: LeastSquaresAggregator) => c1.merge(c2)
+//
+//      instances.treeAggregate(
+//        new LeastSquaresAggregator(bcCoeffs, labelStd, labelMean, fitIntercept, bcFeaturesStd,
+//          bcFeaturesMean))(seqOp, combOp, aggregationDepth)
+//    }
+//
+//    val totalGradientArray = leastSquaresAggregator.gradient.toArray
+//    bcCoeffs.destroy(blocking = false)
+//    /*
+//      val fun = (idx: Int) => coeffs(idx) * value
+//      val stdFun = (idx: A) => f(idx) / localFeaturesStd(idx)
+//     */
+//
+//    val regVal = if (effectiveL2regParam == 0.0) {
+//      0.0
+//    } else {
+//      var sum = 0.0
+//      coeffs.foreachActive { (index, value) =>
+//        // The following code will compute the loss of the regularization; also
+//        // the gradient of the regularization, and add back to totalGradientArray.
+//        sum += {
+//          if (standardization) {
+//            totalGradientArray(index) += effectiveL2regParam * value
+//            value * value
+//          } else {
+//            if (localFeaturesStd(index) != 0.0) {
+//              // If `standardization` is false, we still standardize the data
+//              // to improve the rate of convergence; as a result, we have to
+//              // perform this reverse standardization by penalizing each component
+//              // differently to get effectively the same objective function when
+//              // the training dataset is not standardized.
+//              val temp = value / (localFeaturesStd(index) * localFeaturesStd(index))
+//              totalGradientArray(index) += effectiveL2regParam * temp
+//              value * temp
+//            } else {
+//              0.0
+//            }
+//          }
+//        }
+//      }
+//      0.5 * effectiveL2regParam * sum
+//    }
+//
+//    (leastSquaresAggregator.loss + regVal, new BDV(totalGradientArray))
   }
 }

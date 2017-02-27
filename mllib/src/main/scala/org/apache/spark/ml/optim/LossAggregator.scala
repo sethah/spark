@@ -16,14 +16,20 @@
  */
 package org.apache.spark.ml.optim
 
+import breeze.optimize.DiffFunction
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
+import org.apache.spark.rdd.RDD
+import breeze.linalg.{DenseVector => BDV}
+import org.apache.spark.broadcast.Broadcast
 
-trait LossAggregator[Datum, Agg <: LossAggregator[Datum, Agg]] {
+import scala.reflect.ClassTag
+
+trait LossAggregator[Datum, Coeff, Agg <: LossAggregator[Datum, Coeff, Agg]] {
   protected var weightSum: Double
   protected var lossSum: Double
 
-  def addInPlace(instance: Datum): this.type
-  def add(instance: Datum): this.type = addInPlace(instance)
+  def add(instance: Datum): this.type
   def merge(other: Agg): this.type = {
 
     if (other.weightSum != 0) {
@@ -39,12 +45,13 @@ trait LossAggregator[Datum, Agg <: LossAggregator[Datum, Agg]] {
   }
 }
 
-trait DifferentiableLossAggregator[Datum, Agg <: DifferentiableLossAggregator[Datum, Agg]]
-  extends LossAggregator[Datum, Agg] {
+trait DifferentiableLossAggregator[Datum, Coeff,
+Agg <: DifferentiableLossAggregator[Datum, Coeff, Agg]]
+  extends LossAggregator[Datum, Coeff, Agg] {
   protected val dim: Int
   protected lazy val gradientSumArray: Array[Double] = Array.ofDim[Double](dim)
 
-  def addInPlace(instance: Datum): this.type
+//  def addInPlace(instance: Datum): this.type
   override def merge(other: Agg): this.type = {
     require(dim == other.dim, s"Dimensions mismatch when merging with another " +
       s"LeastSquaresAggregator. Expecting $dim but got ${other.dim}.")
@@ -64,11 +71,53 @@ trait DifferentiableLossAggregator[Datum, Agg <: DifferentiableLossAggregator[Da
     this
   }
 
-  def gradient: Vector = {
+  def gradient: Coeff = {
     require(weightSum > 0.0, s"The effective number of instances should be " +
       s"greater than 0.0, but $weightSum.")
     val result = Vectors.dense(gradientSumArray.clone())
     BLAS.scal(1.0 / weightSum, result)
     result
+  }
+
+  def create(coeff: Broadcast[Coeff]): Agg
+}
+
+//class MyCostFunction[Agg: ClassTag](
+//   val instances: RDD[Instance],
+//   val agg: Agg,
+//   val regFun: (gradient, coeff) => Double)(implicit canAdd: CanAdd[Agg, Instance],
+//                       canMerge: CanMerge[Agg]) extends DiffFunction[BDV[Double]] {
+//
+//  override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
+//    val bcCoefficients = instances.context.broadcast(Vectors.dense(coefficients.data))
+//    val thisAgg = agg.create(bcCoefficients)
+//    val seqOp = (agg: Agg, x: Instance) => canAdd.add(agg, x)
+//    val combOp = (agg1: Agg, agg2: Agg) => canMerge.merge(agg2)
+////    val seqOp = (agg: Agg, x: Instance) => agg.add(x)
+////    val combOp = (agg1: Agg, agg2: Agg) => agg1.merge(agg2)
+//    val newAgg = instances.treeAggregate(thisAgg)(seqOp, combOp)
+//    val gradient = newAgg.gradient
+//    val regLoss = regFun(gradient, new DenseVector(coefficients.data))
+//    (newAgg.loss + regLoss, gradient.asBreeze.toDenseVector)
+//
+//  }
+//
+//}
+
+class CostFunction[Agg <: DifferentiableLossAggregator[Instance, Vector, Agg]: ClassTag](
+     val instances: RDD[Instance],
+     val agg: Agg,
+     val regFun: (Vector, Vector) => Double)
+  extends DiffFunction[BDV[Double]] {
+
+  override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
+    val bcCoefficients = instances.context.broadcast(Vectors.dense(coefficients.data))
+    val thisAgg = agg.create(bcCoefficients)
+    val seqOp = (agg: Agg, x: Instance) => agg.add(x)
+    val combOp = (agg1: Agg, agg2: Agg) => agg1.merge(agg2)
+    val newAgg = instances.treeAggregate(thisAgg)(seqOp, combOp)
+    val gradient = newAgg.gradient
+    val regLoss = regFun(gradient, new DenseVector(coefficients.data))
+    (newAgg.loss + regLoss, gradient.asBreeze.toDenseVector)
   }
 }
