@@ -25,18 +25,22 @@ import org.scalatest.concurrent.Eventually._
 import org.scalatest.BeforeAndAfter
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
+import org.apache.spark.sql.catalyst.expressions.codegen.GenerateUnsafeProjection
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, SpecialSum}
 import org.apache.spark.sql.execution.{SparkPlan, SparkStrategy}
 import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.apache.spark.sql.types._
 import org.apache.spark.{SparkEnv, SparkException}
 import org.apache.spark.sql.execution.streaming._
-import org.apache.spark.sql.expressions.{MutableAggregationBuffer, UserDefinedAggregateFunction}
+import org.apache.spark.sql.expressions.{ModelUserDefinedAggregateFunction, MutableAggregationBuffer, UserDefinedAggregateFunction}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.streaming.util.BlockingSource
 import org.apache.spark.util.ManualClock
 import org.apache.spark.sql.execution.debug._
+
+import scala.collection.mutable
 
 
 class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
@@ -82,25 +86,75 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     }
   }
 
+  test("udaf") {
+//    val df = Seq(0, 1, 2).toDF("x")
+//    val aggdf = df.agg((new ModelAgg)(col("x")))//.show()
+//    println(aggdf.logicalPlan.treeString)
+    val inputData = MemoryStream[Int]
+    val query = inputData.toDS
+//      .groupBy("value")
+      .agg((new ModelAgg())(col("value")))
+      .writeStream
+      .outputMode("complete")
+      .format("console")
+      .start()
+    inputData.addData(Seq(1, 2, 3))
+    Thread.sleep(1000)
+    inputData.addData(Seq(1, 2, 4))
+    query.awaitTermination(5000)
+  }
+
+  test("sgd") {
+    val sgdAgg = new SGDAgg(1)
+    val rng = new scala.util.Random(42)
+    val data = (0 until 100).map { j =>
+      val label = rng.nextInt(10).toDouble
+      val features = Array(label / 2.0 + rng.nextDouble() * 0.1)
+      (label, features)
+    }
+    val (batch1, batch2) = data.splitAt(50)
+//    val df = data.toDF("y", "x")
+//    val aggdf = df.agg(sgdAgg(col("y"), col("x")))
+//    println(aggdf.first().getAs[mutable.WrappedArray[Double]](0).mkString(","))
+    val inputData = MemoryStream[(Double, Array[Double])]
+    val query = inputData.toDS
+      .agg(sgdAgg(col("_1"), col("_2")))
+      .writeStream
+      .outputMode("complete")
+      .format("console")
+      .start()
+    inputData.addData(batch1)
+    Thread.sleep(1000)
+    inputData.addData(batch2)
+    query.awaitTermination(5000)
+  }
+
   test("mytest") {
-//    val mystrategy = new SparkStrategy {
-//      override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
-//        case SpecialSum(child) =>
-//          SpecialSumExec(planLater(child)) :: Nil
-//        case _ => Nil
-//      }
-//    }
-//    spark.experimental.extraStrategies = mystrategy :: Nil
+    val mystrategy = new SparkStrategy {
+      override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+        case SpecialSum(child) =>
+          SpecialSumExec(planLater(child)) :: Nil
+        case _ => Nil
+      }
+    }
+    spark.experimental.extraStrategies = mystrategy :: Nil
 //    val dataset = spark.sparkContext.parallelize(Seq("a", "b", "c", "a", "a", "c", "c", "b"), 4)
 //      .map(Tuple1.apply).toDF("x")
-    val dataset = spark.sparkContext.parallelize(0 to 4)
-      .map(Tuple1.apply).toDF("x")
+//    val dataset = spark.sparkContext.parallelize(0 to 4)
+//      .map(Tuple1.apply).toDF("x")
+    val dataset = Seq(Array(1.0, 2.0), Array(2.0, 3.0), Array(2.0, 3.0)).toDF("x")
+//    val dataset = spark.createDataFrame(rows)
+//    val dataset = Seq((1, 2), (3, 4), (5, 6)).toDF("x", "y")
+//    val dataset = Seq(0,1,2).toDF("x")
 //    val df = dataset.groupBy("x").count()
-//    val df = dataset.specialsum(col("x"))
-    val df = dataset.agg((new ModelAgg())(col("x")))
-//    val df = dataset.agg(sum(col("x")))
+//    dataset.show()
+//    val grow = new GenericInternalRow(Array(1.0)map(_.asInstanceOf[Any]))
+//    val proj = GenerateUnsafeProjection.generate()
+    dataset.specialsum(col("x")).show()
+//    val df = dataset.agg((new ModelAgg())(col("x")))
+//    val df = dataset.agg(sum(col("x")), sum(col("y")))
 //    println(df.debugCodegen())
-    df.show()
+//    df.show()
 //    val myExecution = new IncrementalModelExecution(spark, df.logicalPlan)
 //    myExecution.sparkPlan
 
@@ -603,7 +657,7 @@ object StreamingQuerySuite {
   var clock: ManualClock = null
 }
 
-class ModelAgg() extends UserDefinedAggregateFunction {
+class ModelAgg extends ModelUserDefinedAggregateFunction {
 
   // Input Data Type Schema
   def inputSchema: StructType = StructType(Array(StructField("item", IntegerType)))
@@ -618,6 +672,10 @@ class ModelAgg() extends UserDefinedAggregateFunction {
 
   // Self-explaining
   def deterministic: Boolean = true
+
+  def initialize(buffer: MutableAggregationBuffer, state: Any): Unit = {
+    buffer(0) = state.asInstanceOf[Int]
+  }
 
   // This function is called whenever key changes
   def initialize(buffer: MutableAggregationBuffer): Unit = {
@@ -637,6 +695,89 @@ class ModelAgg() extends UserDefinedAggregateFunction {
   // Called after all the entries are exhausted.
   def evaluate(buffer: Row): Integer = {
     buffer.getInt(0)
+  }
+
+}
+
+class SGDAgg(numFeatures: Int) extends ModelUserDefinedAggregateFunction {
+
+  val stepSize = 0.01
+
+  // Input Data Type Schema
+  def inputSchema: StructType = StructType(Array(
+    StructField("label", DoubleType),
+    StructField("features", ArrayType(DoubleType))
+  ))
+
+  // Intermediate Schema
+  def bufferSchema: StructType = StructType(Array(
+    StructField("count", LongType),
+    StructField("coefficients", ArrayType(DoubleType))
+  ))
+
+  // Returned Data Type .
+  def dataType: DataType = ArrayType(DoubleType)
+
+  // Self-explaining
+  def deterministic: Boolean = true
+
+  def initialize(buffer: MutableAggregationBuffer, state: Any): Unit = {
+    val previousModel = state.asInstanceOf[(Long, Array[Double])]
+    buffer.update(0, previousModel._1)
+    buffer.update(1, previousModel._2)
+    println("INITIAL BUFFER", buffer.getAs[mutable.WrappedArray[Double]](1).mkString(","))
+  }
+
+  // This function is called whenever key changes
+  def initialize(buffer: MutableAggregationBuffer): Unit = {
+    buffer.update(0, 0L)
+    buffer.update(1, new Array[Double](numFeatures))
+  }
+
+  // Iterate over each entry of a group
+  def update(buffer: MutableAggregationBuffer, input: Row): Unit = {
+    if (!input.isNullAt(0)) {
+      val buff = buffer.getAs[mutable.WrappedArray[Double]](1)
+      val features = input.getAs[mutable.WrappedArray[Double]](1)
+      val label = input.getDouble(0)
+      val error = label - dot(features.toArray, buff.toArray)
+      val gradient = features.map(_ * error)
+//      println("old model", buff.mkString(","))
+//      println("data", label, features.mkString(","))
+      buff.indices.foreach { i =>
+        buff(i) += gradient(i) * stepSize
+      }
+//      println("new model", buff.mkString(","))
+//      println("gradient", gradient.mkString(","))
+
+      buffer.update(0, buffer.getLong(0) + 1)
+      buffer.update(1, buff)
+    }
+  }
+
+  def dot(x: Array[Double], y: Array[Double]): Double = {
+    x.zip(y).foldLeft(0.0) { case (acc, tup) => acc + tup._1 * tup._2}
+  }
+
+  // Merge two partial aggregates
+  def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
+    // weighted average of the two
+    val otherCount = buffer2.getLong(0)
+    val otherFeatures = buffer2.getAs[mutable.WrappedArray[Double]](1)
+    val thisCount = buffer1.getLong(0)
+    val buff = buffer1.getAs[mutable.WrappedArray[Double]](1)
+    buff.indices.foreach { i =>
+      buff(i) = (buff(i) * thisCount + otherFeatures(i) * otherCount) / (thisCount + otherCount)
+    }
+
+    buffer1.update(1, buff)
+    buffer1.update(0, buffer1.getLong(0) + otherCount)
+
+  }
+
+  // Called after all the entries are exhausted.
+  def evaluate(buffer: Row): Array[Double] = {
+    buffer.getAs[mutable.WrappedArray[Double]](1).toArray
   }
 
 }

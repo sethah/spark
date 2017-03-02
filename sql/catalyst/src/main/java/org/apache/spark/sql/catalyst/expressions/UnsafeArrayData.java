@@ -71,7 +71,7 @@ public final class UnsafeArrayData extends ArrayData {
   /** The position to start storing array elements, */
   private long elementOffset;
 
-  private long getElementOffset(int ordinal, int elementSize) {
+  public long getElementOffset(int ordinal, int elementSize) {
     return elementOffset + ordinal * elementSize;
   }
 

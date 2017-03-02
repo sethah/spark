@@ -21,6 +21,7 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.{CatalystConf, CatalystTypeConverters, InternalRow}
 import org.apache.spark.sql.catalyst.analysis
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Literal}
+import org.apache.spark.sql.catalyst.util.ArrayData
 import org.apache.spark.sql.types.{StructField, StructType}
 
 object LocalRelation {
@@ -37,8 +38,10 @@ object LocalRelation {
   }
 
   def fromProduct(output: Seq[Attribute], data: Seq[Product]): LocalRelation = {
+    println("from product", output.head.toString)
     val schema = StructType.fromAttributes(output)
     val converter = CatalystTypeConverters.createToCatalystConverter(schema)
+    println(converter(data.head).isInstanceOf[ArrayData])
     LocalRelation(output, data.map(converter(_).asInstanceOf[InternalRow]))
   }
 }

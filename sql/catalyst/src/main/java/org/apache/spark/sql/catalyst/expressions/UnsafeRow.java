@@ -112,17 +112,17 @@ public final class UnsafeRow extends InternalRow implements Externalizable, Kryo
   // Private fields and methods
   //////////////////////////////////////////////////////////////////////////////
 
-  private Object baseObject;
-  private long baseOffset;
+  Object baseObject;
+  long baseOffset;
 
   /** The number of fields in this row, used for calculating the bitset width (and in assertions) */
-  private int numFields;
+  int numFields;
 
   /** The size of this row's backing data, in bytes) */
-  private int sizeInBytes;
+  int sizeInBytes;
 
   /** The width of the null tracking bit set, in bytes */
-  private int bitSetWidthInBytes;
+  int bitSetWidthInBytes;
 
   private long getFieldOffset(int ordinal) {
     return baseOffset + bitSetWidthInBytes + ordinal * 8L;
@@ -154,6 +154,7 @@ public final class UnsafeRow extends InternalRow implements Externalizable, Kryo
   public Object getBaseObject() { return baseObject; }
   public long getBaseOffset() { return baseOffset; }
   public int getSizeInBytes() { return sizeInBytes; }
+  public int getBitSetWidthInBytes() { return bitSetWidthInBytes; }
 
   @Override
   public int numFields() { return numFields; }

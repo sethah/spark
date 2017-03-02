@@ -17,11 +17,14 @@
 
 package org.apache.spark.sql.execution.streaming
 
+import java.nio.ByteBuffer
+
 import org.apache.spark.SparkEnv
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
+//import org.apache.spark.sql.catalyst.expressions.codegen.{Predicate => _, _}
 import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, GenerateUnsafeProjection, Predicate, UnsafeRowWriter}
 import org.apache.spark.sql.catalyst.plans.logical.{EventTimeWatermark, LogicalKeyedState}
 import org.apache.spark.sql.catalyst.plans.physical.{ClusteredDistribution, Distribution, Partitioning}
@@ -50,7 +53,6 @@ trait StatefulOperator extends SparkPlan {
   def stateId: Option[OperatorStateId]
 
   protected def getStateId: OperatorStateId = attachTree(this) {
-    println(stateId.get.batchId, Thread.currentThread().getId())
     stateId.getOrElse {
       throw new IllegalStateException("State location not present for execution")
     }
@@ -69,6 +71,17 @@ trait StateStoreWriter extends StatefulOperator {
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"),
     "numTotalStateRows" -> SQLMetrics.createMetric(sparkContext, "number of total state rows"),
     "numUpdatedStateRows" -> SQLMetrics.createMetric(sparkContext, "number of updated state rows"))
+}
+
+case class StatefulInit(child: SparkPlan) extends execution.UnaryExecNode {
+
+  override protected def doExecute(): RDD[InternalRow] = {
+    child.execute()
+  }
+
+  override def output: Seq[Attribute] = child.output
+
+  override def outputPartitioning: Partitioning = child.outputPartitioning
 }
 
 /**
@@ -96,7 +109,6 @@ case class StateStoreRestoreExec(
       Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
         val getKey = GenerateUnsafeProjection.generate(keyExpressions, child.output)
         val e = SparkEnv.get.executorId
-//        println("GET KEY", getKey.
         iter.flatMap { row =>
           val key = getKey(row)
 //          println("key size", key.getSizeInBytes(), key.numFields(), key.getInt(0), e,
@@ -119,24 +131,75 @@ case class SpecialSumExec(child: SparkPlan) extends execution.UnaryExecNode {
       val result = new UnsafeRow(1)
       val buff = new BufferHolder(result, 0)
       val rowWriter = new UnsafeRowWriter(buff, 1)
-      var sum = 0L
+//      val arrayWriter = new UnsafeArrayWriter()
+//      var sum = 0L
+      val sumArr = new Array[Double](2)
       while (it.hasNext) {
-        val next = it.next().getInt(0)
-        sum += next
+        // this is an on heap unsafe row
+        // next is a row which is an array
+        val next = it.next().asInstanceOf[UnsafeRow]
+        val arr = next.getArray(0)
+        println(arr.getElementOffset(0, 8), arr.getBaseOffset, arr.numElements())
+        val r = new UnsafeRow(1)
+        r.pointTo(arr.getBaseObject, arr.getBaseOffset, 32)
+        println(r)
+        arr.setNullAt(0)
+        println(r)
+//        println(next, next.getBaseObject, next.getBaseOffset, next.numFields(), next.getSizeInBytes,
+//          next.getBaseOffset)
+        println(next)
+        val offsetSize = next.getLong(0)
+        val offset = (offsetSize >> 32).toInt
+        val size = offsetSize.toInt
+        println(offset, size, offsetSize, next.getBitSetWidthInBytes, next.getBaseOffset)
+        (0 until 2).foreach { j =>
+          println(arr.getDouble(j))
+          sumArr(j) += arr.getDouble(j)
+        }
+        next.setNullAt(0)
+        next.copy()
+        println(next)
       }
-      rowWriter.write(0, sum)
-      Iterator.single(result)
-    }.coalesce(1, true).mapPartitions { it =>
-      val result = new UnsafeRow(1)
-      val buff = new BufferHolder(result, 0)
-      val rowWriter = new UnsafeRowWriter(buff, 1)
-      var sum = 0L
-      while (it.hasNext) {
-        sum += it.next().getInt(0)
-      }
-      rowWriter.write(0, sum)
-      Iterator.single(result)
+      val grow = new GenericInternalRow(Array[Any](UnsafeArrayData.fromPrimitiveArray(sumArr)))
+      val proj = UnsafeProjection.create(output, output)
+      val urow = proj(grow).copy()
+//      val bbuf = java.nio.ByteBuffer.allocate(8*sumArr.length)
+//      bbuf.asDoubleBuffer.put(java.nio.DoubleBuffer.wrap(sumArr))
+//      val b = bbuf.array
+//      b.foreach { bt =>
+//        rowWriter.write()
+//      }
+//      println(result, sumArr.mkString(","))
+//      val unsafeData = UnsafeArrayData.fromPrimitiveArray(b)
+//      val sizeInBytes = unsafeData.getSizeInBytes()
+//      buff.grow(sizeInBytes)
+//      unsafeData.writeToMemory(buff.buffer, buff.cursor)
+//      buff.cursor += sizeInBytes
+//      rowWriter.setOffsetAndSize(0, tmpCursor, holder.cursor - tmpCursor)
+
+//      rowWriter.write(0, unsafeData.toByteArray)
+//      unsafeData.writeToMemory(result, 16)
+//      println(unsafeData.toDoubleArray().mkString(","))
+//      val bytes = unsafeData.toByteArray
+//      println(b.mkString(","), b.length)
+//      rowWriter.write(0, b, 32, 24)
+//      println(result, result.numFields())
+//      (0 until 3).foreach { j =>
+//        rowWriter.write(j, sumArr(j))
+//      }
+      Iterator.single(urow)
     }
+//      .coalesce(1, true).mapPartitions { it =>
+//      val result = new UnsafeRow(1)
+//      val buff = new BufferHolder(result, 0)
+//      val rowWriter = new UnsafeRowWriter(buff, 1)
+//      var sum = 0L
+//      while (it.hasNext) {
+//        sum += it.next().getInt(0)
+//      }
+//      rowWriter.write(0, sum)
+//      Iterator.single(result)
+//    }
   }
 
   override def output: Seq[Attribute] = child.output
@@ -321,6 +384,9 @@ case class StateStoreSaveExec(
               store.put(key.copy(), row.copy())
               numUpdatedStateRows += 1
             }
+            val blockId = StreamingModelBlockId(0, getStateId.batchId)
+            SparkEnv.get.blockManager.putSingle(blockId, 123, StorageLevel.MEMORY_AND_DISK)
+            println("JUST PUT UP BLOCK ID", blockId)
             store.commit()
             numTotalStateRows += store.numKeys()
             store.iterator().map { case (k, v) =>

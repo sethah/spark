@@ -20,7 +20,7 @@ package org.apache.spark.sql.execution.aggregate
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
 import org.apache.spark.sql.execution.SparkPlan
-import org.apache.spark.sql.execution.streaming.{StateStoreRestoreExec, StateStoreSaveExec, StatefulAggExec, StatefulAggSaveExec}
+import org.apache.spark.sql.execution.streaming._
 import org.apache.spark.sql.internal.SQLConf
 
 /**
@@ -34,7 +34,21 @@ object AggUtils {
       aggregateAttributes: Seq[Attribute] = Nil,
       initialInputBufferOffset: Int = 0,
       resultExpressions: Seq[NamedExpression] = Nil,
-      child: SparkPlan): SparkPlan = {
+      child: SparkPlan,
+      getModel: Boolean = false): SparkPlan = {
+    // TODO: notes to self
+    /*
+      We use this function to "plan" the aggregate, which just means create a physical ndoe that
+      does some part of the aggregation. In our streaming case, we want to modify how the agg
+      buffer is initialized so that it gets the previous model from the block manager or from
+      the state store somehow. One way to do this is to create a rule in the incremental execution
+      that finds our initial aggregation phase and passes in a block id to get from the block store.
+      You have to leave that as a placeholder here, because we won't know the block id until
+      the stream is running. Problem is that it might be a hash agg exec we are looking for or
+      sort or something else. We would like a single place to modify this I think.
+
+
+     */
     val useHash = HashAggregateExec.supportsAggregate(
       aggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes))
     if (useHash) {
@@ -345,9 +359,96 @@ object AggUtils {
 
     finalAndCompleteAggregate :: Nil
   }
-  def planModelStreamingAggregation(child: SparkPlan): Seq[SparkPlan] = {
 
-    Nil
+  def planModelStreamingAggregation(
+                                  groupingExpressions: Seq[NamedExpression],
+                                  functionsWithoutDistinct: Seq[AggregateExpression],
+                                  resultExpressions: Seq[NamedExpression],
+                                  child: SparkPlan): Seq[SparkPlan] = {
+
+    println("PLAN STREAMING MODEL AGGREGATION")
+    val groupingAttributes = groupingExpressions.map(_.toAttribute)
+
+    // idea: put the aggregate inside of a placeholder node, then pattern match on that as a
+    // strategy: case DummyExec(HashAggregateExec(_)) => HashAggregateExec(batchId)
+    // ya! try it out
+
+    val partialAggregate: SparkPlan = {
+      val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = Partial))
+      val aggregateAttributes = aggregateExpressions.map(_.resultAttribute)
+      // We will group by the original grouping expression, plus an additional expression for the
+      // DISTINCT column. For example, for AVG(DISTINCT value) GROUP BY key, the grouping
+      // expressions will be [key, value].
+      createAggregate(
+        groupingExpressions = groupingExpressions,
+        aggregateExpressions = aggregateExpressions,
+        aggregateAttributes = aggregateAttributes,
+        resultExpressions = groupingAttributes ++
+          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
+        child = child)
+    }
+
+    val initPlaceholder = StatefulInit(partialAggregate)
+
+    val partialMerged1: SparkPlan = {
+      val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = PartialMerge))
+      val aggregateAttributes = aggregateExpressions.map(_.resultAttribute)
+      createAggregate(
+        requiredChildDistributionExpressions =
+          Some(groupingAttributes),
+        groupingExpressions = groupingAttributes,
+        aggregateExpressions = aggregateExpressions,
+        aggregateAttributes = aggregateAttributes,
+        initialInputBufferOffset = groupingAttributes.length,
+        resultExpressions = groupingAttributes ++
+          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
+        child = initPlaceholder)
+    }
+
+//    val restored = StateStoreRestoreExec(groupingAttributes, None, partialMerged1)
+
+    val partialMerged2: SparkPlan = {
+      val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = PartialMerge))
+      val aggregateAttributes = aggregateExpressions.map(_.resultAttribute)
+      createAggregate(
+        requiredChildDistributionExpressions =
+          Some(groupingAttributes),
+        groupingExpressions = groupingAttributes,
+        aggregateExpressions = aggregateExpressions,
+        aggregateAttributes = aggregateAttributes,
+        initialInputBufferOffset = groupingAttributes.length,
+        resultExpressions = groupingAttributes ++
+          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
+        child = partialMerged1)
+    }
+    // Note: stateId and returnAllStates are filled in later with preparation rules
+    // in IncrementalExecution.
+    val saved =
+    StateStoreSaveExec(
+      groupingAttributes,
+      stateId = None,
+      outputMode = None,
+      eventTimeWatermark = None,
+      partialMerged2)
+
+
+    val finalAndCompleteAggregate: SparkPlan = {
+      val finalAggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = Final))
+      // The attributes of the final aggregation buffer, which is presented as input to the result
+      // projection:
+      val finalAggregateAttributes = finalAggregateExpressions.map(_.resultAttribute)
+
+      createAggregate(
+        requiredChildDistributionExpressions = Some(groupingAttributes),
+        groupingExpressions = groupingAttributes,
+        aggregateExpressions = finalAggregateExpressions,
+        aggregateAttributes = finalAggregateAttributes,
+        initialInputBufferOffset = groupingAttributes.length,
+        resultExpressions = resultExpressions,
+        child = saved)
+    }
+
+    finalAndCompleteAggregate :: Nil
 
   }
 }

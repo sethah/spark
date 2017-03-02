@@ -29,6 +29,7 @@ import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.types.{DecimalType, StringType, StructType}
+import org.apache.spark.storage.BlockId
 import org.apache.spark.unsafe.KVIterator
 import org.apache.spark.util.Utils
 
@@ -42,7 +43,8 @@ case class HashAggregateExec(
     aggregateAttributes: Seq[Attribute],
     initialInputBufferOffset: Int,
     resultExpressions: Seq[NamedExpression],
-    child: SparkPlan)
+    child: SparkPlan,
+    initialState: Option[BlockId] = None)
   extends UnaryExecNode with CodegenSupport {
 
   private[this] val aggregateBufferAttributes = {
@@ -102,6 +104,7 @@ case class HashAggregateExec(
         // so return an empty iterator.
         Iterator.empty
       } else {
+        println("creating tungsten iterator", initialState.map(_.toString).getOrElse("noblockhagg"))
         val aggregationIterator =
           new TungstenAggregationIterator(
             groupingExpressions,
@@ -116,7 +119,8 @@ case class HashAggregateExec(
             testFallbackStartsAt,
             numOutputRows,
             peakMemory,
-            spillSize)
+            spillSize,
+            initialState)
         if (!hasInput && groupingExpressions.isEmpty) {
           numOutputRows += 1
           Iterator.single[UnsafeRow](aggregationIterator.outputForEmptyGroupingKeyWithoutInput())
@@ -901,3 +905,98 @@ object HashAggregateExec {
     UnsafeFixedWidthAggregationMap.supportsAggregationBufferSchema(aggregationBufferSchema)
   }
 }
+
+//case class HashModelAggregateExec(
+//                              requiredChildDistributionExpressions: Option[Seq[Expression]],
+//                              groupingExpressions: Seq[NamedExpression],
+//                              aggregateExpressions: Seq[AggregateExpression],
+//                              aggregateAttributes: Seq[Attribute],
+//                              initialInputBufferOffset: Int,
+//                              resultExpressions: Seq[NamedExpression],
+//                              child: SparkPlan)
+//  extends UnaryExecNode with CodegenSupport {
+//
+//  private[this] val aggregateBufferAttributes = {
+//    aggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes)
+//  }
+//
+//  require(HashAggregateExec.supportsAggregate(aggregateBufferAttributes))
+//
+//  override lazy val allAttributes: AttributeSeq =
+//    child.output ++ aggregateBufferAttributes ++ aggregateAttributes ++
+//      aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes)
+//
+//  override lazy val metrics = Map(
+//    "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"),
+//    "peakMemory" -> SQLMetrics.createSizeMetric(sparkContext, "peak memory"),
+//    "spillSize" -> SQLMetrics.createSizeMetric(sparkContext, "spill size"),
+//    "aggTime" -> SQLMetrics.createTimingMetric(sparkContext, "aggregate time"))
+//
+//  override def output: Seq[Attribute] = resultExpressions.map(_.toAttribute)
+//
+//  override def outputPartitioning: Partitioning = child.outputPartitioning
+//
+//  override def producedAttributes: AttributeSet =
+//    AttributeSet(aggregateAttributes) ++
+//      AttributeSet(resultExpressions.diff(groupingExpressions).map(_.toAttribute)) ++
+//      AttributeSet(aggregateBufferAttributes)
+//
+//  override def requiredChildDistribution: List[Distribution] = {
+//    requiredChildDistributionExpressions match {
+//      case Some(exprs) if exprs.isEmpty => AllTuples :: Nil
+//      case Some(exprs) if exprs.nonEmpty => ClusteredDistribution(exprs) :: Nil
+//      case None => UnspecifiedDistribution :: Nil
+//    }
+//  }
+//
+//  // This is for testing. We force TungstenAggregationIterator to fall back to the unsafe row hash
+//  // map and/or the sort-based aggregation once it has processed a given number of input rows.
+//  private val testFallbackStartsAt: Option[(Int, Int)] = {
+//    sqlContext.getConf("spark.sql.TungstenAggregate.testFallbackStartsAt", null) match {
+//      case null | "" => None
+//      case fallbackStartsAt =>
+//        val splits = fallbackStartsAt.split(",").map(_.trim)
+//        Some((splits.head.toInt, splits.last.toInt))
+//    }
+//  }
+//
+//  protected override def doExecute(): RDD[InternalRow] = attachTree(this, "execute") {
+//    val numOutputRows = longMetric("numOutputRows")
+//    val peakMemory = longMetric("peakMemory")
+//    val spillSize = longMetric("spillSize")
+//
+//    child.execute().mapPartitions { iter =>
+//
+//      val hasInput = iter.hasNext
+//      if (!hasInput && groupingExpressions.nonEmpty) {
+//        // This is a grouped aggregate and the input iterator is empty,
+//        // so return an empty iterator.
+//        Iterator.empty
+//      } else {
+//        println("creating tungsten iterator")
+//        val aggregationIterator =
+//          new TungstenAggregationIterator(
+//            groupingExpressions,
+//            aggregateExpressions,
+//            aggregateAttributes,
+//            initialInputBufferOffset,
+//            resultExpressions,
+//            (expressions, inputSchema) =>
+//              newMutableProjection(expressions, inputSchema, subexpressionEliminationEnabled),
+//            child.output,
+//            iter,
+//            testFallbackStartsAt,
+//            numOutputRows,
+//            peakMemory,
+//            spillSize,
+//            None)
+//        if (!hasInput && groupingExpressions.isEmpty) {
+//          numOutputRows += 1
+//          Iterator.single[UnsafeRow](aggregationIterator.outputForEmptyGroupingKeyWithoutInput())
+//        } else {
+//          aggregationIterator
+//        }
+//      }
+//    }
+//  }
+//}

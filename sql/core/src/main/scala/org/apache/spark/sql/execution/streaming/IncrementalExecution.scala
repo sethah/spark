@@ -25,8 +25,10 @@ import org.apache.spark.sql.catalyst.expressions.{CurrentBatchTimestamp, Literal
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.aggregate.HashAggregateExec
 import org.apache.spark.sql.execution.{QueryExecution, SparkPlan, SparkPlanner, UnaryExecNode}
 import org.apache.spark.sql.streaming.OutputMode
+import org.apache.spark.storage.StreamingModelBlockId
 
 /**
  * A variant of [[QueryExecution]] that allows the execution of the given [[LogicalPlan]]
@@ -77,8 +79,21 @@ class IncrementalExecution(
 
   /** Locates save/restore pairs surrounding aggregation. */
   val state = new Rule[SparkPlan] {
+//    case class HashAggregateExec(
+//                                  requiredChildDistributionExpressions: Option[Seq[Expression]],
+//                                  groupingExpressions: Seq[NamedExpression],
+//                                  aggregateExpressions: Seq[AggregateExpression],
+//                                  aggregateAttributes: Seq[Attribute],
+//                                  initialInputBufferOffset: Int,
+//                                  resultExpressions: Seq[NamedExpression],
+//                                  child: SparkPlan,
+//                                  initialState: Option[BlockId] = None)
 
     override def apply(plan: SparkPlan): SparkPlan = plan transform {
+      case StatefulInit(HashAggregateExec(cd, ge, ae, aa, iibo, re, child, None)) =>
+        println("pattern matching stateful init")
+        HashAggregateExec(cd, ge, ae, aa, iibo, re, child,
+          Some(StreamingModelBlockId(0, currentBatchId - 1)))
       case StateStoreSaveExec(keys, None, None, None,
              UnaryExecNode(agg,
                StateStoreRestoreExec(keys2, None, child))) =>
@@ -95,6 +110,11 @@ class IncrementalExecution(
               keys,
               Some(stateId),
               child) :: Nil))
+      case StateStoreSaveExec(keys, None, None, None, child) =>
+        val stateId =
+          OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
+        StateStoreSaveExec(keys, Some(stateId), Some(outputMode), Some(currentEventTimeWatermark),
+          child)
       case StatefulAggExec(None, child) =>
         val stateId =
           OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)

@@ -266,6 +266,7 @@ class SparkSession private(
     SparkSession.setActiveSession(this)
     val schema = ScalaReflection.schemaFor[A].dataType.asInstanceOf[StructType]
     val attributeSeq = schema.toAttributes
+    println(schema.fields.mkString(","))
     Dataset.ofRows(self, LocalRelation.fromProduct(attributeSeq, data))
   }
 

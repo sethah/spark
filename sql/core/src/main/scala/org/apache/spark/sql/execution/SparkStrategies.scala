@@ -255,7 +255,11 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
         child match {
           case PhysicalAggregation(
           namedGroupingExpressions, aggregateExpressions, rewrittenResultExpressions, child) =>
-            aggregate.AggUtils.planModelStreamingAggregation(planLater(child))
+            aggregate.AggUtils.planModelStreamingAggregation(
+              namedGroupingExpressions,
+              aggregateExpressions,
+              rewrittenResultExpressions,
+              planLater(child))
         }
 
       case _ => {
