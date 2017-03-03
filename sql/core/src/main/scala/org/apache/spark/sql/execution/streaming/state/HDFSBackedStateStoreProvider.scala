@@ -242,6 +242,9 @@ private[state] class HDFSBackedStateStoreProvider(
     require(version >= 0, "Version cannot be less than 0")
     val newMap = new MapType()
     if (version > 0) {
+      // get the store from memory or from disk if it's not in memory, and put all the stored state
+      // into the new map. Here we can also put the store's map into the block manager so other
+      // things can get it.
       newMap.putAll(loadMap(version))
     }
     val store = new HDFSBackedStateStore(version, newMap)

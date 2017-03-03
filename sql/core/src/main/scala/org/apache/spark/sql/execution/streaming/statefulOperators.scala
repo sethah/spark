@@ -24,6 +24,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
+
+import scala.collection.mutable
 //import org.apache.spark.sql.catalyst.expressions.codegen.{Predicate => _, _}
 import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, GenerateUnsafeProjection, Predicate, UnsafeRowWriter}
 import org.apache.spark.sql.catalyst.plans.logical.{EventTimeWatermark, LogicalKeyedState}
@@ -381,12 +383,15 @@ case class StateStoreSaveExec(
             while (iter.hasNext) {
               val row = iter.next().asInstanceOf[UnsafeRow]
               val key = getKey(row)
+              println(s"Putting store $key, ${row.getLong(0)}, ${row.getArray(1).toDoubleArray.mkString(",")}")
               store.put(key.copy(), row.copy())
+              val blockId = StreamingModelBlockId(0, getStateId.batchId)
+              // TODO: just put the unsafe row?
+              SparkEnv.get.blockManager.putSingle(blockId, (row.getLong(0),
+                row.getArray(1).toDoubleArray), StorageLevel.MEMORY_AND_DISK)
+              println("JUST PUT UP BLOCK ID", blockId)
               numUpdatedStateRows += 1
             }
-            val blockId = StreamingModelBlockId(0, getStateId.batchId)
-            SparkEnv.get.blockManager.putSingle(blockId, 123, StorageLevel.MEMORY_AND_DISK)
-            println("JUST PUT UP BLOCK ID", blockId)
             store.commit()
             numTotalStateRows += store.numKeys()
             store.iterator().map { case (k, v) =>

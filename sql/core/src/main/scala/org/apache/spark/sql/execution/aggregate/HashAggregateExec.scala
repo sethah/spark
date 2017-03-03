@@ -43,8 +43,7 @@ case class HashAggregateExec(
     aggregateAttributes: Seq[Attribute],
     initialInputBufferOffset: Int,
     resultExpressions: Seq[NamedExpression],
-    child: SparkPlan,
-    initialState: Option[BlockId] = None)
+    child: SparkPlan)
   extends UnaryExecNode with CodegenSupport {
 
   private[this] val aggregateBufferAttributes = {
@@ -104,7 +103,7 @@ case class HashAggregateExec(
         // so return an empty iterator.
         Iterator.empty
       } else {
-        println("creating tungsten iterator", initialState.map(_.toString).getOrElse("noblockhagg"))
+//      println("creating tungsten iterator", initialState.map(_.toString).getOrElse("noblockhagg"))
         val aggregationIterator =
           new TungstenAggregationIterator(
             groupingExpressions,
@@ -119,8 +118,7 @@ case class HashAggregateExec(
             testFallbackStartsAt,
             numOutputRows,
             peakMemory,
-            spillSize,
-            initialState)
+            spillSize)
         if (!hasInput && groupingExpressions.isEmpty) {
           numOutputRows += 1
           Iterator.single[UnsafeRow](aggregationIterator.outputForEmptyGroupingKeyWithoutInput())

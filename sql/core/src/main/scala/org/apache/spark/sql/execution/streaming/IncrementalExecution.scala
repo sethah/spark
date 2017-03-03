@@ -20,13 +20,15 @@ package org.apache.spark.sql.execution.streaming
 import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql
+import org.apache.spark.{SparkEnv, sql}
 import org.apache.spark.sql.catalyst.expressions.{CurrentBatchTimestamp, Literal}
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.aggregate.HashAggregateExec
+import org.apache.spark.sql.execution.aggregate.{HashAggregateExec, ScalaModelUDAF, ScalaUDAF, SortAggregateExec}
 import org.apache.spark.sql.execution.{QueryExecution, SparkPlan, SparkPlanner, UnaryExecNode}
+import org.apache.spark.sql.expressions.{ModelAgg, MutableAggregationBuffer, SGDAgg}
 import org.apache.spark.sql.streaming.OutputMode
 import org.apache.spark.storage.StreamingModelBlockId
 
@@ -79,21 +81,33 @@ class IncrementalExecution(
 
   /** Locates save/restore pairs surrounding aggregation. */
   val state = new Rule[SparkPlan] {
-//    case class HashAggregateExec(
-//                                  requiredChildDistributionExpressions: Option[Seq[Expression]],
-//                                  groupingExpressions: Seq[NamedExpression],
-//                                  aggregateExpressions: Seq[AggregateExpression],
-//                                  aggregateAttributes: Seq[Attribute],
-//                                  initialInputBufferOffset: Int,
-//                                  resultExpressions: Seq[NamedExpression],
-//                                  child: SparkPlan,
-//                                  initialState: Option[BlockId] = None)
-
     override def apply(plan: SparkPlan): SparkPlan = plan transform {
-      case StatefulInit(HashAggregateExec(cd, ge, ae, aa, iibo, re, child, None)) =>
-        println("pattern matching stateful init")
-        HashAggregateExec(cd, ge, ae, aa, iibo, re, child,
-          Some(StreamingModelBlockId(0, currentBatchId - 1)))
+      case StatefulInit(HashAggregateExec(cd, ge, ae, aa, iibo, re, child)) =>
+        val newAggExpressions = ae.map { expr => expr match {
+          case AggregateExpression(ScalaModelUDAF(children, ModelAgg(None), mabo, iabo),
+            mode, isDistinct, resultId) =>
+            println("found the model agg pattern here!!!!")
+            val blockId = Some(StreamingModelBlockId(0, currentBatchId - 1))
+            AggregateExpression(ScalaModelUDAF(children, ModelAgg(blockId), mabo, iabo),
+              mode, isDistinct, resultId)
+          case other => other
+        }
+        }
+        HashAggregateExec(cd, ge, newAggExpressions, aa, iibo, re, child)
+      case StatefulInit(SortAggregateExec(cd, ge, ae, aa, iibo, re, child)) =>
+        // here we look for the stateful initializer node and we replace it with an aggregate
+        // that knows to get it's initial state from the block manager
+        val newAggExpressions = ae.map { expr => expr match {
+          case AggregateExpression(ScalaModelUDAF(children, SGDAgg(numFeatures, None), mabo, iabo),
+          mode, isDistinct, resultId) =>
+            println("found the SGD AGG pattern here!!!!")
+            val blockId = Some(StreamingModelBlockId(0, currentBatchId - 1))
+            AggregateExpression(ScalaModelUDAF(children, SGDAgg(numFeatures, blockId), mabo, iabo),
+              mode, isDistinct, resultId)
+          case other => other
+        }
+        }
+        SortAggregateExec(cd, ge, newAggExpressions, aa, iibo, re, child)
       case StateStoreSaveExec(keys, None, None, None,
              UnaryExecNode(agg,
                StateStoreRestoreExec(keys2, None, child))) =>

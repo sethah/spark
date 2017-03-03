@@ -33,12 +33,13 @@ import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.apache.spark.sql.types._
 import org.apache.spark.{SparkEnv, SparkException}
 import org.apache.spark.sql.execution.streaming._
-import org.apache.spark.sql.expressions.{ModelUserDefinedAggregateFunction, MutableAggregationBuffer, UserDefinedAggregateFunction}
+import org.apache.spark.sql.expressions._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.streaming.util.BlockingSource
 import org.apache.spark.util.ManualClock
 import org.apache.spark.sql.execution.debug._
+import org.apache.spark.storage.{BlockId, StateStoreBlockId, StorageLevel}
 
 import scala.collection.mutable
 
@@ -86,6 +87,16 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     }
   }
 
+  test("blocks") {
+    val bm = SparkEnv.get.blockManager
+    val keyValues = Seq(("a", 2), ("b", 4), ("d", 7))
+    val blockId = StateStoreBlockId(0, 0)
+//    bm.putIterator(blockId, keyValues.iterator, StorageLevel.MEMORY_AND_DISK)
+    bm.putSingle(blockId, keyValues, StorageLevel.MEMORY_AND_DISK)
+    val fetched = bm.get[Any](blockId)
+    fetched.foreach { res => res.data.foreach(println)}
+  }
+
   test("udaf") {
 //    val df = Seq(0, 1, 2).toDF("x")
 //    val aggdf = df.agg((new ModelAgg)(col("x")))//.show()
@@ -93,7 +104,7 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     val inputData = MemoryStream[Int]
     val query = inputData.toDS
 //      .groupBy("value")
-      .agg((new ModelAgg())(col("value")))
+      .agg((new ModelAgg(None))(col("value")))
       .writeStream
       .outputMode("complete")
       .format("console")
@@ -105,7 +116,7 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
   }
 
   test("sgd") {
-    val sgdAgg = new SGDAgg(1)
+    val sgdAgg = new SGDAgg(1, None)
     val rng = new scala.util.Random(42)
     val data = (0 until 100).map { j =>
       val label = rng.nextInt(10).toDouble
@@ -657,127 +668,4 @@ object StreamingQuerySuite {
   var clock: ManualClock = null
 }
 
-class ModelAgg extends ModelUserDefinedAggregateFunction {
 
-  // Input Data Type Schema
-  def inputSchema: StructType = StructType(Array(StructField("item", IntegerType)))
-
-  // Intermediate Schema
-  def bufferSchema: StructType = StructType(Array(
-    StructField("sum", IntegerType)
-  ))
-
-  // Returned Data Type .
-  def dataType: DataType = IntegerType
-
-  // Self-explaining
-  def deterministic: Boolean = true
-
-  def initialize(buffer: MutableAggregationBuffer, state: Any): Unit = {
-    buffer(0) = state.asInstanceOf[Int]
-  }
-
-  // This function is called whenever key changes
-  def initialize(buffer: MutableAggregationBuffer): Unit = {
-    buffer(0) = 0 // set sum to zero
-  }
-
-  // Iterate over each entry of a group
-  def update(buffer: MutableAggregationBuffer, input: Row): Unit = {
-    buffer(0) = buffer.getInt(0) + 3
-  }
-
-  // Merge two partial aggregates
-  def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
-    buffer1(0) = buffer1.getInt(0) + buffer2.getInt(0)
-  }
-
-  // Called after all the entries are exhausted.
-  def evaluate(buffer: Row): Integer = {
-    buffer.getInt(0)
-  }
-
-}
-
-class SGDAgg(numFeatures: Int) extends ModelUserDefinedAggregateFunction {
-
-  val stepSize = 0.01
-
-  // Input Data Type Schema
-  def inputSchema: StructType = StructType(Array(
-    StructField("label", DoubleType),
-    StructField("features", ArrayType(DoubleType))
-  ))
-
-  // Intermediate Schema
-  def bufferSchema: StructType = StructType(Array(
-    StructField("count", LongType),
-    StructField("coefficients", ArrayType(DoubleType))
-  ))
-
-  // Returned Data Type .
-  def dataType: DataType = ArrayType(DoubleType)
-
-  // Self-explaining
-  def deterministic: Boolean = true
-
-  def initialize(buffer: MutableAggregationBuffer, state: Any): Unit = {
-    val previousModel = state.asInstanceOf[(Long, Array[Double])]
-    buffer.update(0, previousModel._1)
-    buffer.update(1, previousModel._2)
-    println("INITIAL BUFFER", buffer.getAs[mutable.WrappedArray[Double]](1).mkString(","))
-  }
-
-  // This function is called whenever key changes
-  def initialize(buffer: MutableAggregationBuffer): Unit = {
-    buffer.update(0, 0L)
-    buffer.update(1, new Array[Double](numFeatures))
-  }
-
-  // Iterate over each entry of a group
-  def update(buffer: MutableAggregationBuffer, input: Row): Unit = {
-    if (!input.isNullAt(0)) {
-      val buff = buffer.getAs[mutable.WrappedArray[Double]](1)
-      val features = input.getAs[mutable.WrappedArray[Double]](1)
-      val label = input.getDouble(0)
-      val error = label - dot(features.toArray, buff.toArray)
-      val gradient = features.map(_ * error)
-//      println("old model", buff.mkString(","))
-//      println("data", label, features.mkString(","))
-      buff.indices.foreach { i =>
-        buff(i) += gradient(i) * stepSize
-      }
-//      println("new model", buff.mkString(","))
-//      println("gradient", gradient.mkString(","))
-
-      buffer.update(0, buffer.getLong(0) + 1)
-      buffer.update(1, buff)
-    }
-  }
-
-  def dot(x: Array[Double], y: Array[Double]): Double = {
-    x.zip(y).foldLeft(0.0) { case (acc, tup) => acc + tup._1 * tup._2}
-  }
-
-  // Merge two partial aggregates
-  def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
-    // weighted average of the two
-    val otherCount = buffer2.getLong(0)
-    val otherFeatures = buffer2.getAs[mutable.WrappedArray[Double]](1)
-    val thisCount = buffer1.getLong(0)
-    val buff = buffer1.getAs[mutable.WrappedArray[Double]](1)
-    buff.indices.foreach { i =>
-      buff(i) = (buff(i) * thisCount + otherFeatures(i) * otherCount) / (thisCount + otherCount)
-    }
-
-    buffer1.update(1, buff)
-    buffer1.update(0, buffer1.getLong(0) + otherCount)
-
-  }
-
-  // Called after all the entries are exhausted.
-  def evaluate(buffer: Row): Array[Double] = {
-    buffer.getAs[mutable.WrappedArray[Double]](1).toArray
-  }
-
-}

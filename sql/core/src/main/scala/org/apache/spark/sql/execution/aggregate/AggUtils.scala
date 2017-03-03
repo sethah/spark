@@ -388,6 +388,7 @@ object AggUtils {
         child = child)
     }
 
+    println(s"Partial aggregate in streaming agg is ${partialAggregate.getClass.getName}")
     val initPlaceholder = StatefulInit(partialAggregate)
 
     val partialMerged1: SparkPlan = {
