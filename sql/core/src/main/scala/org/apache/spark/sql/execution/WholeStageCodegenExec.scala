@@ -220,6 +220,7 @@ case class InputAdapter(child: SparkPlan) extends UnaryExecNode with CodegenSupp
   override def output: Seq[Attribute] = child.output
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
+  println("INPUT ADAPTER", outputPartitioning)
 
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
 

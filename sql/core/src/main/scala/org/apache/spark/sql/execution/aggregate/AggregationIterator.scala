@@ -270,6 +270,7 @@ abstract class AggregationIterator(
     expressionAggInitialProjection.target(buffer)(EmptyRow)
     var i = 0
     while (i < allImperativeAggregateFunctions.length) {
+      // TODO: call initialize with initial state
       allImperativeAggregateFunctions(i).initialize(buffer)
       i += 1
     }

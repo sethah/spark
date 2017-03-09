@@ -51,7 +51,7 @@ package object state {
     }
 
     /** Map each partition of an RDD along with data in a [[StateStore]]. */
-    private[streaming] def mapPartitionsWithStateStore[U: ClassTag](
+    private[sql] def mapPartitionsWithStateStore[U: ClassTag](
         checkpointLocation: String,
         operatorId: Long,
         storeVersion: Long,
@@ -75,6 +75,38 @@ package object state {
         checkpointLocation,
         operatorId,
         storeVersion,
+        keySchema,
+        valueSchema,
+        sessionState,
+        storeCoordinator)
+    }
+
+    private[streaming] def mapPartitionsWithModelStateStore[U: ClassTag](
+       checkpointLocation: String,
+       operatorId: Long,
+       storeVersion: Long,
+       storePartition: Int,
+       keySchema: StructType,
+       valueSchema: StructType,
+       sessionState: SessionState,
+       storeCoordinator: Option[StateStoreCoordinatorRef])(
+       storeUpdateFunction: (StateStore, Iterator[T]) => Iterator[U]): ModelStateStoreRDD[T, U] = {
+
+      val cleanedF = dataRDD.sparkContext.clean(storeUpdateFunction)
+      val wrappedF = (store: StateStore, iter: Iterator[T]) => {
+        // Abort the state store in case of error
+        TaskContext.get().addTaskCompletionListener(_ => {
+          if (!store.hasCommitted) store.abort()
+        })
+        cleanedF(store, iter)
+      }
+      new ModelStateStoreRDD(
+        dataRDD,
+        wrappedF,
+        checkpointLocation,
+        operatorId,
+        storeVersion,
+        storePartition,
         keySchema,
         valueSchema,
         sessionState,

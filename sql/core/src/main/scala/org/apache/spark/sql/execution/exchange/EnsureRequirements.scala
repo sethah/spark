@@ -162,6 +162,7 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
       case (child, BroadcastDistribution(mode)) =>
         BroadcastExchangeExec(mode, child)
       case (child, distribution) =>
+        println("inject shuffle", child, distribution)
         ShuffleExchange(createPartitioning(distribution, defaultNumPreShufflePartitions), child)
     }
 

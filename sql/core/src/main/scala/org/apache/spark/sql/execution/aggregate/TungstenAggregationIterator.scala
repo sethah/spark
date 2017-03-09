@@ -89,7 +89,8 @@ class TungstenAggregationIterator(
     testFallbackStartsAt: Option[(Int, Int)],
     numOutputRows: SQLMetric,
     peakMemory: SQLMetric,
-    spillSize: SQLMetric)
+    spillSize: SQLMetric,
+    initialState: Option[InternalRow] = None)
   extends AggregationIterator(
     groupingExpressions,
     originalInputAttributes,
@@ -117,28 +118,20 @@ class TungstenAggregationIterator(
   // This function should be only called at most two times (when we create the hash map,
   // and when we create the re-used buffer for sort-based aggregation).
   private def createNewAggregationBuffer(): UnsafeRow = {
-//    val initialModel = getInitialModel.flatMap { block =>
-//      SparkEnv.get.blockManager.getLocalValues(block)
-//    }
-//    initialModel match {
-//      case Some(model) =>
-//        println("FOUND THAT BLOCK")// model.data.mkString(","))
-//      case None =>
-//        println("DIDN'T FIND THE BLOCK", getInitialModel.map(_.toString).getOrElse("qw"))
-//    }
     val bufferSchema = aggregateFunctions.flatMap(_.aggBufferAttributes)
     val buffer: UnsafeRow = UnsafeProjection.create(bufferSchema.map(_.dataType))
       .apply(new GenericInternalRow(bufferSchema.length))
     // Initialize declarative aggregates' buffer values
     expressionAggInitialProjection.target(buffer)(EmptyRow)
     // Initialize imperative aggregates' buffer values
+    // TODO: subclass this iterator and override this method
     aggregateFunctions.collect { case f: ImperativeAggregate => f }.foreach { f =>
-//      if (f.isInstanceOf[ScalaModelUDAF] && initialModel.isDefined) {
-//        println("scala model udaf", f.getClass().getName())
-//        f.asInstanceOf[ScalaModelUDAF].initialize(buffer, initialModel.get.data.next())
-//      }
-//      else f.initialize(buffer)
-      f.initialize(buffer)
+      if (f.isInstanceOf[ScalaModelUDAF] && initialState.isDefined) {
+        println("scala model udaf", f.getClass().getName())
+        f.asInstanceOf[ScalaModelUDAF].initialize(buffer, initialState.get)
+      }
+      else f.initialize(buffer)
+//      f.initialize(buffer)
     }
     buffer
   }

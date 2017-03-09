@@ -86,7 +86,7 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
     val tmp = prepareForExecution(sparkPlan)
     tmp.transform {
       case e: Exchange => {
-        println("exchange!!!!!!", e.getClass().getSimpleName())
+        println("exchange!!!!!!", e.getClass().getName())
         e
       }
       case other => {

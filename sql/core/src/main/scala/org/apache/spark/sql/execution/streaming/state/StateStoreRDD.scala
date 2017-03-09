@@ -58,6 +58,47 @@ class StateStoreRDD[T: ClassTag, U: ClassTag](
   override def compute(partition: Partition, ctxt: TaskContext): Iterator[U] = {
     var store: StateStore = null
     val storeId = StateStoreId(checkpointLocation, operatorId, partition.index)
+    val otherId = StateStoreId(checkpointLocation, operatorId, 0)
+    val otherStore = new HDFSBackedStateStoreProvider(otherId, keySchema, valueSchema,
+      storeConf, confBroadcast.value.value)
+//    println("GOT ANOTHER STORE!!!", otherStore.getStore(storeVersion).id, storeId)
+    store = StateStore.get(
+      storeId, keySchema, valueSchema, storeVersion, storeConf, confBroadcast.value.value)
+    val inputIter = dataRDD.iterator(partition, ctxt)
+//    println(s"Partitioner: ${dataRDD.partitioner.get}")
+    storeUpdateFunction(store, inputIter)
+  }
+}
+
+class ModelStateStoreRDD[T: ClassTag, U: ClassTag](
+             dataRDD: RDD[T],
+             storeUpdateFunction: (StateStore, Iterator[T]) => Iterator[U],
+             checkpointLocation: String,
+             operatorId: Long,
+             storeVersion: Long,
+             storePartition: Int,
+             keySchema: StructType,
+             valueSchema: StructType,
+             sessionState: SessionState,
+             @transient private val storeCoordinator: Option[StateStoreCoordinatorRef])
+  extends RDD[U](dataRDD) {
+
+  private val storeConf = new StateStoreConf(sessionState.conf)
+
+  // A Hadoop Configuration can be about 10 KB, which is pretty big, so broadcast it
+  private val confBroadcast = dataRDD.context.broadcast(
+    new SerializableConfiguration(sessionState.newHadoopConf()))
+
+  override protected def getPartitions: Array[Partition] = dataRDD.partitions
+
+  override def getPreferredLocations(partition: Partition): Seq[String] = {
+    val storeId = StateStoreId(checkpointLocation, operatorId, partition.index)
+    storeCoordinator.flatMap(_.getLocation(storeId)).toSeq
+  }
+
+  override def compute(partition: Partition, ctxt: TaskContext): Iterator[U] = {
+    var store: StateStore = null
+    val storeId = StateStoreId(checkpointLocation, operatorId, storePartition)
     store = StateStore.get(
       storeId, keySchema, valueSchema, storeVersion, storeConf, confBroadcast.value.value)
     val inputIter = dataRDD.iterator(partition, ctxt)

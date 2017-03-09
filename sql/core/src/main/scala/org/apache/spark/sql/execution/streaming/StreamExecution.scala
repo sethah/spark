@@ -549,7 +549,6 @@ class StreamExecution(
         checkpointFile("state"),
         currentBatchId,
         offsetSeqMetadata.batchWatermarkMs)
-      println("triggerplan", triggerLogicalPlan)
       lastExecution.executedPlan // Force the lazy generation of execution plan
     }
 

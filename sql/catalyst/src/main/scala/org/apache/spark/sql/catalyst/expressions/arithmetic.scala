@@ -437,7 +437,7 @@ case class Pmod(left: Expression, right: Expression) extends BinaryArithmetic wi
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
     nullSafeCodeGen(ctx, ev, (eval1, eval2) => {
       val remainder = ctx.freshName("remainder")
-      dataType match {
+      val tmp = dataType match {
         case dt: DecimalType =>
           val decimalAdd = "$plus"
           s"""
@@ -468,6 +468,8 @@ case class Pmod(left: Expression, right: Expression) extends BinaryArithmetic wi
             }
           """
       }
+//      println(tmp)
+      tmp
     })
   }
 

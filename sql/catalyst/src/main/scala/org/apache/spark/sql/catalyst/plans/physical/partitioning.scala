@@ -236,6 +236,7 @@ case object SinglePartition extends Partitioning {
  */
 case class HashPartitioning(expressions: Seq[Expression], numPartitions: Int)
   extends Expression with Partitioning with Unevaluable {
+  println("hash part", expressions.mkString(","), partitionIdExpression)
 
   override def children: Seq[Expression] = expressions
   override def nullable: Boolean = false

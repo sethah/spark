@@ -55,6 +55,8 @@ private class PartitionIdPassthrough(override val numPartitions: Int) extends Pa
 class CoalescedPartitioner(val parent: Partitioner, val partitionStartIndices: Array[Int])
   extends Partitioner {
 
+  println("COALESCED PART", parent, partitionStartIndices.mkString(","))
+
   @transient private lazy val parentPartitionMapping: Array[Int] = {
     val n = parent.numPartitions
     val result = new Array[Int](n)
@@ -114,7 +116,6 @@ class ShuffledRowRDD(
     var dependency: ShuffleDependency[Int, InternalRow, InternalRow],
     specifiedPartitionStartIndices: Option[Array[Int]] = None)
   extends RDD[InternalRow](dependency.rdd.context, Nil) {
-  println("CREATE SHUFFLEDROW RDD")
 
   private[this] val numPreShufflePartitions = dependency.partitioner.numPartitions
 

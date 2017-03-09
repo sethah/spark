@@ -25,7 +25,8 @@ import org.scalatest.concurrent.Eventually._
 import org.scalatest.BeforeAndAfter
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.expressions.{GenericInternalRow, UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateUnsafeProjection
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, SpecialSum}
 import org.apache.spark.sql.execution.{SparkPlan, SparkStrategy}
@@ -40,6 +41,7 @@ import org.apache.spark.sql.streaming.util.BlockingSource
 import org.apache.spark.util.ManualClock
 import org.apache.spark.sql.execution.debug._
 import org.apache.spark.storage.{BlockId, StateStoreBlockId, StorageLevel}
+import org.apache.spark.unsafe.types.UTF8String
 
 import scala.collection.mutable
 
@@ -112,6 +114,47 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     inputData.addData(Seq(1, 2, 3))
     Thread.sleep(1000)
     inputData.addData(Seq(1, 2, 4))
+    query.awaitTermination(5000)
+  }
+  // TODO: just do a thing without initialization where you
+  // save the model and can figure out where it got saved using the
+  // unsafe projection method. THEN figure out how to actually recover
+  // the state and use it at each iteration.
+
+  test("unsafe rows") {
+    val keyRow = new GenericInternalRow(Array(UTF8String.fromString("a").asInstanceOf[Any],
+      2.asInstanceOf[Any]))
+//    val row = new UnsafeRow(2)
+//    val data = new Array[Byte](1024)
+//    row.pointTo(data, 32)
+//    row.setLong(0, 103079215105L)
+//    row.setLong(1, 2)
+    val row = InternalRow(UTF8String.fromString("a"), 2)
+    val converter = UnsafeProjection.create(Array[DataType](StringType, IntegerType))
+    val unsafeRow = converter.apply(row)
+    println(unsafeRow)
+    // [0,1800000001,2,62,0]
+//    println(row)
+//    println(data.take(16).mkString(","))
+  }
+
+  test("read another partition") {
+//    val batch1 = Seq("a", "b", "c", "a", "a", "c", "c", "b")
+//    val batch2 = Seq("a", "b", "c", "a", "a", "c", "c", "b")
+    val batch1 = Seq("a", "c", "a", "a", "a", "a")
+    val batch2 = Seq("b", "b", "b", "b")
+    val batch3 = Seq("a", "a", "a", "a")
+    val inputData = MemoryStream[String]
+    val query = inputData.toDS
+      .groupBy("value")
+      .count
+      .writeStream
+      .outputMode("complete")
+      .format("console")
+      .start()
+    inputData.addData(batch1)
+    Thread.sleep(1000)
+    inputData.addData(batch2)
     query.awaitTermination(5000)
   }
 

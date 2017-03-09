@@ -19,6 +19,7 @@ package org.apache.spark.sql.expressions
 
 import org.apache.spark.SparkEnv
 import org.apache.spark.annotation.InterfaceStability
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.{Column, Row}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Complete}
 import org.apache.spark.sql.execution.aggregate.{ScalaModelUDAF, ScalaUDAF}
@@ -158,8 +159,7 @@ abstract class UserDefinedAggregateFunction extends Serializable {
 
 abstract class ModelUserDefinedAggregateFunction extends UserDefinedAggregateFunction {
 
-//  def initialize(buffer: MutableAggregationBuffer, state: Any): Unit
-
+  def initialize(buffer: MutableAggregationBuffer, state: InternalRow): Unit
 
   override def apply(exprs: Column*): Column = {
     val aggregateExpression =
@@ -187,9 +187,9 @@ case class ModelAgg(initBlock: Option[BlockId]) extends ModelUserDefinedAggregat
   // Self-explaining
   def deterministic: Boolean = true
 
-  //  def initialize(buffer: MutableAggregationBuffer, state: Any): Unit = {
-  //    buffer(0) = state.asInstanceOf[Int]
-  //  }
+    def initialize(buffer: MutableAggregationBuffer, state: InternalRow): Unit = {
+      buffer(0) = state.asInstanceOf[Int]
+    }
 
   // This function is called whenever key changes
   def initialize(buffer: MutableAggregationBuffer): Unit = {
@@ -245,12 +245,12 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
   // Self-explaining
   def deterministic: Boolean = true
 
-//  def initialize(buffer: MutableAggregationBuffer, state: Any): Unit = {
+  def initialize(buffer: MutableAggregationBuffer, state: InternalRow): Unit = {
 //    val previousModel = state.asInstanceOf[(Long, Array[Double])]
-//    buffer.update(0, previousModel._1)
-//    buffer.update(1, previousModel._2)
+    buffer.update(0, state.getLong(0))
+    buffer.update(1, state.getArray(1).toArray(DoubleType))
 //    println("INITIAL BUFFER", buffer.getAs[mutable.WrappedArray[Double]](1).mkString(","))
-//  }
+  }
 
   // This function is called whenever key changes
   def initialize(buffer: MutableAggregationBuffer): Unit = {
@@ -259,7 +259,6 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
       localVals.foreach(v => println("FOUND THE INITIAL BLOCK FOR SGD AGG"))
       localVals.map(_.data.next().asInstanceOf[(Long, Array[Double])])
     }.getOrElse((0L, new Array[Double](numFeatures)))
-    println(s"INITIAL STATE WAS ${initialState._1}, ${initialState._2.mkString(",")}")
     buffer.update(0, initialState._1)
     buffer.update(1, initialState._2)
   }

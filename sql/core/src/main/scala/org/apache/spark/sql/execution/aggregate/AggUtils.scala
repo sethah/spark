@@ -17,11 +17,19 @@
 
 package org.apache.spark.sql.execution.aggregate
 
+import org.apache.spark.TaskContext
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
+import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.execution.SparkPlan
+import org.apache.spark.sql.execution.exchange.BroadcastExchangeExec
 import org.apache.spark.sql.execution.streaming._
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.types.{DataType, IntegerType, StringType}
+import org.apache.spark.unsafe.types.UTF8String
+
+import scala.util.Random
 
 /**
  * Utility functions used by the query planner to convert our plan to new aggregation code path.
@@ -49,6 +57,8 @@ object AggUtils {
 
 
      */
+    // NOTE: this checks to make sure that all the types in the aggregation are
+    // mutable. If not, we use a sort agg.
     val useHash = HashAggregateExec.supportsAggregate(
       aggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes))
     if (useHash) {
@@ -388,8 +398,6 @@ object AggUtils {
         child = child)
     }
 
-    println(s"Partial aggregate in streaming agg is ${partialAggregate.getClass.getName}")
-    val initPlaceholder = StatefulInit(partialAggregate)
 
     val partialMerged1: SparkPlan = {
       val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = PartialMerge))
@@ -403,8 +411,39 @@ object AggUtils {
         initialInputBufferOffset = groupingAttributes.length,
         resultExpressions = groupingAttributes ++
           aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
-        child = initPlaceholder)
+        child = partialAggregate)
     }
+
+    val dist = partialMerged1.requiredChildDistribution
+    var partitioning: Partitioning = null
+    partialMerged1.children.zip(dist).foreach {
+      case (child, distribution) if child.outputPartitioning.satisfies(distribution) =>
+      case (child, BroadcastDistribution(mode)) =>
+      case (child, distribution) =>
+        distribution match {
+          case ClusteredDistribution(clustering) =>
+            println("clustering", clustering.mkString(","))
+            partitioning = HashPartitioning(clustering, 5)
+          case OrderedDistribution(ordering) =>
+            partitioning = RangePartitioning(ordering, 5)
+          case AllTuples => SinglePartition
+          case other =>
+            println("Other partitioning", other)
+        }
+    }
+    println("PARTITIONING", partitioning)
+//    val partitionExtractor = partitioning match {
+//      case h: HashPartitioning =>
+//        val projection =
+//          UnsafeProjection.create(h.partitionIdExpression :: Nil, partialMerged1.output)
+//        row: InternalRow => projection(row).getInt(0)
+//      case _ => sys.error(s"Exchange not implemented for $partitioning")
+//    }
+//
+//    val row = InternalRow(UTF8String.fromString("b"))
+//    val converter = UnsafeProjection.create(Array[DataType](StringType))
+//    val unsafeRow = converter.apply(row)
+//    println("the partition is!!!", partitionExtractor(unsafeRow))
 
 //    val restored = StateStoreRestoreExec(groupingAttributes, None, partialMerged1)
 

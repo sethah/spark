@@ -65,7 +65,7 @@ import org.apache.spark.util.Utils
  * to ensure re-executed RDD operations re-apply updates on the correct past version of the
  * store.
  */
-private[state] class HDFSBackedStateStoreProvider(
+private[sql] class HDFSBackedStateStoreProvider(
     val id: StateStoreId,
     keySchema: StructType,
     valueSchema: StructType,

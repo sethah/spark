@@ -548,11 +548,11 @@ case class ScalaModelUDAF(
     udaf.initialize(mutableAggregateBuffer)
   }
 
-//  def initialize(buffer: InternalRow, state: Any): Unit = {
-//    mutableAggregateBuffer.underlyingBuffer = buffer
-//
-//    udaf.initialize(mutableAggregateBuffer, state)
-//  }
+  def initialize(buffer: InternalRow, state: InternalRow): Unit = {
+    mutableAggregateBuffer.underlyingBuffer = buffer
+
+    udaf.initialize(mutableAggregateBuffer, state)
+  }
 
   override def update(buffer: InternalRow, input: InternalRow): Unit = {
     mutableAggregateBuffer.underlyingBuffer = buffer
