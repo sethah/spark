@@ -507,9 +507,9 @@ class StreamExecution(
     // A list of attributes that will need to be updated.
     var replacements = new ArrayBuffer[(Attribute, Attribute)]
     // Replace sources in the logical plan with data that has arrived since the last batch.
-    println("lp", logicalPlan.treeString(true))
-    println(logicalPlan.children)
-    println("___________")
+//    println("lp", logicalPlan.treeString(true))
+//    println(logicalPlan.children)
+//    println("___________")
 //    val tmp = logicalPlan transform {
 //      case StatefulAgg(child) =>
 //        println("I'm replacing this agg")

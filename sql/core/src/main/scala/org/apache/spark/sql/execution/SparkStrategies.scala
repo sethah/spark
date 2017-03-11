@@ -231,13 +231,11 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
       case EventTimeWatermark(columnName, delay, child) =>
         EventTimeWatermarkExec(columnName, delay, planLater(child)) :: Nil
 
-      case StatefulAgg(child) =>
-        println("HEY HERE's a thing I did!", child)
-        StatefulAggExec(None, planLater(child)) :: Nil
-
       case PhysicalAggregation(
         namedGroupingExpressions, aggregateExpressions, rewrittenResultExpressions, child) =>
         println("phys agg", child)
+        println(namedGroupingExpressions.mkString(","))
+        println(aggregateExpressions.mkString(","))
 
         aggregate.AggUtils.planStreamingAggregation(
           namedGroupingExpressions,
@@ -252,6 +250,7 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   object MyStrategy extends Strategy {
     override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case ModelAggregate(child) =>
+        println("logical plan", child)
         child match {
           case PhysicalAggregation(
           namedGroupingExpressions, aggregateExpressions, rewrittenResultExpressions, child) =>
@@ -262,11 +261,7 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
               planLater(child))
         }
 
-      case _ => {
-        println(plan)
-        println("APPLYING MY STRATEGY")
-        Nil
-      }
+      case _ => Nil
     }
   }
 

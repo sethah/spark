@@ -217,6 +217,36 @@ case class ModelAgg(initBlock: Option[BlockId]) extends ModelUserDefinedAggregat
 
 }
 
+case class MySimpleAgg() extends UserDefinedAggregateFunction {
+  def inputSchema: StructType = StructType(Array(
+    StructField("value", IntegerType)
+  ))
+
+  def bufferSchema: StructType = StructType(Array(
+    StructField("sum", IntegerType)
+  ))
+
+  def dataType: DataType = IntegerType
+
+  override def deterministic: Boolean = true
+
+  override def initialize(buffer: MutableAggregationBuffer): Unit = {
+    buffer.update(0, 0)
+  }
+
+  override def update(buffer: MutableAggregationBuffer, input: Row): Unit = {
+    buffer.update(0, input.getInt(0))
+  }
+
+  override def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
+    buffer1.update(0, buffer1.getInt(0) + buffer2.getInt(0) + 20)
+  }
+
+  override def evaluate(buffer: Row): Int = {
+    buffer.getInt(0)
+  }
+}
+
 /*
 Another option is to have this class take in weights, so at each iteration, we get the previous
 weights from the state store or wherever, and then we compute the gradients like normal. When
@@ -290,6 +320,8 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
 
   // Merge two partial aggregates
   def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
+    println("merge", buffer1)
+    println("merge2", buffer2)
     // weighted average of the two
     val otherCount = buffer2.getLong(0)
     val otherFeatures = buffer2.getAs[mutable.WrappedArray[Double]](1)

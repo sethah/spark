@@ -137,6 +137,7 @@ case class Alias(child: Expression, name: String)(
     override val isGenerated: java.lang.Boolean = false)
   extends UnaryExpression with NamedExpression {
 
+
   // Alias(Generator, xx) need to be transformed into Generate(generator, ...)
   override lazy val resolved =
     childrenResolved && checkInputDataTypes().isSuccess && !child.isInstanceOf[Generator]

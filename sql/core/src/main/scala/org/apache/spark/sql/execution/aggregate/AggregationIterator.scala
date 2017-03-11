@@ -39,7 +39,8 @@ abstract class AggregationIterator(
     aggregateAttributes: Seq[Attribute],
     initialInputBufferOffset: Int,
     resultExpressions: Seq[NamedExpression],
-    newMutableProjection: (Seq[Expression], Seq[Attribute]) => MutableProjection)
+    newMutableProjection: (Seq[Expression], Seq[Attribute]) => MutableProjection,
+    initialState: Option[InternalRow] = None)
   extends Iterator[UnsafeRow] with Logging {
 
   ///////////////////////////////////////////////////////////////////////////
@@ -271,7 +272,12 @@ abstract class AggregationIterator(
     var i = 0
     while (i < allImperativeAggregateFunctions.length) {
       // TODO: call initialize with initial state
-      allImperativeAggregateFunctions(i).initialize(buffer)
+      val impFunc = allImperativeAggregateFunctions(i)
+      impFunc match {
+        case modelUDAF: ScalaModelUDAF =>
+          initialState.fold(modelUDAF.initialize(buffer))(modelUDAF.initialize(buffer, _))
+        case other => other.initialize(buffer)
+      }
       i += 1
     }
   }

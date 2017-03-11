@@ -48,6 +48,7 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
   private def createPartitioning(
       requiredDistribution: Distribution,
       numPartitions: Int): Partitioning = {
+    println("create part", numPartitions)
     requiredDistribution match {
       case AllTuples => SinglePartition
       case ClusteredDistribution(clustering) => HashPartitioning(clustering, numPartitions)

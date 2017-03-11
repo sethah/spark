@@ -76,7 +76,7 @@ private[sql] class HDFSBackedStateStoreProvider(
   type MapType = java.util.HashMap[UnsafeRow, UnsafeRow]
 
   /** Implementation of [[StateStore]] API which is backed by a HDFS-compatible file system */
-  class HDFSBackedStateStore(val version: Long, mapToUpdate: MapType)
+  class HDFSBackedStateStore(val version: Long, override val mapToUpdate: MapType)
     extends StateStore {
 
     /** Trait and classes representing the internal state of the store */

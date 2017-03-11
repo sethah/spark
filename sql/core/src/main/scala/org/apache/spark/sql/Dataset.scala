@@ -52,6 +52,7 @@ import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.execution.python.EvaluatePython
 import org.apache.spark.sql.streaming.DataStreamWriter
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.functions._
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.unsafe.types.CalendarInterval
 import org.apache.spark.util.Utils
@@ -1608,6 +1609,7 @@ class Dataset[T] private[sql](
   def sgd(label: Column, features: Column): DataFrame = withPlan {
     ModelAggregate(Project(Seq(label.named, features.named), logicalPlan))
   }
+
 
 //  def statefulAgg(expr: Column, exprs: Column*): DataFrame = Dataset.ofRows(sparkSession,
 //    ModelAggregate(logicalPlan))

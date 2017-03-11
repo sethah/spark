@@ -24,8 +24,11 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
+import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, UnspecifiedDistribution}
+import org.apache.spark.sql.execution.aggregate.SortBasedAggregationIterator
 import org.apache.spark.unsafe.types.UTF8String
-import org.apache.spark.util.SerializableConfiguration
+import org.apache.spark.util.{SerializableConfiguration, Utils}
 
 import scala.collection.mutable
 //import org.apache.spark.sql.catalyst.expressions.codegen.{Predicate => _, _}
@@ -104,7 +107,9 @@ case class InjectKeys(child: SparkPlan) extends execution.UnaryExecNode {
     }
   }
 
-  override def output: Seq[Attribute] = child.output
+  override def output: Seq[Attribute] = {
+    child.output
+  }
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
 }
@@ -131,7 +136,7 @@ case class StateStoreRestoreExec(
       sqlContext.sessionState,
       Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
         val getKey = GenerateUnsafeProjection.generate(keyExpressions, child.output)
-        println(keyExpressions.toStructType, "keyexpr")
+//        println(keyExpressions.toStructType, "keyexpr", store.mapToUpdate)
         iter.flatMap { row =>
           val key = getKey(row)
           println(key)
@@ -146,18 +151,65 @@ case class StateStoreRestoreExec(
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
 }
-
+/*
+case class SortAggregateExec(
+    requiredChildDistributionExpressions: Option[Seq[Expression]],
+    groupingExpressions: Seq[NamedExpression],
+    aggregateExpressions: Seq[AggregateExpression],
+    aggregateAttributes: Seq[Attribute],
+    initialInputBufferOffset: Int,
+    resultExpressions: Seq[NamedExpression],
+    child: SparkPlan)
+  extends UnaryExecNode {
+ */
 case class ModelStateStoreRestoreExec(
-                                  keyExpressions: Seq[Attribute],
+                                  requiredChildDistributionExpressions: Option[Seq[Expression]],
+                                  groupingExpressions: Seq[NamedExpression],
+                                  aggregateExpressions: Seq[AggregateExpression],
+                                  aggregateAttributes: Seq[Attribute],
+                                  initialInputBufferOffset: Int,
+                                  resultExpressions: Seq[NamedExpression],
                                   stateId: Option[OperatorStateId],
                                   storePartition: Int,
                                   child: SparkPlan)
   extends execution.UnaryExecNode with StateStoreReader {
 
-  override protected def doExecute(): RDD[InternalRow] = {
-    val numOutputRows = longMetric("numOutputRows")
+  private[this] val aggregateBufferAttributes = {
+    aggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes)
+  }
 
-    child.execute().mapPartitionsWithStateStore(
+  override def producedAttributes: AttributeSet =
+    AttributeSet(aggregateAttributes) ++
+      AttributeSet(resultExpressions.diff(groupingExpressions).map(_.toAttribute)) ++
+      AttributeSet(aggregateBufferAttributes)
+
+  override lazy val metrics = Map(
+    "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
+
+  override def output: Seq[Attribute] = resultExpressions.map(_.toAttribute)
+
+  override def requiredChildDistribution: List[Distribution] = {
+    requiredChildDistributionExpressions match {
+      case Some(exprs) if exprs.isEmpty => AllTuples :: Nil
+      case Some(exprs) if exprs.nonEmpty => ClusteredDistribution(exprs) :: Nil
+      case None => UnspecifiedDistribution :: Nil
+    }
+  }
+
+  override def requiredChildOrdering: Seq[Seq[SortOrder]] = {
+    groupingExpressions.map(SortOrder(_, Ascending)) :: Nil
+  }
+
+  override def outputOrdering: Seq[SortOrder] = {
+    groupingExpressions.map(SortOrder(_, Ascending))
+  }
+
+  protected override def doExecute(): RDD[InternalRow] = attachTree(this, "execute") {
+    val numOutputRows = longMetric("numOutputRows")
+    val keyExpressions = groupingExpressions.map(_.toAttribute)
+
+    // TODO: this is obviously not an ok way to get the partition that has something ing it
+    val stores = sparkContext.parallelize(0 until 5, 5).mapPartitionsWithStateStore(
       getStateId.checkpointLocation,
       operatorId = getStateId.operatorId,
       storeVersion = getStateId.batchId,
@@ -165,18 +217,86 @@ case class ModelStateStoreRestoreExec(
       child.output.toStructType,
       sqlContext.sessionState,
       Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
-      val getKey = GenerateUnsafeProjection.generate(keyExpressions, child.output)
-      val e = SparkEnv.get.executorId
-      iter.flatMap { row =>
-        val key = getKey(row)
-        val savedState = store.get(key)
-        numOutputRows += 1
-        row +: savedState.toSeq
+      iter.map { i =>
+        (store.id, store.version, i,
+          store.mapToUpdate.asInstanceOf[java.util.HashMap[UnsafeRow, UnsafeRow]].size())
       }
+    }
+
+
+    val partId = stores.collect().find { case (id, ver, pid, size) =>
+      size > 0
+    }.map(_._3).getOrElse(0)
+
+    child.execute().mapPartitionsWithModelStateStore(
+      getStateId.checkpointLocation,
+      operatorId = getStateId.operatorId,
+      storeVersion = getStateId.batchId,
+      partId,
+      keyExpressions.toStructType,
+      child.output.toStructType,
+      sqlContext.sessionState,
+      Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
+      val getValue = GenerateUnsafeProjection.generate(child.output, keyExpressions ++ child.output)
+      println(child.output.mkString(","))
+      val row = InternalRow(UTF8String.fromString("model" + (store.version - 1)))
+      val converter = UnsafeProjection.create(Array[DataType](StringType))
+      val previousModelKey = converter.apply(row)
+      val initialState = store.get(previousModelKey)
+      initialState.foreach(s => println("FOUND INITIAL STATE", getValue(s), s.getString(0)))
+      if (!initialState.isDefined) println("found no ititial state in partition",
+        storePartition, previousModelKey)
+      println(previousModelKey.getString(0).getBytes().mkString(","))
+      // Because the constructor of an aggregation iterator will read at least the first row,
+      // we need to get the value of iter.hasNext first.
+      val hasInput = iter.hasNext
+      if (!hasInput && groupingExpressions.nonEmpty) {
+        // This is a grouped aggregate and the input iterator is empty,
+        // so return an empty iterator.
+        Iterator[UnsafeRow]()
+      } else {
+        val outputIter = new SortBasedAggregationIterator(
+          groupingExpressions,
+          child.output,
+          iter,
+          aggregateExpressions,
+          aggregateAttributes,
+          initialInputBufferOffset,
+          resultExpressions,
+          (expressions, inputSchema) =>
+            newMutableProjection(expressions, inputSchema, subexpressionEliminationEnabled),
+          numOutputRows,
+          initialState.map(getValue))
+        if (!hasInput && groupingExpressions.isEmpty) {
+          // There is no input and there is no grouping expressions.
+          // We need to output a single row as the output.
+          numOutputRows += 1
+          Iterator[UnsafeRow](outputIter.outputForEmptyGroupingKeyWithoutInput())
+        } else {
+          outputIter
+        }
+      }
+//      println("iter is: ", iter)
+//      iter
     }
   }
 
-  override def output: Seq[Attribute] = child.output
+  override def simpleString: String = toString(verbose = false)
+
+  override def verboseString: String = toString(verbose = true)
+
+  private def toString(verbose: Boolean): String = {
+    val allAggregateExpressions = aggregateExpressions
+
+    val keyString = Utils.truncatedString(groupingExpressions, "[", ", ", "]")
+    val functionString = Utils.truncatedString(allAggregateExpressions, "[", ", ", "]")
+    val outputString = Utils.truncatedString(output, "[", ", ", "]")
+    if (verbose) {
+      s"SortAggregate(key=$keyString, functions=$functionString, output=$outputString)"
+    } else {
+      s"SortAggregate(key=$keyString, functions=$functionString)"
+    }
+  }
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
 }
@@ -428,6 +548,12 @@ case class StateStoreSaveExec(
     assert(outputMode.nonEmpty,
       "Incorrect planning in IncrementalExecution, outputMode has not been set")
 
+    val thePartition = child.execute().mapPartitionsWithIndex { case (idx, it) =>
+      if (it.nonEmpty) Iterator.single(idx) else Iterator.empty
+    }
+    val partBC = sparkContext.broadcast(thePartition.first())
+    println("here is the partition", thePartition.first(), partBC.id)
+
     child.execute().mapPartitionsWithStateStore(
       getStateId.checkpointLocation,
       operatorId = getStateId.operatorId,
@@ -448,7 +574,7 @@ case class StateStoreSaveExec(
               val row = iter.next().asInstanceOf[UnsafeRow]
               val key = getKey(row)
 //              println(s"Putting store $key, ${row.getLong(0)}, ${row.getArray(1).toDoubleArray.mkString(",")}")
-              println("I'm the only store", store.id.partitionId)
+              println("I'm the only store", store.id.partitionId, key.getString(0), row)
               store.put(key.copy(), row.copy())
 //              val blockId = StreamingModelBlockId(0, getStateId.batchId)
               // TODO: just put the unsafe row?

@@ -57,6 +57,11 @@ class RelationalGroupedDataset protected[sql](
     val aliasedAgg = aggregates.map(alias)
 
     groupType match {
+//      case RelationalGroupedDataset.GroupByType =>
+//        println("logical plant")
+//        println(df.logicalPlan)
+//        Dataset.ofRows(
+//          df.sparkSession, Aggregate(groupingExprs, aliasedAgg, df.logicalPlan))
       case RelationalGroupedDataset.GroupByType =>
         Dataset.ofRows(
           df.sparkSession, ModelAggregate(Aggregate(groupingExprs, aliasedAgg, df.logicalPlan)))

@@ -84,16 +84,9 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
   // only used for execution.
   lazy val executedPlan: SparkPlan = {
     val tmp = prepareForExecution(sparkPlan)
-    tmp.transform {
-      case e: Exchange => {
-        println("exchange!!!!!!", e.getClass().getName())
-        e
-      }
-      case other => {
-        println("other", other.getClass().getName())
-        other
-      }
-    }
+    println("executed plan")
+    println(tmp)
+    tmp
   }
 
   /** Internal version of the RDD. Avoids copies and has no schema */

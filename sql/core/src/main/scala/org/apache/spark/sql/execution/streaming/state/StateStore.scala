@@ -41,6 +41,8 @@ case class StateStoreId(checkpointLocation: String, operatorId: Long, partitionI
  */
 trait StateStore {
 
+  def mapToUpdate: Any
+
   /** Unique identifier of the store */
   def id: StateStoreId
 

@@ -37,7 +37,7 @@ class SortBasedAggregationIterator(
     resultExpressions: Seq[NamedExpression],
     newMutableProjection: (Seq[Expression], Seq[Attribute]) => MutableProjection,
     numOutputRows: SQLMetric,
-    initialState: Option[StateStore] = None)
+    initialState: Option[InternalRow] = None)
   extends AggregationIterator(
     groupingExpressions,
     valueAttributes,
@@ -45,7 +45,8 @@ class SortBasedAggregationIterator(
     aggregateAttributes,
     initialInputBufferOffset,
     resultExpressions,
-    newMutableProjection) {
+    newMutableProjection,
+    initialState) {
 
   /**
    * Creates a new aggregation buffer and initializes buffer values

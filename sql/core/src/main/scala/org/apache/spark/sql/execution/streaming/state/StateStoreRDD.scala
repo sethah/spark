@@ -99,6 +99,7 @@ class ModelStateStoreRDD[T: ClassTag, U: ClassTag](
   override def compute(partition: Partition, ctxt: TaskContext): Iterator[U] = {
     var store: StateStore = null
     val storeId = StateStoreId(checkpointLocation, operatorId, storePartition)
+    println(storeId, keySchema, valueSchema, storeVersion)
     store = StateStore.get(
       storeId, keySchema, valueSchema, storeVersion, storeConf, confBroadcast.value.value)
     val inputIter = dataRDD.iterator(partition, ctxt)

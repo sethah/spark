@@ -26,9 +26,9 @@ import org.scalatest.BeforeAndAfter
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{GenericInternalRow, UnsafeProjection, UnsafeRow}
+import org.apache.spark.sql.catalyst.expressions.{AttributeReference, GenericInternalRow, UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateUnsafeProjection
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, SpecialSum}
+import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project, SpecialSum}
 import org.apache.spark.sql.execution.{SparkPlan, SparkStrategy}
 import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.apache.spark.sql.types._
@@ -99,21 +99,40 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     fetched.foreach { res => res.data.foreach(println)}
   }
 
-  test("udaf") {
-//    val df = Seq(0, 1, 2).toDF("x")
-//    val aggdf = df.agg((new ModelAgg)(col("x")))//.show()
-//    println(aggdf.logicalPlan.treeString)
-    val inputData = MemoryStream[Int]
+  test("udaf2") {
+    //    val df = Seq(0, 1, 2).toDF("x")
+    //    val aggdf = df.agg((new ModelAgg)(col("x")))//.show()
+    //    println(aggdf.logicalPlan.treeString)
+    val inputData = MemoryStream[(String, Int, Int)]
     val query = inputData.toDS
-//      .groupBy("value")
-      .agg((new ModelAgg(None))(col("value")))
+      .withColumn("lit", lit("model"))
+      .groupBy("lit")
+      .agg(sum("_2"), max("_3"))
       .writeStream
       .outputMode("complete")
       .format("console")
       .start()
-    inputData.addData(Seq(1, 2, 3))
+    inputData.addData(Seq(("a", 1, 4), ("b", 2, 3), ("a", 3, 1)))
     Thread.sleep(1000)
-    inputData.addData(Seq(1, 2, 4))
+    inputData.addData(Seq(("b", 1, 9), ("c", 2, 4), ("b", 5, -1)))
+    query.awaitTermination(5000)
+  }
+
+  test("udaf") {
+//    val df = Seq(0, 1, 2).toDF("x")
+//    val aggdf = df.agg((new ModelAgg)(col("x")))//.show()
+//    println(aggdf.logicalPlan.treeString)
+    val inputData = MemoryStream[(String, Int)]
+    val query = inputData.toDS
+      .groupBy("_1")
+      .agg((new MySimpleAgg())(col("_2")))
+      .writeStream
+      .outputMode("complete")
+      .format("console")
+      .start()
+    inputData.addData(Seq(("a", 1), ("b", 2), ("a", 3)))
+    Thread.sleep(1000)
+    inputData.addData(Seq(("b", 1), ("c", 2), ("b", 5)))
     query.awaitTermination(5000)
   }
   // TODO: just do a thing without initialization where you
@@ -133,6 +152,12 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     val converter = UnsafeProjection.create(Array[DataType](StringType, IntegerType))
     val unsafeRow = converter.apply(row)
     println(unsafeRow)
+    val keyExpr = StructType(Array(StructField("int", IntegerType)))
+    val output = Seq(
+        AttributeReference("string", StringType)(),
+        AttributeReference("int", IntegerType)()).map(_.toAttribute)
+    val proj = GenerateUnsafeProjection.generate(output.tail, output)
+    println(proj(unsafeRow))
     // [0,1800000001,2,62,0]
 //    println(row)
 //    println(data.take(16).mkString(","))
@@ -172,6 +197,8 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
 //    println(aggdf.first().getAs[mutable.WrappedArray[Double]](0).mkString(","))
     val inputData = MemoryStream[(Double, Array[Double])]
     val query = inputData.toDS
+      .withColumn("model", lit("model"))
+      .groupBy("model")
       .agg(sgdAgg(col("_1"), col("_2")))
       .writeStream
       .outputMode("complete")
@@ -180,6 +207,10 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     inputData.addData(batch1)
     Thread.sleep(1000)
     inputData.addData(batch2)
+    Thread.sleep(1000)
+    inputData.addData(batch1)
+//    Thread.sleep(1000)
+//    inputData.addData(batch2)
     query.awaitTermination(5000)
   }
 
