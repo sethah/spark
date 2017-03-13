@@ -93,7 +93,6 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     val bm = SparkEnv.get.blockManager
     val keyValues = Seq(("a", 2), ("b", 4), ("d", 7))
     val blockId = StateStoreBlockId(0, 0)
-//    bm.putIterator(blockId, keyValues.iterator, StorageLevel.MEMORY_AND_DISK)
     bm.putSingle(blockId, keyValues, StorageLevel.MEMORY_AND_DISK)
     val fetched = bm.get[Any](blockId)
     fetched.foreach { res => res.data.foreach(println)}
@@ -207,8 +206,8 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     inputData.addData(batch1)
     Thread.sleep(1000)
     inputData.addData(batch2)
-    Thread.sleep(1000)
-    inputData.addData(batch1)
+//    Thread.sleep(1000)
+//    inputData.addData(batch1)
 //    Thread.sleep(1000)
 //    inputData.addData(batch2)
     query.awaitTermination(5000)

@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.{SparkEnv, sql}
-import org.apache.spark.sql.catalyst.expressions.{Alias, AttributeReference, CurrentBatchTimestamp, Literal, UnsafeProjection}
+import org.apache.spark.sql.catalyst.expressions.{Alias, AttributeReference, CurrentBatchTimestamp, ExprId, Literal, UnsafeProjection}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
@@ -162,25 +162,8 @@ class IncrementalExecution(
           }
           val stateId =
             OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
-          val partitioning = HashPartitioning(ge, 5)
-          println(partitioning.partitionIdExpression)
-          val projection = UnsafeProjection.create(partitioning.partitionIdExpression :: Nil,
-            c.output)
-          val extractor = (row: InternalRow) => projection(row).getInt(0)
-          println("I WILL TRY TO RESTORE FROM model", currentBatchId - 1)
-          val partitionNumber = extractor(InternalRow("model" + (currentBatchId - 1)))
-          println("THE PREVIOUS PARTITION NUMBER WAS", partitionNumber)
           ModelStateStoreRestoreExec(cd, newGroupings, ae, aa, iibo, re, Some(stateId),
-            partitionNumber, c)
-//        case ModelStateStoreRestoreExec(keys, None, -1, child) =>
-//          val stateId =
-//            OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
-//          val partitioning = HashPartitioning(keys, 5)
-//          val projection = UnsafeProjection.create(partitioning.partitionIdExpression :: Nil,
-//            child.output)
-//          val extractor = (row: InternalRow) => projection(row).getInt(0)
-//          val partitionNumber = extractor("model" + currentBatchId)
-//          ModelStateStoreRestoreExec(keys, Some(stateId), partitionNumber, child)
+            0, c)
         case StateStoreSaveExec(keys, None, None, None, child) =>
           val stateId =
             OperatorStateId(checkpointLocation, operatorId.get(), currentBatchId)

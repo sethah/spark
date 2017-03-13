@@ -497,20 +497,20 @@ object AggUtils {
 
 //    val restored = StateStoreRestoreExec(groupingAttributes, None, partialMerged1)
 
-    val partialMerged2: SparkPlan = {
-      val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = PartialMerge))
-      val aggregateAttributes = aggregateExpressions.map(_.resultAttribute)
-      createAggregate(
-        requiredChildDistributionExpressions =
-          Some(groupingAttributes),
-        groupingExpressions = groupingAttributes,
-        aggregateExpressions = aggregateExpressions,
-        aggregateAttributes = aggregateAttributes,
-        initialInputBufferOffset = groupingAttributes.length,
-        resultExpressions = groupingAttributes ++
-          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
-        child = partialMerged1)
-    }
+//    val partialMerged2: SparkPlan = {
+//      val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = PartialMerge))
+//      val aggregateAttributes = aggregateExpressions.map(_.resultAttribute)
+//      createAggregate(
+//        requiredChildDistributionExpressions =
+//          Some(groupingAttributes),
+//        groupingExpressions = groupingAttributes,
+//        aggregateExpressions = aggregateExpressions,
+//        aggregateAttributes = aggregateAttributes,
+//        initialInputBufferOffset = groupingAttributes.length,
+//        resultExpressions = groupingAttributes ++
+//          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
+//        child = partialMerged1)
+//    }
     // Note: stateId and returnAllStates are filled in later with preparation rules
     // in IncrementalExecution.
     val saved =
@@ -519,7 +519,7 @@ object AggUtils {
       stateId = None,
       outputMode = None,
       eventTimeWatermark = None,
-      partialMerged2)
+      partialMerged1)
 
 
     val finalAndCompleteAggregate: SparkPlan = {

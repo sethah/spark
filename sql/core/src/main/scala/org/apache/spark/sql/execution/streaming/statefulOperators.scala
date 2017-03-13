@@ -217,15 +217,22 @@ case class ModelStateStoreRestoreExec(
       child.output.toStructType,
       sqlContext.sessionState,
       Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
+
+      val map = store.mapToUpdate.asInstanceOf[java.util.HashMap[UnsafeRow, UnsafeRow]]
+      val row = InternalRow(UTF8String.fromString("model" + (getStateId.batchId - 1)))
+      val converter = UnsafeProjection.create(Array[DataType](StringType))
+      val unsafeRow = converter.apply(row)
+//      if (map.get(unsafeRow) != null) println("GOT THE MOST RECENT ONE", getStateId.batchId - 1)
       iter.map { i =>
-        (store.id, store.version, i,
-          store.mapToUpdate.asInstanceOf[java.util.HashMap[UnsafeRow, UnsafeRow]].size())
+        val hasLastModel = Option(map.get(unsafeRow))
+        hasLastModel.foreach(_ => println("found the last model in partition", i))
+        (store.id, store.version, i, hasLastModel)
       }
     }
 
 
-    val partId = stores.collect().find { case (id, ver, pid, size) =>
-      size > 0
+    val partId = stores.collect().find { case (id, ver, pid, hasLast) =>
+      hasLast.isDefined
     }.map(_._3).getOrElse(0)
 
     child.execute().mapPartitionsWithModelStateStore(

@@ -320,8 +320,8 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
 
   // Merge two partial aggregates
   def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
-    println("merge", buffer1)
-    println("merge2", buffer2)
+//    println("merge", buffer1)
+//    println("merge2", buffer2)
     // weighted average of the two
     val otherCount = buffer2.getLong(0)
     val otherFeatures = buffer2.getAs[mutable.WrappedArray[Double]](1)

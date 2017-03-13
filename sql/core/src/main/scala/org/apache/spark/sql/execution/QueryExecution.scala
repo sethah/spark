@@ -84,8 +84,8 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
   // only used for execution.
   lazy val executedPlan: SparkPlan = {
     val tmp = prepareForExecution(sparkPlan)
-    println("executed plan")
-    println(tmp)
+//    println("executed plan")
+//    println(tmp)
     tmp
   }
 
