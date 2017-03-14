@@ -276,21 +276,14 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
   def deterministic: Boolean = true
 
   def initialize(buffer: MutableAggregationBuffer, state: InternalRow): Unit = {
-//    val previousModel = state.asInstanceOf[(Long, Array[Double])]
     buffer.update(0, state.getLong(0))
     buffer.update(1, state.getArray(1).toArray(DoubleType))
-//    println("INITIAL BUFFER", buffer.getAs[mutable.WrappedArray[Double]](1).mkString(","))
   }
 
   // This function is called whenever key changes
   def initialize(buffer: MutableAggregationBuffer): Unit = {
-    val initialState = initBlock.flatMap { block =>
-      val localVals = SparkEnv.get.blockManager.getLocalValues(block)
-      localVals.foreach(v => println("FOUND THE INITIAL BLOCK FOR SGD AGG"))
-      localVals.map(_.data.next().asInstanceOf[(Long, Array[Double])])
-    }.getOrElse((0L, new Array[Double](numFeatures)))
-    buffer.update(0, initialState._1)
-    buffer.update(1, initialState._2)
+    buffer.update(0, 0L)
+    buffer.update(1, new Array[Double](numFeatures))
   }
 
   // Iterate over each entry of a group
@@ -301,13 +294,9 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
       val label = input.getDouble(0)
       val error = label - dot(features.toArray, buff.toArray)
       val gradient = features.map(_ * error)
-      //      println("old model", buff.mkString(","))
-      //      println("data", label, features.mkString(","))
       buff.indices.foreach { i =>
         buff(i) += gradient(i) * stepSize
       }
-      //      println("new model", buff.mkString(","))
-      //      println("gradient", gradient.mkString(","))
 
       buffer.update(0, buffer.getLong(0) + 1)
       buffer.update(1, buff)
@@ -320,8 +309,6 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
 
   // Merge two partial aggregates
   def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
-//    println("merge", buffer1)
-//    println("merge2", buffer2)
     // weighted average of the two
     val otherCount = buffer2.getLong(0)
     val otherFeatures = buffer2.getAs[mutable.WrappedArray[Double]](1)
@@ -332,7 +319,7 @@ case class SGDAgg(numFeatures: Int, initBlock: Option[BlockId])
     }
 
     buffer1.update(1, buff)
-    buffer1.update(0, buffer1.getLong(0) + otherCount)
+    buffer1.update(0, math.max(buffer1.getLong(0), otherCount))
 
   }
 

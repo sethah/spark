@@ -235,7 +235,7 @@ object ShuffleExchange {
         }
       case h: HashPartitioning =>
         val projection = UnsafeProjection.create(h.partitionIdExpression :: Nil, outputAttributes)
-        println("pexpr", h.partitionIdExpression :: Nil, outputAttributes)
+//        println("pexpr", h.partitionIdExpression :: Nil, outputAttributes)
         row => projection(row).getInt(0)
       case RangePartitioning(_, _) | SinglePartition => {
         identity
@@ -247,7 +247,7 @@ object ShuffleExchange {
         rdd.mapPartitionsInternal { iter =>
           val getPartitionKey = getPartitionKeyExtractor()
           iter.map { row =>
-            println("get part", row, getPartitionKey(row))
+//            println("get part", row, getPartitionKey(row))
             (part.getPartition(getPartitionKey(row)), row.copy())
           }
         }
@@ -256,7 +256,7 @@ object ShuffleExchange {
           val getPartitionKey = getPartitionKeyExtractor()
           val mutablePair = new MutablePair[Int, InternalRow]()
           iter.map { row =>
-            println("get part", row, row.numFields, getPartitionKey(row))
+//            println("get part", row, row.numFields, getPartitionKey(row))
             mutablePair.update(part.getPartition(getPartitionKey(row)), row)
           }
         }

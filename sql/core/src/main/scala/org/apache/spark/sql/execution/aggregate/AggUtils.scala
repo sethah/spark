@@ -380,38 +380,7 @@ object AggUtils {
 
     println("PLAN STREAMING MODEL AGGREGATION")
     val groupingAttributes = groupingExpressions.map(_.toAttribute)
-    // idea: make a phys plan inject keys which just maps the rows to keyed rows
-    // then change the grouping expressions to be the key
-
-    // idea: put the aggregate inside of a placeholder node, then pattern match on that as a
-    // strategy: case DummyExec(HashAggregateExec(_)) => HashAggregateExec(batchId)
-    // ya! try it out
     println("GROUPING", groupingExpressions.mkString(","))
-
-//    val partialAggregate: SparkPlan = {
-//      val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = Partial))
-//      val aggregateAttributes = aggregateExpressions.map(_.resultAttribute)
-//      // We will group by the original grouping expression, plus an additional expression for the
-//      // DISTINCT column. For example, for AVG(DISTINCT value) GROUP BY key, the grouping
-//      // expressions will be [key, value].
-//      createAggregate(
-//        groupingExpressions = groupingExpressions,
-//        aggregateExpressions = aggregateExpressions,
-//        aggregateAttributes = aggregateAttributes,
-//        resultExpressions = groupingAttributes ++
-//          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
-//        child = child)
-//    }
-//    private def createAggregate(
-//                                 requiredChildDistributionExpressions: Option[Seq[Expression]] = None,
-//                                 groupingExpressions: Seq[NamedExpression] = Nil,
-//                                 aggregateExpressions: Seq[AggregateExpression] = Nil,
-//                                 aggregateAttributes: Seq[Attribute] = Nil,
-//                                 initialInputBufferOffset: Int = 0,
-//                                 resultExpressions: Seq[NamedExpression] = Nil,
-//                                 child: SparkPlan,
-//                                 getModel: Boolean = false): SparkPlan = {
-
 
     val partialAggregate: SparkPlan = {
       val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = Partial))
@@ -419,7 +388,7 @@ object AggUtils {
       ModelStateStoreRestoreExec(None, groupingExpressions, aggregateExpressions,
         aggregateAttributes, 0, groupingAttributes ++
           aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
-        None, -1, child = child)
+        None, child = child)
     }
 
     println("OUTPUT", partialAggregate.output.mkString(","))
@@ -440,77 +409,6 @@ object AggUtils {
         child = partialAggregate)
     }
 
-//    val dist = partialMerged1.requiredChildDistribution
-//    def createPartitioning(
-//                                    requiredDistribution: Distribution,
-//                                    numPartitions: Int): Partitioning = {
-//      requiredDistribution match {
-//        case AllTuples => SinglePartition
-//        case ClusteredDistribution(clustering) => HashPartitioning(clustering, numPartitions)
-//        case OrderedDistribution(ordering) => RangePartitioning(ordering, numPartitions)
-//        case dist => sys.error(s"Do not know how to satisfy distribution $dist")
-//      }
-//    }
-//    val maxChildrenNumPartitions =
-//      partialMerged1.children.map(_.outputPartitioning.numPartitions).max
-//    val numPartitions = {
-//      // Let's see if we need to shuffle all child's outputs when we use
-//      // maxChildrenNumPartitions.
-//      val shufflesAllChildren = partialMerged1.children.zip(dist).forall {
-//        case (child, distribution) =>
-//          !child.outputPartitioning.guarantees(
-//            createPartitioning(distribution, maxChildrenNumPartitions))
-//      }
-//      // If we need to shuffle all children, we use defaultNumPreShufflePartitions as the
-//      // number of partitions. Otherwise, we use maxChildrenNumPartitions.
-//      if (shufflesAllChildren) 5 else maxChildrenNumPartitions
-//    }
-//    var partitioning: Partitioning = null
-//    partialMerged1.children.zip(dist).foreach {
-//      case (child, distribution) if child.outputPartitioning.satisfies(distribution) =>
-//      case (child, BroadcastDistribution(mode)) =>
-//      case (child, distribution) =>
-//        distribution match {
-//          case ClusteredDistribution(clustering) =>
-//            println("clustering", clustering.mkString(","))
-//            partitioning = HashPartitioning(clustering, numPartitions)
-//          case OrderedDistribution(ordering) =>
-//            partitioning = RangePartitioning(ordering, numPartitions)
-//          case AllTuples => SinglePartition
-//          case other =>
-//            println("Other partitioning", other)
-//        }
-//    }
-//    println("PARTITIONING", partitioning)
-//    val partitionExtractor = partitioning match {
-//      case h: HashPartitioning =>
-//        val projection =
-//          UnsafeProjection.create(h.partitionIdExpression :: Nil, partialMerged1.output)
-//        row: InternalRow => projection(row).getInt(0)
-//      case _ => sys.error(s"Exchange not implemented for $partitioning")
-//    }
-//
-//    val row = InternalRow(UTF8String.fromString("model" + 1))
-//    val converter = UnsafeProjection.create(Array[DataType](StringType))
-//    val unsafeRow = converter.apply(row)
-//    println("the partition is!!!", partitionExtractor(unsafeRow))
-
-//    val restored = StateStoreRestoreExec(groupingAttributes, None, partialMerged1)
-
-//    val partialMerged2: SparkPlan = {
-//      val aggregateExpressions = functionsWithoutDistinct.map(_.copy(mode = PartialMerge))
-//      val aggregateAttributes = aggregateExpressions.map(_.resultAttribute)
-//      createAggregate(
-//        requiredChildDistributionExpressions =
-//          Some(groupingAttributes),
-//        groupingExpressions = groupingAttributes,
-//        aggregateExpressions = aggregateExpressions,
-//        aggregateAttributes = aggregateAttributes,
-//        initialInputBufferOffset = groupingAttributes.length,
-//        resultExpressions = groupingAttributes ++
-//          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
-//        child = partialMerged1)
-//    }
     // Note: stateId and returnAllStates are filled in later with preparation rules
     // in IncrementalExecution.
     val saved =

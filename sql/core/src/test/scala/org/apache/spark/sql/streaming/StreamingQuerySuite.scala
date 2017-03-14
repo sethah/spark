@@ -99,9 +99,6 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
   }
 
   test("udaf2") {
-    //    val df = Seq(0, 1, 2).toDF("x")
-    //    val aggdf = df.agg((new ModelAgg)(col("x")))//.show()
-    //    println(aggdf.logicalPlan.treeString)
     val inputData = MemoryStream[(String, Int, Int)]
     val query = inputData.toDS
       .withColumn("lit", lit("model"))
@@ -118,9 +115,6 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
   }
 
   test("udaf") {
-//    val df = Seq(0, 1, 2).toDF("x")
-//    val aggdf = df.agg((new ModelAgg)(col("x")))//.show()
-//    println(aggdf.logicalPlan.treeString)
     val inputData = MemoryStream[(String, Int)]
     val query = inputData.toDS
       .groupBy("_1")
@@ -134,19 +128,8 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     inputData.addData(Seq(("b", 1), ("c", 2), ("b", 5)))
     query.awaitTermination(5000)
   }
-  // TODO: just do a thing without initialization where you
-  // save the model and can figure out where it got saved using the
-  // unsafe projection method. THEN figure out how to actually recover
-  // the state and use it at each iteration.
 
   test("unsafe rows") {
-    val keyRow = new GenericInternalRow(Array(UTF8String.fromString("a").asInstanceOf[Any],
-      2.asInstanceOf[Any]))
-//    val row = new UnsafeRow(2)
-//    val data = new Array[Byte](1024)
-//    row.pointTo(data, 32)
-//    row.setLong(0, 103079215105L)
-//    row.setLong(1, 2)
     val row = InternalRow(UTF8String.fromString("a"), 2)
     val converter = UnsafeProjection.create(Array[DataType](StringType, IntegerType))
     val unsafeRow = converter.apply(row)
@@ -157,29 +140,6 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
         AttributeReference("int", IntegerType)()).map(_.toAttribute)
     val proj = GenerateUnsafeProjection.generate(output.tail, output)
     println(proj(unsafeRow))
-    // [0,1800000001,2,62,0]
-//    println(row)
-//    println(data.take(16).mkString(","))
-  }
-
-  test("read another partition") {
-//    val batch1 = Seq("a", "b", "c", "a", "a", "c", "c", "b")
-//    val batch2 = Seq("a", "b", "c", "a", "a", "c", "c", "b")
-    val batch1 = Seq("a", "c", "a", "a", "a", "a")
-    val batch2 = Seq("b", "b", "b", "b")
-    val batch3 = Seq("a", "a", "a", "a")
-    val inputData = MemoryStream[String]
-    val query = inputData.toDS
-      .groupBy("value")
-      .count
-      .writeStream
-      .outputMode("complete")
-      .format("console")
-      .start()
-    inputData.addData(batch1)
-    Thread.sleep(1000)
-    inputData.addData(batch2)
-    query.awaitTermination(5000)
   }
 
   test("sgd") {
@@ -191,13 +151,8 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
       (label, features)
     }
     val (batch1, batch2) = data.splitAt(50)
-//    val df = data.toDF("y", "x")
-//    val aggdf = df.agg(sgdAgg(col("y"), col("x")))
-//    println(aggdf.first().getAs[mutable.WrappedArray[Double]](0).mkString(","))
     val inputData = MemoryStream[(Double, Array[Double])]
     val query = inputData.toDS
-      .withColumn("model", lit("model"))
-      .groupBy("model")
       .agg(sgdAgg(col("_1"), col("_2")))
       .writeStream
       .outputMode("complete")
@@ -206,54 +161,11 @@ class StreamingQuerySuite extends StreamTest with BeforeAndAfter with Logging {
     inputData.addData(batch1)
     Thread.sleep(1000)
     inputData.addData(batch2)
-//    Thread.sleep(1000)
-//    inputData.addData(batch1)
-//    Thread.sleep(1000)
-//    inputData.addData(batch2)
+    Thread.sleep(1000)
+    inputData.addData(batch1)
+    Thread.sleep(1000)
+    inputData.addData(batch2)
     query.awaitTermination(5000)
-  }
-
-  test("mytest") {
-    val mystrategy = new SparkStrategy {
-      override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
-        case SpecialSum(child) =>
-          SpecialSumExec(planLater(child)) :: Nil
-        case _ => Nil
-      }
-    }
-    spark.experimental.extraStrategies = mystrategy :: Nil
-//    val dataset = spark.sparkContext.parallelize(Seq("a", "b", "c", "a", "a", "c", "c", "b"), 4)
-//      .map(Tuple1.apply).toDF("x")
-//    val dataset = spark.sparkContext.parallelize(0 to 4)
-//      .map(Tuple1.apply).toDF("x")
-    val dataset = Seq(Array(1.0, 2.0), Array(2.0, 3.0), Array(2.0, 3.0)).toDF("x")
-//    val dataset = spark.createDataFrame(rows)
-//    val dataset = Seq((1, 2), (3, 4), (5, 6)).toDF("x", "y")
-//    val dataset = Seq(0,1,2).toDF("x")
-//    val df = dataset.groupBy("x").count()
-//    dataset.show()
-//    val grow = new GenericInternalRow(Array(1.0)map(_.asInstanceOf[Any]))
-//    val proj = GenerateUnsafeProjection.generate()
-    dataset.specialsum(col("x")).show()
-//    val df = dataset.agg((new ModelAgg())(col("x")))
-//    val df = dataset.agg(sum(col("x")), sum(col("y")))
-//    println(df.debugCodegen())
-//    df.show()
-//    val myExecution = new IncrementalModelExecution(spark, df.logicalPlan)
-//    myExecution.sparkPlan
-
-//    val inputData = MemoryStream[Int]
-//    val query = inputData.toDS
-//      .groupBy("value")
-//        .agg((new ModelAgg())(col("value")))
-//      .writeStream
-//      .outputMode("complete")
-//      .format("console")
-//      .start()
-//    inputData.addData(Seq(1, 2, 3))
-//    Thread.sleep(1000)
-//    inputData.addData(Seq(1, 2, 4))
-//    query.awaitTermination(5000)
   }
 
   test(

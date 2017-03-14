@@ -80,40 +80,6 @@ trait StateStoreWriter extends StatefulOperator {
     "numUpdatedStateRows" -> SQLMetrics.createMetric(sparkContext, "number of updated state rows"))
 }
 
-case class StatefulInit(child: SparkPlan) extends execution.UnaryExecNode {
-
-  override protected def doExecute(): RDD[InternalRow] = {
-    child.execute()
-  }
-
-  override def output: Seq[Attribute] = child.output
-
-  override def outputPartitioning: Partitioning = child.outputPartitioning
-}
-
-case class InjectKeys(child: SparkPlan) extends execution.UnaryExecNode {
-
-  override protected def doExecute(): RDD[InternalRow] = {
-    child.execute().mapPartitions { it =>
-      // TODO: seems a bad way to do it
-      it.map { row =>
-//        println(row.getArray(1).toArray[Double](DoubleType).mkString(","))
-        val urow = InternalRow(UTF8String.fromString("b"),
-          row.getLong(0), row.getArray(1))
-        val converter = UnsafeProjection.create(Array[DataType](StringType, LongType,
-          ArrayType(DoubleType)))
-        converter.apply(urow)
-      }
-    }
-  }
-
-  override def output: Seq[Attribute] = {
-    child.output
-  }
-
-  override def outputPartitioning: Partitioning = child.outputPartitioning
-}
-
 /**
  * For each input tuple, the key is calculated and the value from the [[StateStore]] is added
  * to the stream (in addition to the input tuple) if present.
@@ -151,17 +117,6 @@ case class StateStoreRestoreExec(
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
 }
-/*
-case class SortAggregateExec(
-    requiredChildDistributionExpressions: Option[Seq[Expression]],
-    groupingExpressions: Seq[NamedExpression],
-    aggregateExpressions: Seq[AggregateExpression],
-    aggregateAttributes: Seq[Attribute],
-    initialInputBufferOffset: Int,
-    resultExpressions: Seq[NamedExpression],
-    child: SparkPlan)
-  extends UnaryExecNode {
- */
 case class ModelStateStoreRestoreExec(
                                   requiredChildDistributionExpressions: Option[Seq[Expression]],
                                   groupingExpressions: Seq[NamedExpression],
@@ -170,7 +125,6 @@ case class ModelStateStoreRestoreExec(
                                   initialInputBufferOffset: Int,
                                   resultExpressions: Seq[NamedExpression],
                                   stateId: Option[OperatorStateId],
-                                  storePartition: Int,
                                   child: SparkPlan)
   extends execution.UnaryExecNode with StateStoreReader {
 
@@ -208,52 +162,20 @@ case class ModelStateStoreRestoreExec(
     val numOutputRows = longMetric("numOutputRows")
     val keyExpressions = groupingExpressions.map(_.toAttribute)
 
-    // TODO: this is obviously not an ok way to get the partition that has something ing it
-    val stores = sparkContext.parallelize(0 until 5, 5).mapPartitionsWithStateStore(
-      getStateId.checkpointLocation,
-      operatorId = getStateId.operatorId,
-      storeVersion = getStateId.batchId,
-      keyExpressions.toStructType,
-      child.output.toStructType,
-      sqlContext.sessionState,
-      Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
-
-      val map = store.mapToUpdate.asInstanceOf[java.util.HashMap[UnsafeRow, UnsafeRow]]
-      val row = InternalRow(UTF8String.fromString("model" + (getStateId.batchId - 1)))
-      val converter = UnsafeProjection.create(Array[DataType](StringType))
-      val unsafeRow = converter.apply(row)
-//      if (map.get(unsafeRow) != null) println("GOT THE MOST RECENT ONE", getStateId.batchId - 1)
-      iter.map { i =>
-        val hasLastModel = Option(map.get(unsafeRow))
-        hasLastModel.foreach(_ => println("found the last model in partition", i))
-        (store.id, store.version, i, hasLastModel)
-      }
-    }
-
-
-    val partId = stores.collect().find { case (id, ver, pid, hasLast) =>
-      hasLast.isDefined
-    }.map(_._3).getOrElse(0)
-
     child.execute().mapPartitionsWithModelStateStore(
       getStateId.checkpointLocation,
       operatorId = getStateId.operatorId,
       storeVersion = getStateId.batchId,
-      partId,
+      0, // TODO: uhh, hardcoding the partition here is not great!
       keyExpressions.toStructType,
       child.output.toStructType,
       sqlContext.sessionState,
       Some(sqlContext.streams.stateStoreCoordinator)) { case (store, iter) =>
       val getValue = GenerateUnsafeProjection.generate(child.output, keyExpressions ++ child.output)
-      println(child.output.mkString(","))
-      val row = InternalRow(UTF8String.fromString("model" + (store.version - 1)))
-      val converter = UnsafeProjection.create(Array[DataType](StringType))
+      val row = InternalRow.empty
+      val converter = UnsafeProjection.create(Array.empty[DataType])
       val previousModelKey = converter.apply(row)
       val initialState = store.get(previousModelKey)
-      initialState.foreach(s => println("FOUND INITIAL STATE", getValue(s), s.getString(0)))
-      if (!initialState.isDefined) println("found no ititial state in partition",
-        storePartition, previousModelKey)
-      println(previousModelKey.getString(0).getBytes().mkString(","))
       // Because the constructor of an aggregation iterator will read at least the first row,
       // we need to get the value of iter.hasNext first.
       val hasInput = iter.hasNext
@@ -283,8 +205,6 @@ case class ModelStateStoreRestoreExec(
           outputIter
         }
       }
-//      println("iter is: ", iter)
-//      iter
     }
   }
 
@@ -308,212 +228,6 @@ case class ModelStateStoreRestoreExec(
   override def outputPartitioning: Partitioning = child.outputPartitioning
 }
 
-/*
-  TODO:
-  read the previous statestore from HDFS and get the model - do this by getting the partitioner
-  function and seeing which partition the previous model is on. Still need to look a bit more at
-  how the partitioning is done, but it should be possible...
-  aggregate the partitions into models, and assign them all a key like "model-0"
-  then shuffle and aggregate on a single partition
-  then save the model to the statestore
- */
-
-case class SpecialSumExec(child: SparkPlan) extends execution.UnaryExecNode {
-  override def doExecute(): RDD[InternalRow] = {
-    child.execute().mapPartitions { it =>
-      val result = new UnsafeRow(1)
-      val buff = new BufferHolder(result, 0)
-      val rowWriter = new UnsafeRowWriter(buff, 1)
-//      val arrayWriter = new UnsafeArrayWriter()
-//      var sum = 0L
-      val sumArr = new Array[Double](2)
-      while (it.hasNext) {
-        // this is an on heap unsafe row
-        // next is a row which is an array
-        val next = it.next().asInstanceOf[UnsafeRow]
-        val arr = next.getArray(0)
-        println(arr.getElementOffset(0, 8), arr.getBaseOffset, arr.numElements())
-        val r = new UnsafeRow(1)
-        r.pointTo(arr.getBaseObject, arr.getBaseOffset, 32)
-        println(r)
-        arr.setNullAt(0)
-        println(r)
-//        println(next, next.getBaseObject, next.getBaseOffset, next.numFields(), next.getSizeInBytes,
-//          next.getBaseOffset)
-        println(next)
-        val offsetSize = next.getLong(0)
-        val offset = (offsetSize >> 32).toInt
-        val size = offsetSize.toInt
-        println(offset, size, offsetSize, next.getBitSetWidthInBytes, next.getBaseOffset)
-        (0 until 2).foreach { j =>
-          println(arr.getDouble(j))
-          sumArr(j) += arr.getDouble(j)
-        }
-        next.setNullAt(0)
-        next.copy()
-        println(next)
-      }
-      val grow = new GenericInternalRow(Array[Any](UnsafeArrayData.fromPrimitiveArray(sumArr)))
-      val proj = UnsafeProjection.create(output, output)
-      val urow = proj(grow).copy()
-//      val bbuf = java.nio.ByteBuffer.allocate(8*sumArr.length)
-//      bbuf.asDoubleBuffer.put(java.nio.DoubleBuffer.wrap(sumArr))
-//      val b = bbuf.array
-//      b.foreach { bt =>
-//        rowWriter.write()
-//      }
-//      println(result, sumArr.mkString(","))
-//      val unsafeData = UnsafeArrayData.fromPrimitiveArray(b)
-//      val sizeInBytes = unsafeData.getSizeInBytes()
-//      buff.grow(sizeInBytes)
-//      unsafeData.writeToMemory(buff.buffer, buff.cursor)
-//      buff.cursor += sizeInBytes
-//      rowWriter.setOffsetAndSize(0, tmpCursor, holder.cursor - tmpCursor)
-
-//      rowWriter.write(0, unsafeData.toByteArray)
-//      unsafeData.writeToMemory(result, 16)
-//      println(unsafeData.toDoubleArray().mkString(","))
-//      val bytes = unsafeData.toByteArray
-//      println(b.mkString(","), b.length)
-//      rowWriter.write(0, b, 32, 24)
-//      println(result, result.numFields())
-//      (0 until 3).foreach { j =>
-//        rowWriter.write(j, sumArr(j))
-//      }
-      Iterator.single(urow)
-    }
-//      .coalesce(1, true).mapPartitions { it =>
-//      val result = new UnsafeRow(1)
-//      val buff = new BufferHolder(result, 0)
-//      val rowWriter = new UnsafeRowWriter(buff, 1)
-//      var sum = 0L
-//      while (it.hasNext) {
-//        sum += it.next().getInt(0)
-//      }
-//      rowWriter.write(0, sum)
-//      Iterator.single(result)
-//    }
-  }
-
-  override def output: Seq[Attribute] = child.output
-}
-
-case class StatefulAggExec(
-                            stateId: Option[OperatorStateId] = None,
-                            child: SparkPlan)
-  extends execution.UnaryExecNode with StateStoreWriter {
-
-  override def doExecute(): RDD[InternalRow] = {
-    println("agg exec DO EXECUTE")
-    val data = child.execute().mapPartitions { it =>
-      println("map partitions", Thread.currentThread().getId())
-      val bm = SparkEnv.get.blockManager
-      val blockId = StreamingModelBlockId(0, getStateId.batchId - 1)
-      val previousModel = bm.getLocalBytes(blockId) match {
-        case Some(block) => println("OMG I FOUND IT")
-        case None => println("WOMP WOMP")
-      }
-      it
-    }
-    data
-  }
-  override def output: Seq[Attribute] = child.output
-}
-
-//case class SGDExec(
-//                    stateId: Option[OperatorStateId] = None,
-//                    f: Iterator[InternalRow] => InternalRow,
-//                    m: InternalRow => InternalRow,
-//                   child: SparkPlan)
-//  extends execution.UnaryExecNode with StateStoreWriter {
-//  override def doExecute(): RDD[InternalRow] = {
-//    val data = child.execute()
-//    data.mapPartitions { it =>
-//      val blockId = StreamingModelBlockId(0, getStateId.batchId)
-//      val model = SparkEnv.get.blockManager.getLocalBytes(blockId).get
-//      f(it)
-//      val key = "asdf"
-//      Iterator.single((key, m(f, model)))
-//    }.groupByKey().mapPartitionsWithStateStore(
-//      getStateId.checkpointLocation,
-//      getStateId.operatorId,
-//      getStateId.batchId,
-//      keyStruct,
-//      child.output.toStructType,
-//      sqlContext.sessionState,
-//      Some(sqlContext.streams.stateStoreCoordinator)) { (store, iter) =>
-//      println("save store id: ", store.id, Thread.currentThread().getId())
-//      while (iter.hasNext) {
-//        val row = iter.next()
-//        val key = row._1
-//        store.put(key.copy(), row.copy())
-//      }
-//      val blockId = StreamingModelBlockId(getStateId.operatorId, getStateId.batchId)
-//      println(s"BLOCK ID: $blockId")
-//      SparkEnv.get.blockManager.putSingle(blockId, 3.14, StorageLevel.MEMORY_AND_DISK)
-//      store.commit()
-//      store.iterator().map { case (k, v) =>
-//        v.asInstanceOf[InternalRow]
-//      }
-//      // we have to save something to the store, otherwise on the first iteration
-//      // it will just create the store. The next iteration thought it will find that
-//      // there is a store, but it won't be able to load it...?
-//    }
-//  }
-//
-//  // not sure about this yet
-//  override def output: Seq[Attribute] = child.output
-//}
-
-case class StatefulAggSaveExec(
-                              keyExpressions: Seq[Attribute],
-                                child: SparkPlan,
-                               stateId: Option[OperatorStateId] = None)
-  extends execution.UnaryExecNode with StateStoreWriter {
-//  val keyStruct = StructType(Seq(
-//    StructField("modelid", StringType, false),
-//    StructField("modelweights", ArrayType(DoubleType), false)
-//  ))
-
-  val keyStruct = StructType(Seq(
-    StructField("key", IntegerType, false),
-    StructField("count", IntegerType, false)
-  ))
-  override def output = child.output
-
-  override protected def doExecute(): RDD[InternalRow] = {
-    var numUpdatedStateRows = 0
-    child.execute().mapPartitionsWithStateStore(
-      getStateId.checkpointLocation,
-      getStateId.operatorId,
-      getStateId.batchId,
-      keyStruct,
-      child.output.toStructType,
-      sqlContext.sessionState,
-      Some(sqlContext.streams.stateStoreCoordinator)) { (store, iter) =>
-      println("save store id: ", store.id, Thread.currentThread().getId())
-      val getKey = GenerateUnsafeProjection.generate(keyExpressions,
-        child.output)
-      while (iter.hasNext) {
-        val row = iter.next().asInstanceOf[UnsafeRow]
-        val key = getKey(row)
-        key.setInt(0, 123)
-        store.put(key.copy(), row.copy())
-        numUpdatedStateRows += 1
-      }
-      val blockId = StreamingModelBlockId(getStateId.operatorId, getStateId.batchId)
-      println(s"BLOCK ID: $blockId")
-      SparkEnv.get.blockManager.putSingle(blockId, 3.14, StorageLevel.MEMORY_AND_DISK)
-      store.commit()
-      store.iterator().map { case (k, v) =>
-        v.asInstanceOf[InternalRow]
-      }
-      // we have to save something to the store, otherwise on the first iteration
-      // it will just create the store. The next iteration thought it will find that
-      // there is a store, but it won't be able to load it...?
-    }
-  }
-}
 
 /**
  * For each input tuple, the key is calculated and the tuple is `put` into the [[StateStore]].
@@ -580,14 +294,8 @@ case class StateStoreSaveExec(
             while (iter.hasNext) {
               val row = iter.next().asInstanceOf[UnsafeRow]
               val key = getKey(row)
-//              println(s"Putting store $key, ${row.getLong(0)}, ${row.getArray(1).toDoubleArray.mkString(",")}")
-              println("I'm the only store", store.id.partitionId, key.getString(0), row)
+              println("I'm the only store", store.id.partitionId, row, key)
               store.put(key.copy(), row.copy())
-//              val blockId = StreamingModelBlockId(0, getStateId.batchId)
-              // TODO: just put the unsafe row?
-//              SparkEnv.get.blockManager.putSingle(blockId, (row.getLong(0),
-//                row.getArray(1).toDoubleArray), StorageLevel.MEMORY_AND_DISK)
-//              println("JUST PUT UP BLOCK ID", blockId)
               numUpdatedStateRows += 1
             }
             store.commit()

@@ -86,35 +86,7 @@ class IncrementalExecution(
   /** Locates save/restore pairs surrounding aggregation. */
   val state = new Rule[SparkPlan] {
     override def apply(plan: SparkPlan): SparkPlan = {
-      println("PLAN to transform")
-      println(plan)
       plan transform {
-        case StatefulInit(HashAggregateExec(cd, ge, ae, aa, iibo, re, child)) =>
-          val newAggExpressions = ae.map { expr => expr match {
-            case AggregateExpression(ScalaModelUDAF(children, ModelAgg(None), mabo, iabo),
-            mode, isDistinct, resultId) =>
-              println("found the model agg pattern here!!!!")
-              val blockId = Some(StreamingModelBlockId(0, currentBatchId - 1))
-              AggregateExpression(ScalaModelUDAF(children, ModelAgg(blockId), mabo, iabo),
-                mode, isDistinct, resultId)
-            case other => other
-          }
-          }
-          HashAggregateExec(cd, ge, newAggExpressions, aa, iibo, re, child)
-        case StatefulInit(SortAggregateExec(cd, ge, ae, aa, iibo, re, child)) =>
-          // here we look for the stateful initializer node and we replace it with an aggregate
-          // that knows to get it's initial state from the block manager
-          val newAggExpressions = ae.map { expr => expr match {
-            case AggregateExpression(ScalaModelUDAF(children, SGDAgg(numFeatures, None), mabo, iabo),
-            mode, isDistinct, resultId) =>
-              println("found the SGD AGG pattern here!!!!")
-              val blockId = Some(StreamingModelBlockId(0, currentBatchId - 1))
-              AggregateExpression(ScalaModelUDAF(children, SGDAgg(numFeatures, blockId), mabo, iabo),
-                mode, isDistinct, resultId)
-            case other => other
-          }
-          }
-          SortAggregateExec(cd, ge, newAggExpressions, aa, iibo, re, child)
         case StateStoreSaveExec(keys, None, None, None,
         UnaryExecNode(agg,
         StateStoreRestoreExec(keys2, None, child))) =>
@@ -123,12 +95,10 @@ class IncrementalExecution(
 
           val newKeys = keys.map {
             case a @ AttributeReference(name, dtype, nullable, metadata) =>
-              println("FOUND THE ATTRIBUTE REFRERENCE")
               AttributeReference("model", dtype, nullable,
                 metadata)(a.exprId, a.qualifier, a.isGenerated)
             case other => other
           }
-          println("AGGGGGG", agg)
           val newAgg = agg match {
             case HashAggregateExec(cd, ge, ae, aa, iibo, re, c) =>
               HashAggregateExec(cd, newKeys, ae, aa, iibo, re, c)
@@ -145,39 +115,15 @@ class IncrementalExecution(
                 keys,
                 Some(stateId),
                 child) :: Nil))
-        case HashAggregateExec(cd, ge, ae, aa, iibo, re, c) =>
-          val newGroupings = ge.map {
-            case al @ Alias(ch, name) =>
-              Alias(Literal("model" + currentBatchId), name)(al.exprId, al.qualifier,
-                al.explicitMetadata, al.isGenerated)
-            case other => other
-          }
-          HashAggregateExec(cd, newGroupings, ae, aa, iibo, re, c)
-        case ModelStateStoreRestoreExec(cd, ge, ae, aa, iibo, re, None, spart, c) =>
-          val newGroupings = ge.map {
-            case al @ Alias(l: Literal, name) =>
-              Alias(Literal("model" + currentBatchId), name)(al.exprId, al.qualifier,
-                al.explicitMetadata, al.isGenerated)
-            case other => other
-          }
+        case ModelStateStoreRestoreExec(cd, ge, ae, aa, iibo, re, None, c) =>
           val stateId =
             OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
-          ModelStateStoreRestoreExec(cd, newGroupings, ae, aa, iibo, re, Some(stateId),
-            0, c)
+          ModelStateStoreRestoreExec(cd, ge, ae, aa, iibo, re, Some(stateId), c)
         case StateStoreSaveExec(keys, None, None, None, child) =>
           val stateId =
             OperatorStateId(checkpointLocation, operatorId.get(), currentBatchId)
           StateStoreSaveExec(keys, Some(stateId), Some(outputMode), Some(currentEventTimeWatermark),
             child)
-        case StatefulAggExec(None, child) =>
-          val stateId =
-            OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
-          StatefulAggExec(Some(stateId), child)
-        case StatefulAggSaveExec(keys, child, None) =>
-          val stateId =
-            OperatorStateId(checkpointLocation, operatorId.getAndIncrement(), currentBatchId)
-          StatefulAggSaveExec(keys, child, Some(stateId))
-
         case MapGroupsWithStateExec(
         f, kDeser, vDeser, group, data, output, None, stateDeser, stateSer, child) =>
           val stateId =

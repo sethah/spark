@@ -233,9 +233,6 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
 
       case PhysicalAggregation(
         namedGroupingExpressions, aggregateExpressions, rewrittenResultExpressions, child) =>
-        println("phys agg", child)
-        println(namedGroupingExpressions.mkString(","))
-        println(aggregateExpressions.mkString(","))
 
         aggregate.AggUtils.planStreamingAggregation(
           namedGroupingExpressions,
@@ -250,7 +247,6 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   object MyStrategy extends Strategy {
     override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case ModelAggregate(child) =>
-        println("logical plan", child)
         child match {
           case PhysicalAggregation(
           namedGroupingExpressions, aggregateExpressions, rewrittenResultExpressions, child) =>
