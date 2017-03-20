@@ -206,9 +206,11 @@ private[spark] class SerializerManager(
     val stream = new BufferedInputStream(inputStream)
     val autoPick = !blockId.isInstanceOf[StreamBlockId]
     val decrypted = if (maybeEncrypted) wrapForEncryption(inputStream) else inputStream
-    getSerializer(classTag, autoPick)
+    val tmp = getSerializer(classTag, autoPick)
       .newInstance()
       .deserializeStream(wrapForCompression(blockId, decrypted))
-      .asIterator.asInstanceOf[Iterator[T]]
+      .asIterator.asInstanceOf[Iterator[T]].toIterable
+    println(tmp.mkString(","), classTag)
+    tmp.toIterator
   }
 }

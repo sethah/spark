@@ -14,16 +14,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package org.apache.spark.ml.feature
-
-import org.apache.spark.ml.linalg.Vector
+package org.apache.spark.ml.optim.optimizers
 
 /**
- * Class that represents an instance of weighted data point with label and features.
+ * Data structure holding pertinent information about the optimizer state.
  *
- * @param label Label for this data point.
- * @param weight The weight of this instance.
- * @param features The vector of features for this data point.
+ * @tparam T The type of minimized function's domain.
  */
-case class Instance(label: Double, weight: Double, features: Vector)
+trait MinimizerState[+T] {
+
+  /** The current value of the minimization parameters. */
+  def params: T
+
+}
+
+trait IterativeMinimizerState[+T] extends MinimizerState[T] {
+
+  /** The number of completed iterations. */
+  def iter: Int
+
+  /** The loss function value at this iteration. */
+  def loss: Double
+
+}
+
+/**
+ * An minimizer state implementation designed for minimizers that wrap Breeze.
+ */
+private[ml] case class BreezeWrapperState[+T](
+    params: T,
+    iter: Int,
+    loss: Double) extends IterativeMinimizerState[T]
+

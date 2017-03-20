@@ -21,19 +21,21 @@ import scala.collection.JavaConverters._
 import scala.language.existentials
 import scala.util.Random
 import scala.util.control.Breaks._
-
-import org.apache.spark.{SparkException, SparkFunSuite}
+import org.apache.spark.{SparkEnv, SparkException, SparkFunSuite}
 import org.apache.spark.ml.attribute.NominalAttribute
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, LabeledPoint}
-import org.apache.spark.ml.linalg.{DenseMatrix, Matrices, SparseMatrix, SparseVector, Vector, Vectors}
+import org.apache.spark.ml.linalg.{DenseMatrix, DenseVector, Matrices, SparseMatrix, SparseVector, Vector, Vectors}
+import org.apache.spark.ml.optim.optimizers.{LBFGS, OWLQN}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.{Dataset, Row}
-import org.apache.spark.sql.functions.{col, lit, rand}
+import org.apache.spark.sql.functions.{col, lit, rand, sum}
 import org.apache.spark.sql.types.LongType
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.memory.{DeserializedMemoryEntry, SerializedMemoryEntry}
 
 class LogisticRegressionSuite
   extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
@@ -382,6 +384,69 @@ class LogisticRegressionSuite
     resultsUsingPredict.zip(results.select("prediction").as[Double].collect()).foreach {
       case (pred1, pred2) => assert(pred1 === pred2)
     }
+  }
+
+  test("optimizer params") {
+    val opt = new LBFGS()
+    val lr = new LogisticRegression().setMinimizer(opt)
+    // test ignores maxTol and maxIter
+    val defaultIters = lr.getMaxIter
+    val defaultTol = lr.getTol
+    lr.setMaxIter(defaultIters + 1).setTol(defaultTol * 2)
+    assert(lr.getMaxIter === defaultIters)
+    assert(lr.getTol === defaultTol)
+
+    // clear optimizer and params should take effect
+    lr.clear(lr.minimizer)
+    lr.setMaxIter(defaultIters + 1).setTol(defaultTol * 2)
+    assert(lr.getMaxIter === defaultIters + 1)
+    assert(lr.getTol === defaultTol * 2)
+
+    // copies maxIter and maxTol
+    lr.setMinimizer(opt)
+    val model = lr.fit(smallBinaryDataset)
+    assert(model.summary.totalIterations > 2)
+
+    opt.setMaxIter(1)
+    val model1 = lr.fit(smallBinaryDataset)
+    assert(model1.summary.totalIterations === 2)
+
+    opt.setMaxIter(100).setTol(Double.MaxValue)
+    val model2 = lr.fit(smallBinaryDataset)
+    assert(model2.summary.totalIterations === 1)
+
+    // when no optimizer is set, use estimator params
+    lr.clear(lr.minimizer).clear(lr.maxIter).clear(lr.tol)
+    lr.setMaxIter(1)
+    val model3 = lr.fit(smallBinaryDataset)
+    assert(model3.summary.totalIterations === 2)
+
+    lr.clear(lr.maxIter).setTol(Double.MaxValue)
+    val model4 = lr.fit(smallBinaryDataset)
+    assert(model4.summary.totalIterations === 1)
+
+  }
+
+  test("logistic regression with different optimizers") {
+    val lr = new LogisticRegression()
+      .setRegParam(0.05)
+      .setElasticNetParam(0.5)
+      .setMinimizer(new LBFGS())
+
+    withClue("LBFGS cannot be used for L1 regularization") {
+      intercept[IllegalArgumentException] {
+        lr.fit(smallBinaryDataset)
+      }
+    }
+
+    // can train with L2 optimizer since regParam is zero
+    lr.setRegParam(0.0).fit(smallBinaryDataset)
+
+    // can train with an L1 minimizer
+    lr.setRegParam(0.05).setMinimizer(new OWLQN()).fit(smallBinaryDataset)
+
+    // can train with L1 minimizer when no L1 applied
+    lr.setElasticNetParam(0.0).fit(smallBinaryDataset)
   }
 
   test("binary logistic regression: Predictor, Classifier methods") {

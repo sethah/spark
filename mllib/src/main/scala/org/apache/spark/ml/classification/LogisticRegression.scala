@@ -18,11 +18,7 @@
 package org.apache.spark.ml.classification
 
 import scala.collection.mutable
-
-import breeze.linalg.{DenseVector => BDV}
-import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.broadcast.Broadcast
@@ -30,6 +26,8 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
 import org.apache.spark.ml.linalg.BLAS._
+import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg, HasMinimizer}
+import org.apache.spark.ml.optim.optimizers._
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util._
@@ -49,7 +47,8 @@ import org.apache.spark.util.VersionUtils
  */
 private[classification] trait LogisticRegressionParams extends ProbabilisticClassifierParams
   with HasRegParam with HasElasticNetParam with HasMaxIter with HasFitIntercept with HasTol
-  with HasStandardization with HasWeightCol with HasThreshold with HasAggregationDepth {
+  with HasStandardization with HasWeightCol with HasThreshold with HasAggregationDepth
+  with HasMinimizer {
 
   import org.apache.spark.ml.classification.LogisticRegression.supportedFamilyNames
 
@@ -195,6 +194,9 @@ class LogisticRegression @Since("1.2.0") (
   extends ProbabilisticClassifier[Vector, LogisticRegression, LogisticRegressionModel]
   with LogisticRegressionParams with DefaultParamsWritable with Logging {
 
+  override type MinimizerType = IterativeMinimizer[Vector, DifferentiableFunction[Vector],
+    IterativeMinimizerState[Vector]]
+
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("logreg"))
 
@@ -228,7 +230,14 @@ class LogisticRegression @Since("1.2.0") (
    * @group setParam
    */
   @Since("1.2.0")
-  def setMaxIter(value: Int): this.type = set(maxIter, value)
+  def setMaxIter(value: Int): this.type = {
+    if (isSet(minimizer)) {
+      logWarning("Minimizer is set, so maxIter will be ignored.")
+      this
+    } else {
+      set(maxIter, value)
+    }
+  }
   setDefault(maxIter -> 100)
 
   /**
@@ -239,7 +248,14 @@ class LogisticRegression @Since("1.2.0") (
    * @group setParam
    */
   @Since("1.4.0")
-  def setTol(value: Double): this.type = set(tol, value)
+  def setTol(value: Double): this.type = {
+    if (isSet(minimizer)) {
+      logWarning("Minimizer is set, so tol will be ignored.")
+      this
+    } else {
+      set(tol, value)
+    }
+  }
   setDefault(tol -> 1E-6)
 
   /**
@@ -278,6 +294,8 @@ class LogisticRegression @Since("1.2.0") (
 
   @Since("1.5.0")
   override def setThreshold(value: Double): this.type = super.setThreshold(value)
+
+  def setMinimizer(value: MinimizerType): this.type = set(minimizer, value)
 
   @Since("1.5.0")
   override def getThreshold: Double = super.getThreshold
@@ -435,36 +453,48 @@ class LogisticRegression @Since("1.2.0") (
         val bcFeaturesStd = instances.context.broadcast(featuresStd)
         val costFun = new LogisticCostFun(instances, numClasses, $(fitIntercept),
           $(standardization), bcFeaturesStd, regParamL2, multinomial = isMultinomial,
-          $(aggregationDepth))
+          $(aggregationDepth)).cached()
 
-        val optimizer = if ($(elasticNetParam) == 0.0 || $(regParam) == 0.0) {
-          new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
-        } else {
-          val standardizationParam = $(standardization)
-          def regParamL1Fun = (index: Int) => {
-            // Remove the L1 penalization on the intercept
-            val isIntercept = $(fitIntercept) && index >= numFeatures * numCoefficientSets
-            if (isIntercept) {
-              0.0
+        val standardizationParam = $(standardization)
+        val regParamL1Fun = (index: Int) => {
+          // Remove the L1 penalization on the intercept
+          val isIntercept = $(fitIntercept) && index >= numFeatures * numCoefficientSets
+          if (isIntercept) {
+            0.0
+          } else {
+            if (standardizationParam) {
+              regParamL1
             } else {
-              if (standardizationParam) {
-                regParamL1
+              val featureIndex = index / numCoefficientSets
+              // If `standardization` is false, we still standardize the data
+              // to improve the rate of convergence; as a result, we have to
+              // perform this reverse standardization by penalizing each component
+              // differently to get effectively the same objective function when
+              // the training dataset is not standardized.
+              if (featuresStd(featureIndex) != 0.0) {
+                regParamL1 / featuresStd(featureIndex)
               } else {
-                val featureIndex = index / numCoefficientSets
-                // If `standardization` is false, we still standardize the data
-                // to improve the rate of convergence; as a result, we have to
-                // perform this reverse standardization by penalizing each component
-                // differently to get effectively the same objective function when
-                // the training dataset is not standardized.
-                if (featuresStd(featureIndex) != 0.0) {
-                  regParamL1 / featuresStd(featureIndex)
-                } else {
-                  0.0
-                }
+                0.0
               }
             }
           }
-          new BreezeOWLQN[Int, BDV[Double]]($(maxIter), 10, regParamL1Fun, $(tol))
+        }
+
+        val opt = if (!isSet(minimizer)) {
+          if ($(elasticNetParam) > 0.0 && $(regParam) > 0.0) {
+            copyValues(new OWLQN()).setL1RegFunc(regParamL1Fun)
+          } else {
+            copyValues(new LBFGS())
+          }
+        } else {
+          getMinimizer match {
+            case l1Opt: MinimizerType with HasL1Reg if $(elasticNetParam) > 0.0 &&
+              $(regParam) > 0.0 =>
+              l1Opt.set(l1Opt.l1RegFunc, regParamL1Fun)
+            case l2Opt: MinimizerType if $(elasticNetParam) == 0.0 || $(regParam) == 0.0 => l2Opt
+            case _ => throw new IllegalArgumentException(s"Wrong type of optimizer for " +
+              s"elasticNetParam: ${$(elasticNetParam)}")
+          }
         }
 
         /*
@@ -549,42 +579,18 @@ class LogisticRegression @Since("1.2.0") (
             math.log(histogram(1) / histogram(0)))
         }
 
-        val states = optimizer.iterations(new CachedDiffFunction(costFun),
-          new BDV[Double](initialCoefWithInterceptMatrix.toArray))
+        val optIterations = opt.iterations(costFun,
+          new DenseVector(initialCoefWithInterceptMatrix.toArray))
 
-        /*
-           Note that in Logistic Regression, the objective history (loss + regularization)
-           is log-likelihood which is invariant under feature standardization. As a result,
-           the objective history from optimizer is the same as the one in the original space.
-         */
+        var lastIter: IterativeMinimizerState[Vector] = null
         val arrayBuilder = mutable.ArrayBuilder.make[Double]
-        var state: optimizer.State = null
-        while (states.hasNext) {
-          state = states.next()
-          arrayBuilder += state.adjustedValue
-        }
-        bcFeaturesStd.destroy(blocking = false)
-
-        if (state == null) {
-          val msg = s"${optimizer.getClass.getName} failed."
-          logError(msg)
-          throw new SparkException(msg)
+        while (optIterations.hasNext) {
+          lastIter = optIterations.next()
+          arrayBuilder += lastIter.loss
         }
 
-        /*
-           The coefficients are trained in the scaled space; we're converting them back to
-           the original space.
-
-           Additionally, since the coefficients were laid out in column major order during training
-           to avoid extra computation, we convert them back to row major before passing them to the
-           model.
-
-           Note that the intercept in scaled space and original space is the same;
-           as a result, no scaling is needed.
-         */
-        val allCoefficients = state.x.toArray.clone()
         val allCoefMatrix = new DenseMatrix(numCoefficientSets, numFeaturesPlusIntercept,
-          allCoefficients)
+          lastIter.params.toArray)
         val denseCoefficientMatrix = new DenseMatrix(numCoefficientSets, numFeatures,
           new Array[Double](numCoefficientSets * numFeatures), isTransposed = true)
         val interceptVec = if ($(fitIntercept) || !isMultinomial) {
@@ -1655,11 +1661,10 @@ private class LogisticCostFun(
     bcFeaturesStd: Broadcast[Array[Double]],
     regParamL2: Double,
     multinomial: Boolean,
-    aggregationDepth: Int) extends DiffFunction[BDV[Double]] {
+    aggregationDepth: Int) extends DifferentiableFunction[Vector] {
 
-  override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
-    val coeffs = Vectors.fromBreeze(coefficients)
-    val bcCoeffs = instances.context.broadcast(coeffs)
+  override protected def doCompute(coefficients: Vector): (Double, Vector) = {
+    val bcCoeffs: Broadcast[Vector] = instances.context.broadcast(coefficients)
     val featuresStd = bcFeaturesStd.value
     val numFeatures = featuresStd.length
     val numCoefficientSets = if (multinomial) numClasses else 1
@@ -1676,7 +1681,8 @@ private class LogisticCostFun(
     }
 
     val totalGradientMatrix = logisticAggregator.gradient
-    val coefMatrix = new DenseMatrix(numCoefficientSets, numFeaturesPlusIntercept, coeffs.toArray)
+    val coefMatrix = new DenseMatrix(numCoefficientSets, numFeaturesPlusIntercept,
+      coefficients.toArray)
     // regVal is the sum of coefficients squares excluding intercept for L2 regularization.
     val regVal = if (regParamL2 == 0.0) {
       0.0
@@ -1715,6 +1721,6 @@ private class LogisticCostFun(
     }
     bcCoeffs.destroy(blocking = false)
 
-    (logisticAggregator.loss + regVal, new BDV(totalGradientMatrix.toArray))
+    (logisticAggregator.loss + regVal, new DenseVector(totalGradientMatrix.toArray))
   }
 }

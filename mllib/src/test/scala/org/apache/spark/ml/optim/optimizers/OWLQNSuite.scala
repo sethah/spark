@@ -14,16 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.spark.ml.optim.optimizers
 
-package org.apache.spark.ml.feature
+import org.apache.spark.SparkFunSuite
+import org.apache.spark.ml.param.ParamsSuite
 
-import org.apache.spark.ml.linalg.Vector
+class OWLQNSuite extends SparkFunSuite {
 
-/**
- * Class that represents an instance of weighted data point with label and features.
- *
- * @param label Label for this data point.
- * @param weight The weight of this instance.
- * @param features The vector of features for this data point.
- */
-case class Instance(label: Double, weight: Double, features: Vector)
+  test("params") {
+    ParamsSuite.checkParams(new OWLQN())
+  }
+
+  test("lbfgs minimizer: default params") {
+    val lbfgs = new LBFGS()
+    assert(lbfgs.getMaxIter === 100)
+    assert(lbfgs.getTol === 1e-6)
+  }
+}

@@ -14,16 +14,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.spark.ml.optim
 
-package org.apache.spark.ml.feature
+import org.apache.spark.ml.param.{Param, Params}
 
-import org.apache.spark.ml.linalg.Vector
 
-/**
- * Class that represents an instance of weighted data point with label and features.
- *
- * @param label Label for this data point.
- * @param weight The weight of this instance.
- * @param features The vector of features for this data point.
- */
-case class Instance(label: Double, weight: Double, features: Vector)
+trait HasMinimizer extends Params {
+
+ type MinimizerType
+
+ /**
+  * @group param
+  */
+ final val minimizer: Param[MinimizerType] = new Param(this, "minimizer", "")
+
+ /** @group getParam */
+ final def getMinimizer: MinimizerType = $(minimizer)
+}
+
+trait HasL1Reg extends Params {
+
+ /**
+  * Param for maximum number of iterations (&gt;= 0).
+  *
+  * @group param
+  */
+ final val l1RegFunc: Param[Int => Double] = new Param(this, "l1RegFunc",
+  "function for applying L1 regularization to parameters.")
+
+ /** @group getParam */
+ final def getL1RegFunc: Int => Double = $(l1RegFunc)
+
+}

@@ -15,15 +15,30 @@
  * limitations under the License.
  */
 
-package org.apache.spark.ml.feature
+package org.apache.spark.ml.optim
 
-import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.SparkFunSuite
 
-/**
- * Class that represents an instance of weighted data point with label and features.
- *
- * @param label Label for this data point.
- * @param weight The weight of this instance.
- * @param features The vector of features for this data point.
- */
-case class Instance(label: Double, weight: Double, features: Vector)
+class DifferentiableFunctionSuite extends SparkFunSuite {
+
+  test("cached differentiable function") {
+    var counter = 0
+    val testDiffFun = new DifferentiableFunction[Double] {
+      override def doCompute(x: Double) = {
+        counter += 1
+        (2.0 * x, 2.0)
+      }
+    }
+    val cachedTestFun = testDiffFun.cached()
+    val testValues = Seq(0, 0, 1, 2, 2, 2, 2, 1, 3)
+    testValues.foreach { x =>
+      testDiffFun.compute(x)
+    }
+    assert(counter === 9)
+    counter = 0
+    testValues.foreach { x =>
+      cachedTestFun.compute(x)
+    }
+    assert(counter === 5)
+  }
+}

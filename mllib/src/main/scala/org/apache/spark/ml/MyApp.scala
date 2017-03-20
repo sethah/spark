@@ -14,16 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.spark.ml
 
-package org.apache.spark.ml.feature
+import org.apache.spark.sql.SparkSession
 
-import org.apache.spark.ml.linalg.Vector
+object MyApp {
 
-/**
- * Class that represents an instance of weighted data point with label and features.
- *
- * @param label Label for this data point.
- * @param weight The weight of this instance.
- * @param features The vector of features for this data point.
- */
-case class Instance(label: Double, weight: Double, features: Vector)
+  def main(args: Array[String]): Unit = {
+    val spark = SparkSession.builder
+      .appName("spark session example")
+      .master("local[*]")
+      .getOrCreate()
+    try {
+      val path = "/Users/sethhendrickson/Development/datasets/multinomialDataset"
+      val df = spark.read.option("inferSchema", "true").parquet(path).limit(100)
+      df.show()
+    } finally {
+      spark.stop()
+    }
+  }
+}
