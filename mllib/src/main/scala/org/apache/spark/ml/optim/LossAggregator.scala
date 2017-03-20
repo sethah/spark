@@ -25,61 +25,42 @@ import org.apache.spark.broadcast.Broadcast
 
 import scala.reflect.ClassTag
 
-trait LossAggregator[Datum, Coeff, Agg <: LossAggregator[Datum, Coeff, Agg]] {
-  protected var weightSum: Double
-  protected var lossSum: Double
-
-  def add(instance: Datum): this.type
-  def merge(other: Agg): this.type = {
-
-    if (other.weightSum != 0) {
-      weightSum += other.weightSum
-      lossSum += other.lossSum
-    }
-    this
-  }
-  def loss: Double = {
-    require(weightSum > 0.0, s"The effective number of instances should be " +
-      s"greater than 0.0, but $weightSum.")
-    lossSum / weightSum
-  }
-}
+//trait LossAggregator[Datum, Coeff, Agg <: LossAggregator[Datum, Coeff, Agg]] {
+//  protected var weightSum: Double
+//  protected var lossSum: Double
+//
+//  def add(instance: Datum): this.type
+//  def merge(other: Agg): this.type = {
+//
+//    if (other.weightSum != 0) {
+//      weightSum += other.weightSum
+//      lossSum += other.lossSum
+//    }
+//    this
+//  }
+//  def loss: Double = {
+//    require(weightSum > 0.0, s"The effective number of instances should be " +
+//      s"greater than 0.0, but $weightSum.")
+//    lossSum / weightSum
+//  }
+//}
 
 trait DifferentiableLossAggregator[Datum, Coeff,
-Agg <: DifferentiableLossAggregator[Datum, Coeff, Agg]]
-  extends LossAggregator[Datum, Coeff, Agg] {
+Agg <: DifferentiableLossAggregator[Datum, Coeff, Agg]] {
   protected val dim: Int
-  protected lazy val gradientSumArray: Array[Double] = Array.ofDim[Double](dim)
+  protected val weightSum: Double
+  protected val lossSum: Double
 
-//  def addInPlace(instance: Datum): this.type
-  override def merge(other: Agg): this.type = {
-    require(dim == other.dim, s"Dimensions mismatch when merging with another " +
-      s"LeastSquaresAggregator. Expecting $dim but got ${other.dim}.")
+  protected def gradientBuffer: Coeff
 
-    if (other.weightSum != 0) {
-      weightSum += other.weightSum
-      lossSum += other.lossSum
+  def add(instance: Datum): Agg
 
-      var i = 0
-      val localThisGradientSumArray = this.gradientSumArray
-      val localOtherGradientSumArray = other.gradientSumArray
-      while (i < dim) {
-        localThisGradientSumArray(i) += localOtherGradientSumArray(i)
-        i += 1
-      }
-    }
-    this
-  }
+  def merge(other: Agg): Agg
 
-  def gradient: Coeff = {
-    require(weightSum > 0.0, s"The effective number of instances should be " +
-      s"greater than 0.0, but $weightSum.")
-    val result = Vectors.dense(gradientSumArray.clone())
-    BLAS.scal(1.0 / weightSum, result)
-    result
-  }
+  def gradient: Coeff
 
-  def create(coeff: Broadcast[Coeff]): Agg
+  def loss: Double
+
 }
 
 //class MyCostFunction[Agg: ClassTag](
@@ -106,13 +87,13 @@ Agg <: DifferentiableLossAggregator[Datum, Coeff, Agg]]
 
 class CostFunction[Agg <: DifferentiableLossAggregator[Instance, Vector, Agg]: ClassTag](
      val instances: RDD[Instance],
-     val agg: Agg,
+     val getAggregator: Broadcast[Vector] => Agg,
      val regFun: (Vector, Vector) => Double)
   extends DiffFunction[BDV[Double]] {
 
   override def calculate(coefficients: BDV[Double]): (Double, BDV[Double]) = {
     val bcCoefficients = instances.context.broadcast(Vectors.dense(coefficients.data))
-    val thisAgg = agg.create(bcCoefficients)
+    val thisAgg = getAggregator(bcCoefficients)
     val seqOp = (agg: Agg, x: Instance) => agg.add(x)
     val combOp = (agg1: Agg, agg2: Agg) => agg1.merge(agg2)
     val newAgg = instances.treeAggregate(thisAgg)(seqOp, combOp)
