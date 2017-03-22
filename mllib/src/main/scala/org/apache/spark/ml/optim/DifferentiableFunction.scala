@@ -51,7 +51,21 @@ trait DifferentiableFunction[T] extends (T => Double) with Serializable { self =
    * @param x Point in the parameter space where function and gradient are evaluated.
    * @return Tuple of (f(x), d/dx f(x))
    */
-  def compute(x: T): (Double, T) = doCompute(x)
+//  def compute(x: T): (Double, T) = doCompute(x)
+  private[this] var lastData: Option[(T, Double, T)] = None
+
+  /**
+   * Get the function value and gradient, potentially re-using the last result if the point of
+   * evaluation has not changed.
+   */
+  def compute(x: T): (Double, T) = {
+    val (fx, gx) = lastData
+      .filter(_._1 == x)
+      .map { case (_, lastFx, lastGx) => (lastFx, lastGx) }
+      .getOrElse(doCompute(x))
+    lastData = Some(x, fx, gx)
+    (fx, gx)
+  }
 
   protected def doCompute(x: T): (Double, T)
 

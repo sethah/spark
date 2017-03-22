@@ -17,12 +17,13 @@
 
 package org.apache.spark.ml.regression
 
+
 import scala.util.Random
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.optim.Implicits.LossFunctionHasSubproblems
 import org.apache.spark.ml.optim.aggregator.LeastSquaresAggregator
 import org.apache.spark.ml.optim.loss.LossFunction
-import org.apache.spark.ml.optim.optimizers.{EMSO, LBFGS}
+import org.apache.spark.ml.optim.optimizers.{EMSO, LBFGS, OWLQN}
 import org.apache.spark.rdd.RDD
 //import org.apache.spark.ml.classification.EMSOOptimization
 import org.apache.spark.ml.feature.Instance
@@ -217,14 +218,18 @@ class LinearRegressionSuite
   test("mytest") {
     import org.apache.spark.ml.optim.Implicits._
     Seq("l-bfgs").foreach { solver =>
-      val trainer1 = new LinearRegression().setSolver(solver)
+      val trainer1 = new LinearRegression()
+        .setSolver(solver)
+        .setRegParam(2.3)
+//        .setMinimizer(new LBFGS())
         .setMinimizer(new EMSO[LossFunction[RDD, LeastSquaresAggregator]](
-          new LBFGS().setMaxIter(50), 0.000001))
+          new LBFGS().setMaxIter(50), 0.000001).setMaxIter(10))
       // The result should be the same regardless of standardization without regularization
       val model1 = trainer1.fit(datasetWithDenseFeature)
       println(model1.coefficients)
       println(model1.intercept)
     }
+    Thread.sleep(50000)
   }
 
   test("linear regression with intercept without regularization") {
