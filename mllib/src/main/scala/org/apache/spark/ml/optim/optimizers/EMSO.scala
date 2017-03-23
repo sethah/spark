@@ -113,9 +113,9 @@ class EMSO[F <: DifferentiableFunction[Vector]](
         },
         combOp = (acc1, acc2) => {
           val gradRes = acc1._4.toDense
-          BLAS.axpy(1.0, acc1._4, gradRes)
+          BLAS.axpy(1.0, acc2._4, gradRes)
           val paramsRes = acc1._3.toDense
-          BLAS.axpy(1.0, acc1._3, paramsRes)
+          BLAS.axpy(1.0, acc2._3, paramsRes)
           (acc1._1 + acc2._1, acc1._2 + acc2._2, paramsRes, gradRes)
         })
 

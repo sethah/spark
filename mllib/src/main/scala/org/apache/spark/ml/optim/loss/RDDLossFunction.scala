@@ -47,7 +47,7 @@ import scala.language.higherKinds
  * @tparam Agg Specialization of [[DifferentiableLossAggregator]], representing the concrete type
  *             of the aggregator.
  */
-private[ml] class LossFunction[M[_], Agg <: DifferentiableLossAggregator[Instance, Agg]: ClassTag](
+class LossFunction[M[_], Agg <: DifferentiableLossAggregator[Instance, Agg]: ClassTag](
    val instances: M[Instance],
    val getAggregator: (Vector => Agg),
    val regularization: Option[DifferentiableRegularization[Array[Double]]],

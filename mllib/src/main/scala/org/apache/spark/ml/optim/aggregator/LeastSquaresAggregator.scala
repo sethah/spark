@@ -154,7 +154,7 @@ import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
  * @param bcFeaturesMean The broadcast mean values of the features.
  * @param bcCoefficients The broadcast coefficients corresponding to the features.
  */
-private[ml] class LeastSquaresAggregator(
+class LeastSquaresAggregator(
                         labelStd: Double,
                         labelMean: Double,
                         fitIntercept: Boolean,
