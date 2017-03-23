@@ -220,7 +220,7 @@ class LinearRegressionSuite
     Seq("l-bfgs").foreach { solver =>
       val trainer1 = new LinearRegression()
         .setSolver(solver)
-        .setRegParam(2.3)
+//        .setRegParam(2.3)
 //        .setMinimizer(new LBFGS())
         .setMinimizer(new EMSO[LossFunction[RDD, LeastSquaresAggregator]](
           new LBFGS().setMaxIter(50), 0.000001).setMaxIter(10))
@@ -229,7 +229,6 @@ class LinearRegressionSuite
       println(model1.coefficients)
       println(model1.intercept)
     }
-    Thread.sleep(50000)
   }
 
   test("linear regression with intercept without regularization") {

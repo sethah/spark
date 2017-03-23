@@ -18,10 +18,9 @@ package org.apache.spark.ml.optim.optimizers
 
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{LBFGS => BreezeLBFGS}
-
 import org.apache.spark.annotation.Since
 import org.apache.spark.internal.Logging
-import org.apache.spark.ml.linalg.{DenseVector, Vector}
+import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.param.{ParamMap, Params}
 import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
@@ -64,7 +63,7 @@ class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
       lossFunction: DifferentiableFunction[Vector],
       initialParams: Vector): State = {
     val firstLoss = lossFunction.apply(initialParams)
-    BreezeWrapperState(initialParams, 0, firstLoss)
+    BreezeWrapperState(initialParams, 0, firstLoss, Vectors.zeros(initialParams.size))
   }
 
   @Since("2.2.0")
@@ -81,7 +80,7 @@ class LBFGS @Since("2.2.0") (@Since("2.2.0") override val uid: String)
       start.params.asBreeze.toDenseVector)
     breezeIterations.map { breezeState =>
       BreezeWrapperState(new DenseVector(breezeState.x.data), breezeState.iter + 1,
-        breezeState.adjustedValue)
+        breezeState.adjustedValue, Vectors.fromBreeze(breezeState.adjustedGradient))
     }
   }
 

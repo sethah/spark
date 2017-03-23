@@ -67,20 +67,28 @@ class EMSO[F <: DifferentiableFunction[Vector]](
   def setMaxIter(value: Int): this.type = set(maxIter, value)
   setDefault(maxIter -> 100)
 
+  /**
+   * Sets the convergence tolerance for this minimizer.
+   * Default is 1e-6.
+   *
+   * @group setParam
+   */
+  @Since("2.2.0")
+  def setTol(value: Double): this.type = set(tol, value)
+  setDefault(tol -> 1e-6)
 
   def initialState(initialParameters: Vector): State = {
-    EMSO.EMSOState(0, 0.0, initialParameters)
+    val size = initialParameters.size
+    EMSO.EMSOState(0, 0.0, initialParameters, new DenseVector(Array.fill(size)(1.0)))
   }
 
   override def iterations(lossFunction: F, initialParameters: Vector): Iterator[State] = {
     val numFeatures = initialParameters.size
+    var continue = true
     Iterator.iterate(initialState(initialParameters)) { state =>
       val oldParams = state.params
-      println(state.loss)
       val solutions = subProblems.nextSubproblems(lossFunction).map { subProb =>
         val emsoSubProb = new EMSOLossFunction(subProb, oldParams, gamma)
-        // idea: make this an iterative minimizer and then get the iterations. Take all until last,
-        // but save the first one because that should be the loss/gradient
 
         val optIterations = partitionMinimizer.iterations(emsoSubProb, initialParameters)
 
@@ -90,34 +98,41 @@ class EMSO[F <: DifferentiableFunction[Vector]](
           lastIter = optIterations.next()
           arrayBuilder += lastIter.loss
         }
-//        partitionMinimizer.minimize(emsoSubProb, initialParameters)
         lastIter
       }
-      // (count, loss, params)
-      val initialValues = (0L, 0.0, Vectors.sparse(numFeatures, Array(), Array()))
+      // (count, loss, params, gradient)
+      val initialValues = (0L, 0.0, Vectors.sparse(numFeatures, Array(), Array()),
+        Vectors.sparse(numFeatures, Array(), Array()))
       val _next = solutions.treeAggregate(initialValues)(
         seqOp = (acc, state) => {
           val paramsRes = acc._3.toDense
           BLAS.axpy(1.0, state.params, paramsRes)
-//          val gradRes = acc._3
-//          BLAS.axpy(1.0, state.gradient, paramsRes)
-          (acc._1 + 1L, acc._2 + state.loss, paramsRes)
+          val gradRes = acc._4.toDense
+          BLAS.axpy(1.0, state.gradient, gradRes)
+          (acc._1 + 1L, acc._2 + state.loss, paramsRes, gradRes)
         },
         combOp = (acc1, acc2) => {
-//          val gradRes = acc1._3.toDense
-//          BLAS.axpy(1.0, acc1._3, gradRes)
+          val gradRes = acc1._4.toDense
+          BLAS.axpy(1.0, acc1._4, gradRes)
           val paramsRes = acc1._3.toDense
           BLAS.axpy(1.0, acc1._3, paramsRes)
-          (acc1._1 + acc2._1, acc1._2 + acc2._2, paramsRes)
+          (acc1._1 + acc2._1, acc1._2 + acc2._2, paramsRes, gradRes)
         })
 
+      // TODO: weighted average?
       val _nextModel = _next._3
       BLAS.scal(1.0 / _next._1, _nextModel)
+      val _nextGradient = _next._4
+      BLAS.scal(1.0 / _next._1, _nextGradient)
 
-      // TODO: loss
-      EMSO.EMSOState(state.iter + 1, _next._2, _nextModel)
+      EMSO.EMSOState(state.iter + 1, _next._2, _nextModel, _nextGradient)
     }.takeWhile { state =>
-      state.iter < getMaxIter //&& BLAS.dot(state.)
+      val norm = Vectors.norm(state.gradient, 2)
+      // this hack is required because we need the final iteration, but takewhile only gives you
+      // the iteration before the conditions are violated
+      val tmp = continue
+      if (!(state.iter < getMaxIter && norm > getTol)) continue = false
+      tmp
     }
   }
 
@@ -126,6 +141,6 @@ class EMSO[F <: DifferentiableFunction[Vector]](
 }
 
 object EMSO {
-  case class EMSOState(iter: Int, loss: Double, params: Vector)
-    extends IterativeMinimizerState[Vector]
+  case class EMSOState(iter: Int, loss: Double, params: Vector, gradient: Vector)
+    extends IterativeMinimizerState[Vector] with DifferentiableMinimizerState[Vector]
 }

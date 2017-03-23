@@ -36,6 +36,13 @@ trait IterativeMinimizerState[+T] extends MinimizerState[T] {
   /** The loss function value at this iteration. */
   def loss: Double
 
+  def gradient: T
+}
+
+trait DifferentiableMinimizerState[+T] extends MinimizerState[T] {
+
+  def gradient: T
+
 }
 
 /**
@@ -44,5 +51,7 @@ trait IterativeMinimizerState[+T] extends MinimizerState[T] {
 private[ml] case class BreezeWrapperState[+T](
     params: T,
     iter: Int,
-    loss: Double) extends IterativeMinimizerState[T]
+    loss: Double,
+    gradient: T) extends IterativeMinimizerState[T] {
+}
 
