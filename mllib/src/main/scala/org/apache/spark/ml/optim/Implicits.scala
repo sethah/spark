@@ -66,7 +66,8 @@ object Implicits {
       val getAgg = original.getAggregator
       val aggDepth = original.aggregationDepth
       original.instances.mapPartitions { it =>
-        val subProb = new LossFunction[Iterable, Agg](it.toIterable, getAgg, reg, aggDepth)
+        val iterable = it.toIterable
+        val subProb = new LossFunction[Iterable, Agg](iterable, getAgg, reg, aggDepth)
         Iterator.single(subProb)
       }
     }

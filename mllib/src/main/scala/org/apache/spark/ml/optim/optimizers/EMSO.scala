@@ -87,19 +87,22 @@ class EMSO[F <: DifferentiableFunction[Vector]](
     var continue = true
     Iterator.iterate(initialState(initialParameters)) { state =>
       val oldParams = state.params
-      val solutions = subProblems.nextSubproblems(lossFunction).map { subProb =>
-        val emsoSubProb = new EMSOLossFunction(subProb, oldParams, gamma)
+      val solutions = subProblems.nextSubproblems(lossFunction).mapPartitionsWithIndex((i, p) => {
+        p.map { subProb =>
+          val emsoSubProb = new EMSOLossFunction(subProb, oldParams, gamma)
 
-        val optIterations = partitionMinimizer.iterations(emsoSubProb, initialParameters)
+          val optIterations = partitionMinimizer.iterations(emsoSubProb, initialParameters)
 
-        var lastIter: IterativeMinimizerState[Vector] = null
-        val arrayBuilder = mutable.ArrayBuilder.make[Double]
-        while (optIterations.hasNext) {
-          lastIter = optIterations.next()
-          arrayBuilder += lastIter.loss
+          var lastIter: IterativeMinimizerState[Vector] = null
+          val arrayBuilder = mutable.ArrayBuilder.make[Double]
+          while (optIterations.hasNext) {
+            lastIter = optIterations.next()
+            arrayBuilder += lastIter.loss
+          }
+          val tmp = i
+          lastIter
         }
-        lastIter
-      }
+      })
       // (count, loss, params, gradient)
       val initialValues = (0L, 0.0, Vectors.sparse(numFeatures, Array(), Array()),
         Vectors.sparse(numFeatures, Array(), Array()))
