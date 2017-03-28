@@ -87,6 +87,9 @@ class EMSO[F <: DifferentiableFunction[Vector]](
     var continue = true
     Iterator.iterate(initialState(initialParameters)) { state =>
       val oldParams = state.params
+      println("params", oldParams)
+      println("grad", state.gradient)
+      println("loss", state.loss)
       val solutions = subProblems.nextSubproblems(lossFunction).mapPartitionsWithIndex((i, p) => {
         p.map { subProb =>
           val emsoSubProb = new EMSOLossFunction(subProb, oldParams, gamma)
@@ -128,7 +131,7 @@ class EMSO[F <: DifferentiableFunction[Vector]](
       val _nextGradient = _next._4
       BLAS.scal(1.0 / _next._1, _nextGradient)
 
-      EMSO.EMSOState(state.iter + 1, _next._2, _nextModel, _nextGradient)
+      EMSO.EMSOState(state.iter + 1, _next._2 / _next._1, _nextModel, _nextGradient)
     }.takeWhile { state =>
       val norm = Vectors.norm(state.gradient, 2)
       // this hack is required because we need the final iteration, but takewhile only gives you

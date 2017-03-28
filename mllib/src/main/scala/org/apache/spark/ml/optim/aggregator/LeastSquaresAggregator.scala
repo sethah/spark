@@ -20,6 +20,10 @@ package org.apache.spark.ml.optim.aggregator
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
+import org.apache.spark.ml.optim.Implicits.Aggregable
+import org.apache.spark.mllib.stat.MultivariateOnlineSummarizer
+import org.apache.spark.mllib.linalg.VectorImplicits._
+import scala.language.higherKinds
 
 /**
  * LeastSquaresAggregator computes the gradient and loss for a Least-squared loss function,
@@ -152,25 +156,56 @@ import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
  * @param fitIntercept Whether to fit an intercept term.
  * @param bcFeaturesStd The broadcast standard deviation values of the features.
  * @param bcFeaturesMean The broadcast mean values of the features.
- * @param bcCoefficients The broadcast coefficients corresponding to the features.
+ * @param coefficients The broadcast coefficients corresponding to the features.
  */
+trait LossAggregatorProvider[Datum, T, Agg <: DifferentiableLossAggregator[Datum, Agg]]
+  extends Serializable {
+  def getAggregator[M[_]: Aggregable](data: M[Datum]): (T => Agg)
+}
+
+class MyLeastSquaresAggregatorProvider(fitIntercept: Boolean)
+  extends LossAggregatorProvider[Instance, Vector, LeastSquaresAggregator] {
+
+  def getAggregator[M[_]: Aggregable](data: M[Instance]): (Vector => LeastSquaresAggregator) = {
+    val (featuresSummarizer, ySummarizer) = {
+      val seqOp = (c: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer),
+                   instance: Instance) =>
+        (c._1.add(instance.features, instance.weight),
+          c._2.add(Vectors.dense(instance.label), instance.weight))
+
+      val combOp = (c1: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer),
+                    c2: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer)) =>
+        (c1._1.merge(c2._1), c1._2.merge(c2._2))
+
+      implicitly[Aggregable[M]].aggregate(data, (
+        new MultivariateOnlineSummarizer, new MultivariateOnlineSummarizer
+      ))(seqOp, combOp)
+    }
+    val yStd = math.sqrt(ySummarizer.variance(0))
+    val yMean = ySummarizer.mean(0)
+    val featuresStd = featuresSummarizer.variance.toArray.map(math.sqrt)
+    val featuresMean = featuresSummarizer.mean.toArray
+    new LeastSquaresAggregator(yStd, yMean, fitIntercept, featuresStd, featuresMean)(_)
+  }
+
+}
 class LeastSquaresAggregator(
                         labelStd: Double,
                         labelMean: Double,
                         fitIntercept: Boolean,
-                        bcFeaturesStd: Broadcast[Array[Double]],
-                        bcFeaturesMean: Broadcast[Array[Double]])(bcCoefficients: Vector)
+                        bcFeaturesStd: Array[Double],
+                        bcFeaturesMean: Array[Double])(coefficients: Vector)
   extends DifferentiableLossAggregator[Instance, LeastSquaresAggregator] {
   require(labelStd > 0.0, s"${this.getClass.getName} requires the label standard" +
     s"deviation to be positive.")
 
-  private val numFeatures = bcFeaturesStd.value.length
+  private val numFeatures = bcFeaturesStd.length
   protected override val dim: Int = numFeatures
   // make transient so we do not serialize between aggregation stages
-  @transient private lazy val featuresStd = bcFeaturesStd.value
+  @transient private lazy val featuresStd = bcFeaturesStd
   @transient private lazy val effectiveCoefAndOffset = {
-    val coefficientsArray = bcCoefficients.toArray.clone()
-    val featuresMean = bcFeaturesMean.value
+    val coefficientsArray = coefficients.toArray.clone()
+    val featuresMean = bcFeaturesMean
     var sum = 0.0
     var i = 0
     val len = coefficientsArray.length

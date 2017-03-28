@@ -24,7 +24,7 @@ import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
 import org.apache.spark.ml.optim.DifferentiableFunction
 import org.apache.spark.ml.optim.Implicits.Aggregable
-import org.apache.spark.ml.optim.aggregator.DifferentiableLossAggregator
+import org.apache.spark.ml.optim.aggregator.{DifferentiableLossAggregator, LossAggregatorProvider}
 import org.apache.spark.rdd.RDD
 
 import scala.language.higherKinds
@@ -49,13 +49,15 @@ import scala.language.higherKinds
  */
 class LossFunction[M[_], Agg <: DifferentiableLossAggregator[Instance, Agg]: ClassTag](
    val instances: M[Instance],
-   val getAggregator: (Vector => Agg),
+   val aggProvider: LossAggregatorProvider[Instance, Vector, Agg],
    val regularization: Option[DifferentiableRegularization[Array[Double]]],
    val aggregationDepth: Int = 2)(implicit canAgg: Aggregable[M])
   extends DifferentiableFunction[Vector] {
 
+  val getAggFunc: (Vector => Agg) = aggProvider.getAggregator(instances)
+
   override def doCompute(coefficients: Vector): (Double, Vector) = {
-    val thisAgg = getAggregator(coefficients)
+    val thisAgg = getAggFunc(coefficients)
     val seqOp = (agg: Agg, x: Instance) => agg.add(x)
     val combOp = (agg1: Agg, agg2: Agg) => agg1.merge(agg2)
     val newAgg = canAgg.aggregate(instances, thisAgg)(seqOp, combOp)
@@ -67,6 +69,7 @@ class LossFunction[M[_], Agg <: DifferentiableLossAggregator[Instance, Agg]: Cla
     }.getOrElse(0.0)
     // TODO: this would be a problem
 //    bcCoefficients.destroy(blocking = false)
+//    println("gradient is:", gradient)
     (newAgg.loss + regLoss, gradient)
   }
 }

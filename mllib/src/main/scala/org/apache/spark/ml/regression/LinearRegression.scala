@@ -31,7 +31,7 @@ import org.apache.spark.ml.linalg.BLAS._
 import org.apache.spark.ml.optim.{DifferentiableFunction, HasL1Reg, HasMinimizer, WeightedLeastSquares}
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.optim.Implicits.LossFunctionHasSubproblems
-import org.apache.spark.ml.optim.aggregator.LeastSquaresAggregator
+import org.apache.spark.ml.optim.aggregator.{LeastSquaresAggregator, MyLeastSquaresAggregatorProvider}
 import org.apache.spark.ml.optim.loss.{L2RegularizationLoss, LossFunction}
 import org.apache.spark.ml.optim.optimizers._
 import org.apache.spark.ml.param.ParamMap
@@ -325,8 +325,8 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     val effectiveL1RegParam = $(elasticNetParam) * effectiveRegParam
     val effectiveL2RegParam = (1.0 - $(elasticNetParam)) * effectiveRegParam
 
-    val getAggregatorFunc = new LeastSquaresAggregator(yStd, yMean, $(fitIntercept),
-        bcFeaturesStd, bcFeaturesMean)(_)
+//    val getAggregatorFunc = new LeastSquaresAggregator(yStd, yMean, $(fitIntercept),
+//      featuresStd, featuresMean)(_)
     val regularization = if (effectiveL2RegParam != 0.0) {
       val shouldApply = (idx: Int) => idx >= 0 && idx < numFeatures
       Some(new L2RegularizationLoss(effectiveL2RegParam, shouldApply,
@@ -334,7 +334,8 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
     } else {
       None
     }
-    val costFun = new LossFunction[RDD, LeastSquaresAggregator](instances, getAggregatorFunc,
+    val provider = new MyLeastSquaresAggregatorProvider($(fitIntercept))
+    val costFun = new LossFunction[RDD, LeastSquaresAggregator](instances, provider,
       regularization, $(aggregationDepth))// .cached()
 //    val costFun = new LossFunction[RDD, LeastSquaresAggregator](instances, numClasses,
     // $(fitIntercept),
@@ -372,8 +373,6 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
         if (featuresStd(index) != 0.0) effectiveL1RegParam / featuresStd(index) else 0.0
       }
     }
-//    val opt = new EMSO("abc", new LBFGS().setMaxIter(50), 0.000001,
-//      new LossFunctionHasSubproblems[LeastSquaresAggregator])
     val opt = if (!isSet(minimizer)) {
       if ($(elasticNetParam) > 0.0 && $(regParam) > 0.0) {
         copyValues(new OWLQN()).setL1RegFunc(effectiveL1RegFun)

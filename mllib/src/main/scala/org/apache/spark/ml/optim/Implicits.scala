@@ -19,8 +19,10 @@ package org.apache.spark.ml.optim
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.optim.loss.LossFunction
 import org.apache.spark.ml.linalg._
-import org.apache.spark.ml.optim.aggregator.DifferentiableLossAggregator
+import org.apache.spark.ml.optim.aggregator.{DifferentiableLossAggregator, LeastSquaresAggregator}
+import org.apache.spark.mllib.stat.MultivariateOnlineSummarizer
 import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.linalg.VectorImplicits._
 
 import scala.language.higherKinds
 import scala.reflect.ClassTag
@@ -63,11 +65,14 @@ object Implicits {
     override def nextSubproblems(
        original: LossFunction[RDD, Agg]): RDD[DifferentiableFunction[Vector]] = {
       val reg = original.regularization
-      val getAgg = original.getAggregator
       val aggDepth = original.aggregationDepth
       original.instances.mapPartitions { it =>
-        val iterable = it.toIterable
-        val subProb = new LossFunction[Iterable, Agg](iterable, getAgg, reg, aggDepth)
+        val rng = new scala.util.Random()
+        val filtered = it.filter { _ =>
+          rng.nextDouble() < 0.5
+        }
+        val iterable = filtered.toIterable
+        val subProb = new LossFunction[Iterable, Agg](iterable, original.aggProvider, reg, aggDepth)
         Iterator.single(subProb)
       }
     }
