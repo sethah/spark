@@ -66,15 +66,29 @@ object Implicits {
        original: LossFunction[RDD, Agg]): RDD[DifferentiableFunction[Vector]] = {
       val reg = original.regularization
       val aggDepth = original.aggregationDepth
+      val numPartitions = original.instances.getNumPartitions
+      val nxt = original.instances.mapPartitionsWithIndex { (idx, it) =>
+        val rng = new scala.util.Random()
+        it.zipWithIndex.map { case (instance, i) =>
+          (rng.nextInt(numPartitions), instance)
+        }
+      }
       original.instances.mapPartitions { it =>
         val rng = new scala.util.Random()
+        // TODO: you could compute the full loss maybe, since we have to iterate over everything
+        // anywya
         val filtered = it.filter { _ =>
-          rng.nextDouble() < 0.5
+          rng.nextDouble() < 0.2
         }
-        val iterable = filtered.toIterable
-        val subProb = new LossFunction[Iterable, Agg](iterable, original.aggProvider, reg, aggDepth)
+//        val iterable = it.toIterable
+        val subProb = new LossFunction[Iterable, Agg](filtered.toIterable,
+          original.aggProvider, reg, aggDepth)
         Iterator.single(subProb)
       }
+//      nxt.groupByKey(numPartitions).map { case (part, it) =>
+//        val subProb = new LossFunction[Iterable, Agg](it, original.aggProvider, reg, aggDepth)
+//        subProb
+//      }
     }
   }
 }

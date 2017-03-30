@@ -40,12 +40,13 @@ trait EMSOParams extends Params with HasMaxIter with HasTol
  * @param partitionMinimizer
  * @param gamma
  * @tparam F
+ *           TODO: use a function State => PartitionMinimizer instead of a single partition min
  */
 class EMSO[F <: DifferentiableFunction[Vector]](
     override val uid: String,
     val partitionMinimizer: IterativeMinimizer[Vector,
       EMSOLossFunction[DifferentiableFunction[Vector]], IterativeMinimizerState[Vector]],
-    val gamma: Double)(implicit subProblems: HasSubProblems[RDD, F])
+    val gamma: Int => Double)(implicit subProblems: HasSubProblems[RDD, F])
   extends IterativeMinimizer[Vector, F, IterativeMinimizerState[Vector]] with EMSOParams {
 
   type State = EMSO.EMSOState
@@ -53,7 +54,7 @@ class EMSO[F <: DifferentiableFunction[Vector]](
   def this(
       partitionMinimizer: IterativeMinimizer[Vector,
         EMSOLossFunction[DifferentiableFunction[Vector]], IterativeMinimizerState[Vector]],
-      gamma: Double)(implicit sp: HasSubProblems[RDD, F]) = {
+      gamma: Int => Double)(implicit sp: HasSubProblems[RDD, F]) = {
     this(Identifiable.randomUID("emso"), partitionMinimizer, gamma)(sp)
   }
 
@@ -92,7 +93,7 @@ class EMSO[F <: DifferentiableFunction[Vector]](
       println("loss", state.loss)
       val solutions = subProblems.nextSubproblems(lossFunction).mapPartitionsWithIndex((i, p) => {
         p.map { subProb =>
-          val emsoSubProb = new EMSOLossFunction(subProb, oldParams, gamma)
+          val emsoSubProb = new EMSOLossFunction(subProb, oldParams, gamma(state.iter))
 
           val optIterations = partitionMinimizer.iterations(emsoSubProb, initialParameters)
 
@@ -102,6 +103,7 @@ class EMSO[F <: DifferentiableFunction[Vector]](
             lastIter = optIterations.next()
             arrayBuilder += lastIter.loss
           }
+//          println(s"Converged in ${lastIter.iter} iterations")
           val tmp = i
           lastIter
         }
