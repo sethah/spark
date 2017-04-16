@@ -645,8 +645,7 @@ class LogisticRegression @Since("1.2.0") (
     val model = copyValues(new LogisticRegressionModel(uid, coefficientMatrix, interceptVector,
       numClasses, isMultinomial))
 
-    val (summaryModel, probabilityColName, predictionColName)
-      = model.findSummaryModel()
+    val (summaryModel, probabilityColName, predictionColName) = model.findSummaryModel()
     val logRegSummary = if (numClasses <= 2) {
       new BinaryLogisticRegressionTrainingSummaryImpl(
         summaryModel.transform(dataset),
@@ -839,8 +838,7 @@ class LogisticRegressionModel private[spark] (
     if (numClasses > 2) {
       new LogisticRegressionSummaryImpl(summaryModel.transform(dataset),
         probabilityColName, predictionColName, $(labelCol), $(featuresCol))
-    }
-    else {
+    } else {
       new BinaryLogisticRegressionSummaryImpl(summaryModel.transform(dataset),
         probabilityColName, predictionColName, $(labelCol), $(featuresCol))
     }
@@ -1114,7 +1112,7 @@ private[classification] class MultiClassSummarizer extends Serializable {
 }
 
 /**
- * Abstraction for Logistic Regression Results for a given model.
+ * Abstraction for logistic regression results for a given model.
  */
 sealed trait LogisticRegressionSummary extends Serializable {
 
@@ -1128,7 +1126,7 @@ sealed trait LogisticRegressionSummary extends Serializable {
   @Since("2.2.0")
   def probabilityCol: String
 
-  /** Field in "predictions" which gives the prediction of each class as a double. */
+  /** Field in "predictions" which gives the prediction of each class. */
   @Since("2.2.0")
   def predictionCol: String
 
@@ -1214,7 +1212,7 @@ sealed trait LogisticRegressionSummary extends Serializable {
 }
 
 /**
- * Abstraction for multinomial logistic regression training results.
+ * Abstraction for multiclass logistic regression training results.
  * Currently, the training summary ignores the training weights except
  * for the objective trace.
  */
@@ -1223,22 +1221,19 @@ sealed trait LogisticRegressionTrainingSummary extends LogisticRegressionSummary
   /** objective function (scaled loss + regularization) at each iteration. */
   def objectiveHistory: Array[Double]
 
-  /** Number of training iterations until termination */
+  /** Number of training iterations. */
   def totalIterations: Int = objectiveHistory.length
 
 }
 
 /**
- * Abstraction for Binary Logistic Regression Results for a given model.
+ * Abstraction for binary logistic regression results for a given model.
  */
 sealed trait BinaryLogisticRegressionSummary extends LogisticRegressionSummary {
 
   private val sparkSession = predictions.sparkSession
   import sparkSession.implicits._
 
-  /**
-   * Returns a BinaryClassificationMetrics object.
-   */
   // TODO: Allow the user to vary the number of bins using a setBins method in
   // BinaryClassificationMetrics. For now the default is set to 100.
   @transient private val binaryMetrics = new BinaryClassificationMetrics(
@@ -1317,13 +1312,11 @@ sealed trait BinaryLogisticRegressionSummary extends LogisticRegressionSummary {
 }
 
 sealed trait BinaryLogisticRegressionTrainingSummary extends BinaryLogisticRegressionSummary
-  with LogisticRegressionTrainingSummary {
-
-}
+  with LogisticRegressionTrainingSummary
 
 /**
  * :: Experimental ::
- * Multinomial logistic regression training results.
+ * Multiclass logistic regression training results.
  *
  * @param predictions dataframe output by the model's `transform` method.
  * @param probabilityCol field in "predictions" which gives the probability of
@@ -1351,7 +1344,7 @@ private class LogisticRegressionTrainingSummaryImpl(
 
 /**
  * :: Experimental ::
- * Multinomial Logistic regression results for a given model.
+ * Multiclass Logistic regression results for a given model.
  *
  * @param predictions dataframe output by the model's `transform` method.
  * @param probabilityCol field in "predictions" which gives the probability of
@@ -1369,13 +1362,11 @@ private class LogisticRegressionSummaryImpl(
     @Since("2.2.0") override val predictionCol: String,
     @Since("2.2.0") override val labelCol: String,
     @Since("2.2.0") override val featuresCol: String)
-  extends LogisticRegressionSummary {
-
-}
+  extends LogisticRegressionSummary
 
 /**
  * :: Experimental ::
- * Binary Logistic regression training results.
+ * Binary logistic regression training results.
  *
  * @param predictions dataframe output by the model's `transform` method.
  * @param probabilityCol field in "predictions" which gives the probability of
@@ -1397,13 +1388,11 @@ private class BinaryLogisticRegressionTrainingSummaryImpl(
     @Since("1.5.0") override val objectiveHistory: Array[Double])
   extends BinaryLogisticRegressionSummaryImpl(
     predictions, probabilityCol, predictionCol, labelCol, featuresCol)
-  with BinaryLogisticRegressionTrainingSummary {
-
-}
+  with BinaryLogisticRegressionTrainingSummary
 
 /**
  * :: Experimental ::
- * Binary Logistic regression results for a given model.
+ * Binary logistic regression results for a given model.
  *
  * @param predictions dataframe output by the model's `transform` method.
  * @param probabilityCol field in "predictions" which gives the probability of
@@ -1423,9 +1412,7 @@ private class BinaryLogisticRegressionSummaryImpl(
     @Since("2.2.0") override val featuresCol: String)
   extends LogisticRegressionSummaryImpl(
     predictions, probabilityCol, predictionCol, labelCol, featuresCol)
-  with BinaryLogisticRegressionSummary {
-
-}
+  with BinaryLogisticRegressionSummary
 
 /**
  * LogisticAggregator computes the gradient and loss for binary or multinomial logistic (softmax)
