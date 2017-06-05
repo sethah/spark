@@ -21,14 +21,15 @@ import scala.collection.JavaConverters._
 import scala.language.existentials
 import scala.util.Random
 import scala.util.control.Breaks._
-
 import org.apache.spark.{SparkException, SparkFunSuite}
 import org.apache.spark.ml.attribute.NominalAttribute
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, LabeledPoint}
 import org.apache.spark.ml.linalg.{DenseMatrix, Matrices, Matrix, SparseMatrix, Vector, Vectors}
 import org.apache.spark.ml.optim.aggregator.LogisticAggregator
+import org.apache.spark.ml.optim.minimizers.{ConsensusADMM, EMSOMinimizer, GradientDescent, LBFGS}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
+import org.apache.spark.ml.regression.GeneralizedLinearRegression
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.util.MLlibTestSparkContext
@@ -135,6 +136,124 @@ class LogisticRegressionSuite
         label + "," + weight + "," + features.toArray.mkString(",")
     }.repartition(1)
      .saveAsTextFile("target/tmp/LogisticRegressionSuite/multinomialDatasetWithZeroVar")
+  }
+
+  test("mytest") {
+    /*
+  Use the following R code to load the data and train the model using glmnet package.
+
+  library("glmnet")
+  data <- read.csv("path", header=FALSE)
+  label = factor(data$V1)
+  w = data$V2
+  features = as.matrix(data.frame(data$V3, data$V4, data$V5, data$V6))
+  coefficients = coef(glmnet(features, label, weights=w, family="binomial", alpha = 1,
+  lambda = 0.12, standardize=T))
+  coefficients
+  $`0`
+  5 x 1 sparse Matrix of class "dgCMatrix"
+                       s0
+  (Intercept) -0.06775980
+  data.V3      .
+  data.V4      .
+  data.V5     -0.03933146
+  data.V6     -0.03047580
+
+ */
+    /*
+  Use the following R code to load the data and train the model using glmnet package.
+
+  library("glmnet")
+  data <- read.csv("path", header=FALSE)
+  label = factor(data$V1)
+  w = data$V2
+  features = as.matrix(data.frame(data$V3, data$V4, data$V5, data$V6))
+  coefficientsStd = coef(glmnet(features, label, weights=w, family="binomial", alpha = 0.38,
+  lambda = 0.21, standardize=T))
+  coefficients = coef(glmnet(features, label, weights=w, family="binomial", alpha = 0.38,
+  lambda = 0.21, standardize=F))
+  coefficientsStd
+  5 x 1 sparse Matrix of class "dgCMatrix"
+                       s0
+  (Intercept)  0.49991996
+  data.V3     -0.04131110
+  data.V4      .
+  data.V5     -0.08585233
+  data.V6     -0.15875400
+
+  coefficients
+  5 x 1 sparse Matrix of class "dgCMatrix"
+                      s0
+  (Intercept)  0.5024256
+  data.V3      .
+  data.V4      .
+  data.V5     -0.1846038
+  data.V6     -0.0559614
+
+ */
+    /*
+  Use the following R code to load the data and train the model using glmnet package.
+
+  library("glmnet")
+  data <- read.csv("path", header=FALSE)
+  label = factor(data$V1)
+  w = data$V2
+  features = as.matrix(data.frame(data$V3, data$V4, data$V5, data$V6))
+  coefficientsStd = coef(glmnet(features, label, weights=w, family="binomial", alpha = 0,
+  lambda = 1.37, standardize=T))
+  coefficients = coef(glmnet(features, label, weights=w, family="binomial", alpha = 0,
+  lambda = 1.37, standardize=F))
+  coefficientsStd
+  5 x 1 sparse Matrix of class "dgCMatrix"
+                       s0
+  (Intercept)  0.12707703
+  data.V3     -0.06980967
+  data.V4      0.10803933
+  data.V5     -0.04800404
+  data.V6     -0.10165096
+
+  coefficients
+  5 x 1 sparse Matrix of class "dgCMatrix"
+                       s0
+  (Intercept)  0.46613016
+  data.V3     -0.04944529
+  data.V4      0.02326772
+  data.V5     -0.11362772
+  data.V6     -0.06312848
+
+ */
+////    val partOpt = new LBFGS()
+//    val partOpt = new GradientDescent().setMaxIter(50)
+//    val opt = new EMSOMinimizer(partOpt)
+////    val opt = new GradientDescent()
+//    val trainer1 = (new LogisticRegression).setFitIntercept(false).setStandardization(true)
+//      .setWeightCol("weight").setFamily("binomial").setMinimizer(opt)
+//
+//    val model1 = trainer1.fit(binaryDataset)
+//    println(model1.coefficients)
+//    println(model1.intercept)
+//    println(model1.summary.asInstanceOf[BinaryLogisticRegressionSummary].areaUnderROC)
+
+    val df = binaryDataset.repartition(2)
+    val link = "logit"
+    val family = "binomial"
+    val regParam = 0.12
+    val partOpt1 = new LBFGS()
+    val opt1 = new ConsensusADMM(new LBFGS().setMaxIter(50)).setRho(0.01)
+    .setPrimalTol(1e-8)
+    .setDualTol(1e-8)
+    val opt2 = new LBFGS()
+    val trainer = new LogisticRegression()
+      .setFamily(family)
+      .setWeightCol("weight")
+      .setRegParam(regParam)
+      .setElasticNetParam(1.0)
+      .setFitIntercept(true)
+      .setMinimizer(opt1)
+    val model = trainer.fit(df)
+    println(model.coefficients)
+    println(model.intercept)
+    println(model.summary.totalIterations)
   }
 
   test("params") {

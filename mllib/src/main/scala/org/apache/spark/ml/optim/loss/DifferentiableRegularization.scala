@@ -17,6 +17,9 @@
 package org.apache.spark.ml.optim.loss
 
 import breeze.optimize.DiffFunction
+import org.apache.spark.ml.linalg._
+import org.apache.spark.ml.optim.DiffFun
+import org.dmg.pmml.Coefficient
 
 import org.apache.spark.ml.linalg._
 
@@ -26,11 +29,67 @@ import org.apache.spark.ml.linalg._
  *
  * @tparam T The type of the coefficients being regularized.
  */
-private[ml] trait DifferentiableRegularization[T] extends DiffFunction[T] {
+private[ml] trait DifferentiableRegularization[T] extends DiffFunction[T] with Serializable {
 
   /** Magnitude of the regularization penalty. */
   def regParam: Double
 
+}
+
+private[ml] class VectorL1Regularization(override val regFunc: Int => Double)
+  extends EnumeratedRegularization[Vector, VectorL1Regularization] {
+
+  override def apply(x: Vector): Double = {
+    var sum = 0.0
+    x.foreachActive((index, value) => sum += math.abs(value) * regFunc(index))
+    sum
+  }
+
+  override def compose(other: VectorL1Regularization): VectorL1Regularization = {
+    new VectorL1Regularization((index: Int) => regFunc(index) + other.regFunc(index))
+  }
+}
+
+trait EnumeratedRegularization[T, Reg <: EnumeratedRegularization[T, Reg]]
+  extends (T => Double) with Serializable {
+
+  def regFunc: Int => Double
+
+  def apply(x: T): Double
+
+  def compose(other: Reg): Reg
+
+}
+
+class VectorL2Regularization(override val regFunc: Int => Double)
+  extends EnumeratedRegularization[Vector, VectorL2Regularization] with DiffFun[Vector] {
+
+  override def compose(other: VectorL2Regularization): VectorL2Regularization = {
+    new VectorL2Regularization((index: Int) => regFunc(index) + other.regFunc(index))
+  }
+
+  override def doCompute(coefficients: Vector): (Double, Vector) = {
+    val grad = Vectors.zeros(coefficients.size)
+    val loss = doComputeInPlace(coefficients, grad)
+    (loss, grad)
+  }
+
+  override def doComputeInPlace(coefficients: Vector, grad: Vector): Double = {
+    val gradArray = grad.toArray
+    coefficients match {
+      case dv: DenseVector =>
+        var sum = 0.0
+        dv.values.indices.foreach { j =>
+          val coef = coefficients(j)
+          val reg = regFunc(j)
+          sum += reg * coef * coef
+          gradArray(j) += reg * coef
+        }
+        0.5 * sum
+      case _: SparseVector =>
+        throw new IllegalArgumentException("Sparse coefficients are not currently supported.")
+    }
+  }
 }
 
 /**

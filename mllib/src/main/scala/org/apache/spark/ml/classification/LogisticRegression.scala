@@ -20,18 +20,18 @@ package org.apache.spark.ml.classification
 import java.util.Locale
 
 import scala.collection.mutable
-
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, LBFGS => BreezeLBFGS, LBFGSB => BreezeLBFGSB, OWLQN => BreezeOWLQN}
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
-import org.apache.spark.ml.optim.aggregator.LogisticAggregator
-import org.apache.spark.ml.optim.loss.{L2Regularization, RDDLossFunction}
+import org.apache.spark.ml.optim.{DiffFun, SeparableDiffFun}
+import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, LogisticAggregator}
+import org.apache.spark.ml.optim.loss._
+import org.apache.spark.ml.optim.minimizers.{HasMinimizer, IterativeMinimizer, IterativeMinimizerState, LBFGS}
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util._
@@ -51,7 +51,8 @@ import org.apache.spark.util.VersionUtils
  */
 private[classification] trait LogisticRegressionParams extends ProbabilisticClassifierParams
   with HasRegParam with HasElasticNetParam with HasMaxIter with HasFitIntercept with HasTol
-  with HasStandardization with HasWeightCol with HasThreshold with HasAggregationDepth {
+  with HasStandardization with HasWeightCol with HasThreshold with HasAggregationDepth
+  with HasMinimizer {
 
   import org.apache.spark.ml.classification.LogisticRegression.supportedFamilyNames
 
@@ -280,6 +281,10 @@ class LogisticRegression @Since("1.2.0") (
   extends ProbabilisticClassifier[Vector, LogisticRegression, LogisticRegressionModel]
   with LogisticRegressionParams with DefaultParamsWritable with Logging {
 
+
+  override type MinimizerType = IterativeMinimizer[Vector,
+    SeparableDiffFun[RDD], IterativeMinimizerState[Vector]]
+
   @Since("1.4.0")
   def this() = this(Identifiable.randomUID("logreg"))
 
@@ -292,6 +297,8 @@ class LogisticRegression @Since("1.2.0") (
   @Since("1.2.0")
   def setRegParam(value: Double): this.type = set(regParam, value)
   setDefault(regParam -> 0.0)
+
+  def setMinimizer(value: MinimizerType): this.type = set(minimizer, value)
 
   /**
    * Set the ElasticNet mixing parameter.
@@ -598,26 +605,49 @@ class LogisticRegression @Since("1.2.0") (
         val regParamL1 = $(elasticNetParam) * $(regParam)
         val regParamL2 = (1.0 - $(elasticNetParam)) * $(regParam)
 
+        def getL2Regularization(
+             regParam: Double,
+             featuresStd: Option[Array[Double]])(index: Int): Double = {
+          val fStd = featuresStd.map(_.apply(index)).getOrElse(1.0)
+          if (index >= 0 && index < numFeatures * numCoefficientSets) {
+            regParam / (fStd * fStd)
+          } else {
+            0.0
+          }
+        }
+        def getL1Regularization(
+                                 regParam: Double,
+                                 featuresStd: Option[Array[Double]])(index: Int): Double = {
+          val fStd = featuresStd.map(_.apply(index)).getOrElse(1.0)
+          if (index >= 0 && index < numFeatures * numCoefficientSets) {
+            regParam / fStd
+          } else {
+            0.0
+          }
+        }
+
         val bcFeaturesStd = instances.context.broadcast(featuresStd)
-        val getAggregatorFunc = new LogisticAggregator(bcFeaturesStd, numClasses, $(fitIntercept),
-          multinomial = isMultinomial)(_)
-        val getFeaturesStd = (j: Int) => if (j >= 0 && j < numCoefficientSets * numFeatures) {
-          featuresStd(j / numCoefficientSets)
+        val regStd = if ($(standardization)) None else Some(featuresStd)
+        val l2Regularization = if (regParamL2 != 0.0) {
+          List(new VectorL2Regularization(getL2Regularization(regParamL2, regStd)(_)))
         } else {
-          0.0
+          List()
         }
-
-        val regularization = if (regParamL2 != 0.0) {
-          val shouldApply = (idx: Int) => idx >= 0 && idx < numFeatures * numCoefficientSets
-          Some(new L2Regularization(regParamL2, shouldApply,
-            if ($(standardization)) None else Some(getFeaturesStd)))
+        val l1Regularization = if (regParamL1 != 0.0) {
+          List(new VectorL1Regularization(getL1Regularization(regParamL1, regStd)(_)))
         } else {
-          None
+          List()
         }
+        val regularization = l1Regularization ++ l2Regularization
 
-        val costFun = new RDDLossFunction(instances, getAggregatorFunc, regularization,
-          $(aggregationDepth))
+        val losses: RDD[DiffFun[Vector]] = instances
+          .map(StdBinomialLoss(_, $(fitIntercept), bcFeaturesStd))
 
+        val getAggregatorFunc: Vector => DiffFunAggregator = (x: Vector) => {
+          new DiffFunAggregator(x)
+        }
+        val costFun = new SeparableDiffFun[RDD](losses, getAggregatorFunc, regularization,
+          cache = true)
         val numCoeffsPlusIntercepts = numFeaturesPlusIntercept * numCoefficientSets
 
         val (lowerBounds, upperBounds): (Array[Double], Array[Double]) = {
@@ -658,39 +688,56 @@ class LogisticRegression @Since("1.2.0") (
           }
         }
 
-        val optimizer = if ($(elasticNetParam) == 0.0 || $(regParam) == 0.0) {
+//        val optimizer = if ($(elasticNetParam) == 0.0 || $(regParam) == 0.0) {
+//          if (lowerBounds != null && upperBounds != null) {
+//            new BreezeLBFGSB(
+//              BDV[Double](lowerBounds), BDV[Double](upperBounds), $(maxIter), 10, $(tol))
+//          } else {
+//            new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
+//          }
+//        } else {
+//          val standardizationParam = $(standardization)
+//          def regParamL1Fun = (index: Int) => {
+//            // Remove the L1 penalization on the intercept
+//            val isIntercept = $(fitIntercept) && index >= numFeatures * numCoefficientSets
+//            if (isIntercept) {
+//              0.0
+//            } else {
+//              if (standardizationParam) {
+//                regParamL1
+//              } else {
+//                val featureIndex = index / numCoefficientSets
+//                // If `standardization` is false, we still standardize the data
+//                // to improve the rate of convergence; as a result, we have to
+//                // perform this reverse standardization by penalizing each component
+//                // differently to get effectively the same objective function when
+//                // the training dataset is not standardized.
+//                if (featuresStd(featureIndex) != 0.0) {
+//                  regParamL1 / featuresStd(featureIndex)
+//                } else {
+//                  0.0
+//                }
+//              }
+//            }
+//          }
+//          new BreezeOWLQN[Int, BDV[Double]]($(maxIter), 10, regParamL1Fun, $(tol))
+//        }
+//        val optimizer = getMinimizer
+
+
+        val optimizer: MinimizerType = if (!isSet(minimizer) &&
+          ($(elasticNetParam) == 0.0 || $(regParam) == 0.0)) {
           if (lowerBounds != null && upperBounds != null) {
-            new BreezeLBFGSB(
-              BDV[Double](lowerBounds), BDV[Double](upperBounds), $(maxIter), 10, $(tol))
+            throw new NotImplementedError("LBFGSB not yet implemented")
           } else {
-            new BreezeLBFGS[BDV[Double]]($(maxIter), 10, $(tol))
+            new LBFGS().setMaxIter(getMaxIter).setTol(getTol)
           }
+        } else if (!isSet(minimizer)) {
+          // no minimizer set and we have L1, so use OWLQN
+          throw new NotImplementedError("OWLQN not yet implemented")
         } else {
-          val standardizationParam = $(standardization)
-          def regParamL1Fun = (index: Int) => {
-            // Remove the L1 penalization on the intercept
-            val isIntercept = $(fitIntercept) && index >= numFeatures * numCoefficientSets
-            if (isIntercept) {
-              0.0
-            } else {
-              if (standardizationParam) {
-                regParamL1
-              } else {
-                val featureIndex = index / numCoefficientSets
-                // If `standardization` is false, we still standardize the data
-                // to improve the rate of convergence; as a result, we have to
-                // perform this reverse standardization by penalizing each component
-                // differently to get effectively the same objective function when
-                // the training dataset is not standardized.
-                if (featuresStd(featureIndex) != 0.0) {
-                  regParamL1 / featuresStd(featureIndex)
-                } else {
-                  0.0
-                }
-              }
-            }
-          }
-          new BreezeOWLQN[Int, BDV[Double]]($(maxIter), 10, regParamL1Fun, $(tol))
+          // minimizer is set
+          getMinimizer
         }
 
         /*
@@ -795,23 +842,18 @@ class LogisticRegression @Since("1.2.0") (
           }
         }
 
-        val states = optimizer.iterations(new CachedDiffFunction(costFun),
-          new BDV[Double](initialCoefWithInterceptMatrix.toArray))
-
         /*
            Note that in Logistic Regression, the objective history (loss + regularization)
            is log-likelihood which is invariant under feature standardization. As a result,
            the objective history from optimizer is the same as the one in the original space.
-         */
-        val arrayBuilder = mutable.ArrayBuilder.make[Double]
-        var state: optimizer.State = null
-        while (states.hasNext) {
-          state = states.next()
-          arrayBuilder += state.adjustedValue
-        }
-        bcFeaturesStd.destroy(blocking = false)
+        */
+        val initialParameters = Vectors.dense(initialCoefWithInterceptMatrix.toArray)
+        val (lastIter, lossHistory) = optimizer.takeLast(costFun, initialParameters)
 
-        if (state == null) {
+        bcFeaturesStd.destroy(blocking = false)
+        println(s"Logistic Regression numCalls: ${costFun.numCalls}")
+
+        if (lossHistory.isEmpty) {
           val msg = s"${optimizer.getClass.getName} failed."
           logError(msg)
           throw new SparkException(msg)
@@ -828,7 +870,7 @@ class LogisticRegression @Since("1.2.0") (
            Note that the intercept in scaled space and original space is the same;
            as a result, no scaling is needed.
          */
-        val allCoefficients = state.x.toArray.clone()
+        val allCoefficients = lastIter.params.toArray.clone()
         val allCoefMatrix = new DenseMatrix(numCoefficientSets, numFeaturesPlusIntercept,
           allCoefficients)
         val denseCoefficientMatrix = new DenseMatrix(numCoefficientSets, numFeatures,
@@ -874,7 +916,7 @@ class LogisticRegression @Since("1.2.0") (
           val interceptMean = interceptArray.sum / interceptArray.length
           (0 until interceptVec.size).foreach { i => interceptArray(i) -= interceptMean }
         }
-        (denseCoefficientMatrix.compressed, interceptVec.compressed, arrayBuilder.result())
+        (denseCoefficientMatrix.compressed, interceptVec.compressed, lossHistory)
       }
     }
 
@@ -908,6 +950,7 @@ class LogisticRegression @Since("1.2.0") (
 
   @Since("1.4.0")
   override def copy(extra: ParamMap): LogisticRegression = defaultCopy(extra)
+
 }
 
 @Since("1.6.0")
@@ -918,6 +961,7 @@ object LogisticRegression extends DefaultParamsReadable[LogisticRegression] {
 
   private[classification] val supportedFamilyNames =
     Array("auto", "binomial", "multinomial").map(_.toLowerCase(Locale.ROOT))
+
 }
 
 /**

@@ -18,12 +18,14 @@
 package org.apache.spark.ml.regression
 
 import scala.util.Random
-
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.ml.classification.LogisticRegression
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, OffsetInstance}
 import org.apache.spark.ml.feature.{LabeledPoint, RFormula}
+import org.apache.spark.ml.feature.{Instance, LabeledPoint, StandardScaler}
 import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vector, Vectors}
+import org.apache.spark.ml.optim.minimizers.{ConsensusADMM, EMSOMinimizer, GradientDescent, LBFGS}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
@@ -128,7 +130,7 @@ class GeneralizedLinearRegressionSuite
    * Enable the ignored test to export the dataset into CSV format,
    * so we can validate the training accuracy compared with R's glm and glmnet package.
    */
-  ignore("export test data into CSV format") {
+  test("export test data into CSV format") {
     datasetGaussianIdentity.rdd.map { case Row(label: Double, features: Vector) =>
       label + "," + features.toArray.mkString(",")
     }.repartition(1).saveAsTextFile(
@@ -284,6 +286,66 @@ class GeneralizedLinearRegressionSuite
       }
     }
   }
+
+  test("fitGradient") {
+    val df = datasetBinomial//.repartition(10)
+    df.show(50)
+    val link = "logit"
+    val family = "binomial"
+    val regParam = 0.1
+    val trainer = new GeneralizedLinearRegression()
+      .setFamily(family)
+      .setLink(link)
+      .setRegParam(0.0)
+      .setFitIntercept(true)
+    val partOpt1 = new LBFGS()
+//    val partOpt1 = new GradientDescent().setMaxIter(50)
+//    val opt1 = new EMSOMinimizer(partOpt1)
+//      .setGamma(0.00001)
+    val opt1 = new ConsensusADMM(new LBFGS().setMaxIter(50)).setRho(0.005)
+    val opt2 = new LBFGS()
+    val model = trainer.trainGradient(df, opt1)
+    val glm = new GeneralizedLinearRegression()
+      .setFamily(family)
+      .setLink(link)
+      .setRegParam(regParam)
+      .setFitIntercept(true)
+    val lr = new LogisticRegression()
+      .setFamily("binomial")
+      .setRegParam(regParam)
+      .setFitIntercept(true)
+      .setElasticNetParam(1.0)
+      .setMinimizer(new LBFGS())
+    val lrModel = lr.fit(df)
+    val glmModel = glm.fit(df)
+    println(model.coefficients)
+    println(model.intercept)
+    println(model.summary.numIterations)
+    println(glmModel.coefficients)
+    println(glmModel.intercept)
+    println(glmModel.summary.numIterations)
+    println(lrModel.coefficients)
+    println(lrModel.intercept)
+    println(lrModel.summary.totalIterations)
+  }
+//
+//  test("fitGradientPoisson") {
+//    val dataset = datasetPoissonLog
+//    dataset.show(50)
+//    val scaler = new StandardScaler().setWithMean(true).setWithStd(true)
+//      .setInputCol("features").setOutputCol("sfeatures")
+//    val scalerModel = scaler.fit(dataset)
+//    val df = scalerModel.transform(dataset)
+//    df.show(50)
+//    val trainer = new GeneralizedLinearRegression().setFamily("poisson").setLink("log")
+//      .setFitIntercept(true).setLinkPredictionCol("linkPrediction").setFeaturesCol("features")
+//    .setMaxIter(1000)
+//    val model = trainer.trainGradient(df)
+//    val model2 = trainer.fit(df)
+//    println(model.coefficients)
+//    println(model2.coefficients)
+//    println(model2.intercept)
+//  }
 
   test("generalized linear regression: gaussian family against glmnet") {
     /*

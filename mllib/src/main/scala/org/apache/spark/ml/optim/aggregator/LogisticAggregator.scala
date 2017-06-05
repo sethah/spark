@@ -193,6 +193,8 @@ private[ml] class LogisticAggregator(
   private val numFeaturesPlusIntercept = if (fitIntercept) numFeatures + 1 else numFeatures
   private val coefficientSize = bcCoefficients.value.size
   protected override val dim: Int = coefficientSize
+  private val numCoefficientSets = if (multinomial) numClasses else 1
+
   if (multinomial) {
     require(numClasses ==  coefficientSize / numFeaturesPlusIntercept, s"The number of " +
       s"coefficients should be ${numClasses * numFeaturesPlusIntercept} but was $coefficientSize")

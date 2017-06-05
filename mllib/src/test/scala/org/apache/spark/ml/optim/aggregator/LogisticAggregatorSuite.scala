@@ -243,6 +243,7 @@ class LogisticAggregatorSuite extends SparkFunSuite with MLlibTestSparkContext {
     val coefArray = Array(1.0, 2.0, -2.0, 3.0, 0.0, -1.0)
     val coefArrayFiltered = Array(3.0, 0.0, -1.0)
     val interceptArray = Array(4.0, 2.0, -3.0)
+    val numClasses = interceptArray.length
     val aggConstantFeature = getNewAggregator(instancesConstantFeature,
       Vectors.dense(coefArray ++ interceptArray), fitIntercept = true, isMultinomial = true)
     val aggConstantFeatureFiltered = getNewAggregator(instancesConstantFeatureFiltered,

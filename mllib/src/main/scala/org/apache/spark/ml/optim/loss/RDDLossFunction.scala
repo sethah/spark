@@ -17,12 +17,13 @@
 package org.apache.spark.ml.optim.loss
 
 import scala.reflect.ClassTag
-
 import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.DiffFunction
-
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
+import org.apache.spark.ml.feature.Instance
+import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vector, Vectors}
+import org.apache.spark.ml.optim.{DiffFun}
 import org.apache.spark.ml.optim.aggregator.DifferentiableLossAggregator
 import org.apache.spark.rdd.RDD
 
@@ -60,6 +61,9 @@ private[ml] class RDDLossFunction[
     val combOp = (agg1: Agg, agg2: Agg) => agg1.merge(agg2)
     val newAgg = instances.treeAggregate(thisAgg)(seqOp, combOp, aggregationDepth)
     val gradient = newAgg.gradient
+    println(gradient)
+    println(newAgg.loss)
+    println(coefficients)
     val regLoss = regularization.map { regFun =>
       val (regLoss, regGradient) = regFun.calculate(Vectors.fromBreeze(coefficients))
       BLAS.axpy(1.0, regGradient, gradient)
@@ -69,3 +73,6 @@ private[ml] class RDDLossFunction[
     (newAgg.loss + regLoss, gradient.asBreeze.toDenseVector)
   }
 }
+
+
+

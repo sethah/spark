@@ -21,23 +21,38 @@ import java.util.Locale
 
 import breeze.stats.{distributions => dist}
 import org.apache.commons.lang3.StringUtils
+import org.apache.commons.math3.special.{Gamma => MathGamma}
+import breeze.linalg.{DenseVector => BDV}
+import breeze.optimize.linear.ConjugateGradient
+import breeze.optimize.{AdaDeltaGradientDescent, CachedDiffFunction, LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.attribute.AttributeGroup
 import org.apache.spark.ml.feature.{Instance, OffsetInstance}
+import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
 import org.apache.spark.ml.optim._
+import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, GLRAggregator}
+import org.apache.spark.ml.optim.loss.{L2Regularization, StdGLMLoss, VectorL2Regularization}
+import org.apache.spark.ml.optim.minimizers.{IterativeMinimizer, IterativeMinimizerState, LBFGS}
+//import org.apache.spark.ml.optim.loss.{L2Regularization, RDDLossFunction, SparkRDDLossFunction}
+//import org.apache.spark.ml.optim.minimizers.LBFGS.LBFGSState
+//import org.apache.spark.ml.optim.minimizers.{IterativeMinimizerState, LBFGS, SparkLBFGS}
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.param.shared._
 import org.apache.spark.ml.util._
+import org.apache.spark.mllib.linalg.VectorImplicits._
+import org.apache.spark.mllib.stat.MultivariateOnlineSummarizer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Column, DataFrame, Dataset, Row}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DataType, DoubleType, StructType}
+
+import scala.collection.mutable
+
 
 /**
  * Params for Generalized Linear Regression.
@@ -373,6 +388,148 @@ class GeneralizedLinearRegression @Since("2.0.0") (@Since("2.0.0") override val 
   @Since("2.0.0")
   def setLinkPredictionCol(value: String): this.type = set(linkPredictionCol, value)
 
+  type MinimizerType = IterativeMinimizer[Vector,
+    SeparableDiffFun[RDD], IterativeMinimizerState[Vector]]
+  def trainGradient(dataset: Dataset[_],
+                    minimizer: MinimizerType): GeneralizedLinearRegressionModel = {
+    val familyAndLink = FamilyAndLink(this)
+
+    val numFeatures = dataset.select(col($(featuresCol))).first().getAs[Vector](0).size
+    val instr = Instrumentation.create(this, dataset)
+    instr.logParams(labelCol, featuresCol, weightCol, predictionCol, linkPredictionCol,
+      family, solver, fitIntercept, link, maxIter, regParam, tol)
+    instr.logNumFeatures(numFeatures)
+
+    if (numFeatures > WeightedLeastSquares.MAX_NUM_FEATURES) {
+      val msg = "Currently, GeneralizedLinearRegression only supports number of features" +
+        s" <= ${WeightedLeastSquares.MAX_NUM_FEATURES}. Found $numFeatures in the input dataset."
+      throw new SparkException(msg)
+    }
+
+    require(numFeatures > 0 || $(fitIntercept),
+      "GeneralizedLinearRegression was given data with 0 features, and with Param fitIntercept " +
+        "set to false. To fit a model with 0 features, fitIntercept must be set to true." )
+
+    val w = if (!isDefined(weightCol) || $(weightCol).isEmpty) lit(1.0) else col($(weightCol))
+    val instances: RDD[Instance] =
+      dataset.select(col($(labelCol)), w, col($(featuresCol))).rdd.map {
+        case Row(label: Double, weight: Double, features: Vector) =>
+          Instance(label, weight, features)
+      }
+
+    // TODO: agg depth
+    val (featuresSummarizer, ySummarizer) = {
+      val seqOp = (c: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer),
+                   instance: Instance) =>
+        (c._1.add(instance.features, instance.weight),
+          c._2.add(Vectors.dense(instance.label), instance.weight))
+
+      val combOp = (c1: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer),
+                    c2: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer)) =>
+        (c1._1.merge(c2._1), c1._2.merge(c2._2))
+
+      instances.treeAggregate(
+        new MultivariateOnlineSummarizer, new MultivariateOnlineSummarizer
+      )(seqOp, combOp, 2)
+    }
+    val featuresStd = featuresSummarizer.variance.toArray.map(math.sqrt)
+    val bcFeaturesStd = instances.context.broadcast(featuresStd)
+//    val getAggregatorFunc = new GLRAggregator(bcFeaturesStd, familyAndLink, $(fitIntercept))(_)
+    val losses: RDD[DiffFun[Vector]] = instances
+      .map(StdGLMLoss(_, familyAndLink, $(fitIntercept), bcFeaturesStd))
+    val getAggregatorFunc: Vector => DiffFunAggregator = (x: Vector) => {
+      val coefficientsArray = x.toArray.clone()
+      var sum = 0.0
+      var i = 0
+      while (i < numFeatures) {
+        if (featuresStd(i) != 0.0) {
+          coefficientsArray(i) /=  featuresStd(i)
+          sum += coefficientsArray(i)
+        } else {
+          coefficientsArray(i) = 0.0
+        }
+        i += 1
+      }
+      val coef = Vectors.dense(coefficientsArray)
+      new DiffFunAggregator(coef)
+    }
+
+    val regParamL2 = $(regParam)
+    val getRegFunc = (idx: Int) => {
+      if (idx >= 0 && idx < numFeatures) regParamL2 else 0.0
+    }
+    val regularization = if ($(regParam) != 0.0) {
+      List(new VectorL2Regularization(getRegFunc))
+    } else {
+      List()
+    }
+    val costFun = new SeparableDiffFun[RDD](losses, getAggregatorFunc, regularization)
+    val optimizer = minimizer
+    val numFeaturesPlusIntercept = if ($(fitIntercept)) numFeatures + 1 else numFeatures
+    val initialCoefficients = Vectors.zeros(numFeaturesPlusIntercept)
+    val wtdmu: Double = if (getFitIntercept) {
+      val agg = dataset.agg(sum(w.multiply(col(getLabelCol))), sum(w)).first()
+      agg.getDouble(0) / agg.getDouble(1)
+    } else {
+      familyAndLink.link.unlink(0.0)
+    }
+    val coefArr = initialCoefficients.toArray
+    if ($(fitIntercept)) coefArr(numFeatures) = familyAndLink.link.link(wtdmu)
+    val optIterations = optimizer.iterations(costFun, initialCoefficients.toDense)
+    val (coefficients, objectiveHistory) = {
+      /*
+         Note that in Linear Regression, the objective history (loss + regularization) returned
+         from optimizer is computed in the scaled space given by the following formula.
+         <blockquote>
+            $$
+            L &= 1/2n||\sum_i w_i(x_i - \bar{x_i}) / \hat{x_i} - (y - \bar{y}) / \hat{y}||^2
+                 + regTerms \\
+            $$
+         </blockquote>
+       */
+      val arrayBuilder = mutable.ArrayBuilder.make[Double]
+      var lastIter: IterativeMinimizerState[Vector] = null
+      while (optIterations.hasNext) {
+        lastIter = optIterations.next()
+        arrayBuilder += lastIter.loss
+      }
+//      var state: optimizer.State = null
+//      while (states.hasNext) {
+//        state = states.next()
+//        arrayBuilder += state.adjustedValue
+//      }
+      if (lastIter == null) {
+        val msg = s"${optimizer.getClass.getName} failed."
+        logError(msg)
+        throw new SparkException(msg)
+      }
+
+      /*
+         The coefficients are trained in the scaled space; we're converting them back to
+         the original space.
+       */
+      println(s"Features Std: ${featuresStd.mkString(",")}")
+      val rawCoefficients = lastIter.params.toArray.clone()
+      var i = 0
+      while (i < numFeatures) {
+        if (featuresStd(i) != 0.0) {
+          rawCoefficients(i) /= featuresStd(i)
+        }
+        i += 1
+      }
+      (Vectors.dense(rawCoefficients).compressed, arrayBuilder.result())
+    }
+    val _intercept = if ($(fitIntercept)) coefficients(numFeatures) else 0.0
+    val model = copyValues(
+      new GeneralizedLinearRegressionModel(uid,
+        Vectors.dense(coefficients.toArray.take(numFeatures)), _intercept)
+        .setParent(this))
+    val trainingSummary = new GeneralizedLinearRegressionTrainingSummary(dataset, model,
+      Array(0.0), objectiveHistory.length, getSolver)
+    model.setSummary(Some(trainingSummary))
+    model
+  }
+
   override protected def train(dataset: Dataset[_]): GeneralizedLinearRegressionModel = {
     val familyAndLink = FamilyAndLink(this)
 
@@ -419,14 +576,29 @@ class GeneralizedLinearRegression @Since("2.0.0") (@Since("2.0.0") override val 
         }
       // Fit Generalized Linear Model by iteratively reweighted least squares (IRLS).
       val initialModel = familyAndLink.initialize(instances, $(fitIntercept), $(regParam))
+//      val opt = new IRLS(instances, familyAndLink.reweightFunc, $(fitIntercept),
+//        $(regParam), $(maxIter), $(tol))
+//      val costFun = new IRLSLossFunction(instances, familyAndLink.reweightFunc,
+//        $(regParam), $(fitIntercept))
+//      val optIterations = opt.iterations(costFun, initialModel)
+//      val arrayBuilder = mutable.ArrayBuilder.make[Double]
+//      var lastIter: IRLSState = null
+//      while (optIterations.hasNext) {
+//        lastIter = optIterations.next()
+//        arrayBuilder += lastIter.loss
+//      }
       val optimizer = new IterativelyReweightedLeastSquares(initialModel,
         familyAndLink.reweightFunc, $(fitIntercept), $(regParam), $(maxIter), $(tol))
+
       val irlsModel = optimizer.fit(instances)
+//      val irlsModel = lastIter.params
+//      println("al;ksjdf;laksdjfl;kadsjf")
+//      println(irlsModel.coefficients)
       val model = copyValues(
         new GeneralizedLinearRegressionModel(uid, irlsModel.coefficients, irlsModel.intercept)
           .setParent(this))
       val trainingSummary = new GeneralizedLinearRegressionTrainingSummary(dataset, model,
-        irlsModel.diagInvAtWA.toArray, irlsModel.numIterations, getSolver)
+        irlsModel.diagInvAtWA.toArray, optimizer.maxIter, getSolver)
       model.setSummary(Some(trainingSummary))
     }
 
@@ -474,7 +646,7 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
   /**
    * Wrapper of family and link combination used in the model.
    */
-  private[regression] class FamilyAndLink(val family: Family, val link: Link) extends Serializable {
+  private[ml] class FamilyAndLink(val family: Family, val link: Link) extends Serializable {
 
     /** Linear predictor based on given mu. */
     def predict(mu: Double): Double = link.link(family.project(mu))
@@ -516,7 +688,7 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
     }
   }
 
-  private[regression] object FamilyAndLink {
+  private[ml] object FamilyAndLink {
 
     /**
      * Constructs the FamilyAndLink object from a parameter map
@@ -554,6 +726,8 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
 
     /** Deviance of (y, mu) pair. */
     def deviance(y: Double, mu: Double, weight: Double): Double
+
+    def logLikelihood(y: Double, mu: Double, weight: Double): Double
 
     /**
      * Akaike Information Criterion (AIC) value of the family for a given dataset.
@@ -641,6 +815,8 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
         (y * yp(y1, mu, 1.0 - variancePower) - yp(y, mu, 2.0 - variancePower))
     }
 
+    override def logLikelihood(y: Double, mu: Double, weight: Double): Double = 0.0
+
     override def aic(
         predictions: RDD[(Double, Double, Double)],
         deviance: Double,
@@ -688,6 +864,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
       weight * (y - mu) * (y - mu)
     }
 
+    override def logLikelihood(y: Double, mu: Double, weight: Double): Double = {
+      0.5 * weight * ((y - mu) * (y - mu) + math.log(2 * math.Pi))
+    }
+
     override def aic(
         predictions: RDD[(Double, Double, Double)],
         deviance: Double,
@@ -731,6 +911,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
 
     override def deviance(y: Double, mu: Double, weight: Double): Double = {
       2.0 * weight * (ylogy(y, mu) + ylogy(1.0 - y, 1.0 - mu))
+    }
+
+    override def logLikelihood(y: Double, mu: Double, weight: Double): Double = {
+      (y * math.log(mu) + (1 - y) * math.log(1 - mu)) * weight
     }
 
     override def aic(
@@ -786,6 +970,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
       2.0 * weight * (y * math.log(y / mu) - (y - mu))
     }
 
+    override def logLikelihood(y: Double, mu: Double, weight: Double): Double = {
+      -weight * (y * math.log(mu) - mu)
+    }
+
     override def aic(
         predictions: RDD[(Double, Double, Double)],
         deviance: Double,
@@ -818,6 +1006,8 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
     override def deviance(y: Double, mu: Double, weight: Double): Double = {
       -2.0 * weight * (math.log(y / mu) - (y - mu)/mu)
     }
+
+    override def logLikelihood(y: Double, mu: Double, weight: Double): Double = 0.0
 
     override def aic(
         predictions: RDD[(Double, Double, Double)],

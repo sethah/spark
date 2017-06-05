@@ -23,6 +23,8 @@ import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
+import org.apache.spark.ml.optim.loss.StdSquaredLoss
+import org.apache.spark.ml.optim.minimizers.{ConsensusADMM, EMSOMinimizer, GradientDescent, LBFGS}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
@@ -134,6 +136,39 @@ class LinearRegressionSuite
     ParamsSuite.checkParams(new LinearRegression)
     val model = new LinearRegressionModel("linearReg", Vectors.dense(0.0), 0.0)
     ParamsSuite.checkParams(model)
+  }
+
+  test("mytest") {
+    /*
+         coefficients <- coef(glmnet(features, label, family="gaussian", alpha = 0.0, lambda = 2.3))
+         > coefficients
+          3 x 1 sparse Matrix of class "dgCMatrix"
+                                   s0
+         (Intercept)       5.260103
+         as.numeric.d1.V2. 3.725522
+         as.numeric.d1.V3. 5.711203
+       */
+    val dataset = datasetWithDenseFeature
+//    val rng = new scala.util.Random(42L)
+//    val numFeatures = 10
+//    val weights = Array.fill(numFeatures)(rng.nextDouble())
+//    val xmean = Array.fill(numFeatures)(rng.nextDouble())
+//    val dataset = sc.parallelize(LinearDataGenerator.generateLinearInput(
+//      intercept = 6.3, weights = weights, xMean = xmean,
+//      xVariance = Array.fill(numFeatures)(0.5), nPoints = 10000, seed, eps = 2.0), 2).map(_.asML)
+//    val opt = new EMSOMinimizer(new GradientDescent().setMaxIter(50))
+    val opt = new ConsensusADMM(new LBFGS()).setRho(1.0)
+//    val opt = new LBFGS()
+    val lr = new LinearRegression()
+      .setSolver("l-bfgs")
+      .setMinimizer(opt)
+      .setRegParam(2.3)
+      .setFitIntercept(true)
+    val model = lr.fit(dataset.toDF())
+//    println(weights.mkString(","))
+    println(model.coefficients)
+    println(model.intercept)
+    println(model.summary.objectiveHistory.mkString(","))
   }
 
   test("linear regression: default params") {
