@@ -18,13 +18,13 @@
 package org.apache.spark.ml.regression
 
 import scala.util.Random
-
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.classification.LogisticRegressionSuite._
 import org.apache.spark.ml.feature.{Instance, OffsetInstance}
 import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vector, Vectors}
 import org.apache.spark.ml.param.{ParamMap, ParamsSuite}
+import org.apache.spark.ml.regression.GeneralizedLinearRegression.{Binomial, Gamma, Gaussian, Poisson}
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
 import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.random._
@@ -179,6 +179,48 @@ class GeneralizedLinearRegressionSuite
     ParamsSuite.checkParams(new GeneralizedLinearRegression)
     val model = new GeneralizedLinearRegressionModel("genLinReg", Vectors.dense(0.0), 0.0)
     ParamsSuite.checkParams(model)
+  }
+
+  test("loglike") {
+    val f1 = Poisson
+    val likes1 = Seq(30.0, 31.0, 32.0).map { mu =>
+      val ll = f1.loglikelihood(31.0, mu, 1.0)
+      println(f1.deviance(31.0, mu, 1.0))
+      println(ll)
+      ll
+    }
+    println(likes1(1) > likes1(2))
+    println(likes1(1) > likes1(0))
+
+    val f2 = Gamma
+    val likes2 = Seq(30.0, 31.0, 32.0).map { mu =>
+      val ll = f2.loglikelihood(31.0, mu, 1.0)
+      println(f2.deviance(31.0, mu, 1.0))
+      println(ll)
+      ll
+    }
+    println(likes2(1) > likes2(2))
+    println(likes2(1) > likes2(0))
+
+    val f3 = Gaussian
+    val likes3 = Seq(30.0, 31.0, 32.0).map { mu =>
+      val ll = f3.loglikelihood(31.0, mu, 1.0)
+      println(f3.deviance(31.0, mu, 1.0))
+      println(ll)
+      ll
+    }
+    println(likes3(1) > likes3(2))
+    println(likes3(1) > likes3(0))
+
+    val f4 = Binomial
+    val likes4 = Seq(0.94, 0.95, 0.96).map { mu =>
+      val ll = f4.loglikelihood(0.95, mu, 1.0)
+      println(f4.deviance(0.95, mu, 1.0))
+      println(ll)
+      ll
+    }
+    println(likes4(1) > likes4(2))
+    println(likes4(1) > likes4(0))
   }
 
   test("generalized linear regression: default params") {

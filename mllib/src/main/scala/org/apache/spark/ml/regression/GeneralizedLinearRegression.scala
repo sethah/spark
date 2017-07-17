@@ -21,6 +21,7 @@ import java.util.Locale
 
 import breeze.stats.{distributions => dist}
 import org.apache.hadoop.fs.Path
+import org.apache.commons.math3.special.Gamma.logGamma
 
 import org.apache.spark.SparkException
 import org.apache.spark.annotation.{Experimental, Since}
@@ -553,6 +554,9 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
     /** Deviance of (y, mu) pair. */
     def deviance(y: Double, mu: Double, weight: Double): Double
 
+    /** Log-likelihood of (y, mu) pair. */
+    def loglikelihood(y: Double, mu: Double, weight: Double): Double
+
     /**
      * Akaike Information Criterion (AIC) value of the family for a given dataset.
      *
@@ -639,6 +643,11 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
         (y * yp(y1, mu, 1.0 - variancePower) - yp(y, mu, 2.0 - variancePower))
     }
 
+    override def loglikelihood(y: Double, mu: Double, weight: Double): Double = {
+      throw new NotImplementedError(s"Computing the log-likelihood for the Tweedie distribution " +
+        s"is a computationally infeasible problem.")
+    }
+
     override def aic(
         predictions: RDD[(Double, Double, Double)],
         deviance: Double,
@@ -686,6 +695,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
       weight * (y - mu) * (y - mu)
     }
 
+    override def loglikelihood(y: Double, mu: Double, weight: Double): Double = {
+      weight * -0.5 * ((y - mu) * (y - mu) + math.log(2 * math.Pi))
+    }
+
     override def aic(
         predictions: RDD[(Double, Double, Double)],
         deviance: Double,
@@ -729,6 +742,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
 
     override def deviance(y: Double, mu: Double, weight: Double): Double = {
       2.0 * weight * (ylogy(y, mu) + ylogy(1.0 - y, 1.0 - mu))
+    }
+
+    override def loglikelihood(y: Double, mu: Double, weight: Double): Double = {
+      weight * (y * math.log(mu) + (1 - y) * math.log(1 - mu))
     }
 
     override def aic(
@@ -784,6 +801,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
       2.0 * weight * (y * math.log(y / mu) - (y - mu))
     }
 
+    override def loglikelihood(y: Double, mu: Double, weight: Double): Double = {
+      weight * (y * math.log(mu) - mu - logGamma(y + 1.0))
+    }
+
     override def aic(
         predictions: RDD[(Double, Double, Double)],
         deviance: Double,
@@ -815,6 +836,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
 
     override def deviance(y: Double, mu: Double, weight: Double): Double = {
       -2.0 * weight * (math.log(y / mu) - (y - mu)/mu)
+    }
+
+    override def loglikelihood(y: Double, mu: Double, weight: Double): Double = {
+      -weight * (y / mu  - math.log(y / mu) + math.log(y) + logGamma(1))
     }
 
     override def aic(
