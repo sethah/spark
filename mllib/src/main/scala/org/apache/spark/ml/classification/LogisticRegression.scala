@@ -1688,6 +1688,9 @@ private class LogisticAggregator(
     }
 
     val multiplier = weight * (1.0 / (1.0 + math.exp(margin)) - label)
+//    println("asfds")
+//    println(label)
+//    println(1.0 / (1.0 + math.exp(margin)))
 
     features.foreachActive { (index, value) =>
       if (localFeaturesStd(index) != 0.0 && value != 0.0) {
@@ -1891,6 +1894,9 @@ private class LogisticCostFun(
           multinomial)
       )(seqOp, combOp, aggregationDepth)
     }
+    println(logisticAggregator.gradient)
+    println(logisticAggregator.loss)
+    println(coefficients)
 
     val totalGradientMatrix = logisticAggregator.gradient
     val coefMatrix = new DenseMatrix(numCoefficientSets, numFeaturesPlusIntercept, coeffs.toArray)

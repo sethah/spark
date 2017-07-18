@@ -61,6 +61,9 @@ private[ml] class RDDLossFunction[
     val combOp = (agg1: Agg, agg2: Agg) => agg1.merge(agg2)
     val newAgg = instances.treeAggregate(thisAgg)(seqOp, combOp, aggregationDepth)
     val gradient = newAgg.gradient
+    println(gradient)
+    println(newAgg.loss)
+    println(coefficients)
     val regLoss = regularization.map { regFun =>
       val (regLoss, regGradient) = regFun.calculate(coefficients.data)
       BLAS.axpy(1.0, Vectors.dense(regGradient), gradient)
