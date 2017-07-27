@@ -44,7 +44,8 @@ private[ml] class GLRAggregator(
       }
       i += 1
     }
-    (Vectors.dense(coefficientsArray), coefValues(coefValues.length - 1))
+    val offset = if (fitIntercept) coefValues(coefValues.length - 1) else 0.0
+    (Vectors.dense(coefficientsArray), offset)
   }
   // do not use tuple assignment above because it will circumvent the @transient tag
   @transient private lazy val effectiveCoefficientsVector = effectiveCoefAndOffset._1
@@ -69,9 +70,6 @@ private[ml] class GLRAggregator(
       val mu = familyAndLink.fitted(eta)
       val error = mu - label
       val mult = error / (familyAndLink.link.deriv(mu) * familyAndLink.family.variance(mu))
-//      println("asfds")
-//      println(label)
-//      println(mult)
 
       if (error != 0) {
         val localGradientSumArray = gradientSumArray
@@ -85,6 +83,9 @@ private[ml] class GLRAggregator(
         if (fitIntercept) localGradientSumArray(numFeatures) += weight * mult
         val ll = familyAndLink.family.loglikelihood(label, mu, weight)
 //        println(s"ll $ll")
+//        println("asfds")
+//        println(s"$label, $mu, $ll")
+//        println(mult)
         lossSum -= ll
       }
       weightSum += weight

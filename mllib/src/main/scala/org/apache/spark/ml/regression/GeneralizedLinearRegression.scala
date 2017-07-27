@@ -906,7 +906,7 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
     }
 
     override def loglikelihood(y: Double, mu: Double, weight: Double): Double = {
-      weight * (y * math.log(mu) - mu )//- logGamma(y + 1.0))
+      weight * (y * math.log(mu) - mu - logGamma(y + 1.0))
     }
 
     override def aic(
@@ -917,6 +917,17 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
       -2.0 * predictions.map { case (y: Double, mu: Double, weight: Double) =>
         weight * dist.Poisson(mu).logProbabilityOf(y.toInt)
       }.sum()
+    }
+
+    override def project(mu: Double): Double = {
+      val eps = 1e-4
+      if (mu < eps) {
+        eps
+      } else if (mu.isInfinity) {
+        Double.MaxValue
+      } else {
+        mu
+      }
     }
   }
 
@@ -942,6 +953,10 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
       -2.0 * weight * (math.log(y / mu) - (y - mu)/mu)
     }
 
+    override def loglikelihood(y: Double, mu: Double, weight: Double): Double = {
+      -weight * (y / mu  - math.log(y / mu) + math.log(y))// + logGamma(1))
+    }
+
     override def aic(
         predictions: RDD[(Double, Double, Double)],
         deviance: Double,
@@ -951,6 +966,17 @@ object GeneralizedLinearRegression extends DefaultParamsReadable[GeneralizedLine
       -2.0 * predictions.map { case (y: Double, mu: Double, weight: Double) =>
         weight * dist.Gamma(1.0 / disp, mu * disp).logPdf(y)
       }.sum() + 2.0
+    }
+
+    override def project(mu: Double): Double = {
+      val eps = 1e-4
+      if (mu < eps) {
+        eps
+      } else if (mu.isInfinity) {
+        Double.MaxValue
+      } else {
+        mu
+      }
     }
   }
 
