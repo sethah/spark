@@ -36,6 +36,17 @@ private[ml] trait DifferentiableRegularization[T] extends DiffFunction[T] with S
 
 }
 
+trait EnumeratedRegularization[T, Reg <: EnumeratedRegularization[T, Reg]]
+  extends (T => Double) with Serializable {
+
+  def regFunc: Int => Double
+
+  def apply(x: T): Double
+
+  def compose(other: Reg): Reg
+
+}
+
 private[ml] class VectorL1Regularization(override val regFunc: Int => Double)
   extends EnumeratedRegularization[Vector, VectorL1Regularization] {
 
@@ -48,17 +59,6 @@ private[ml] class VectorL1Regularization(override val regFunc: Int => Double)
   override def compose(other: VectorL1Regularization): VectorL1Regularization = {
     new VectorL1Regularization((index: Int) => regFunc(index) + other.regFunc(index))
   }
-}
-
-trait EnumeratedRegularization[T, Reg <: EnumeratedRegularization[T, Reg]]
-  extends (T => Double) with Serializable {
-
-  def regFunc: Int => Double
-
-  def apply(x: T): Double
-
-  def compose(other: Reg): Reg
-
 }
 
 class VectorL2Regularization(override val regFunc: Int => Double)
