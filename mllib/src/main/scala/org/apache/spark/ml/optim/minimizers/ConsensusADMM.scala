@@ -17,7 +17,6 @@
 package org.apache.spark.ml.optim.minimizers
 
 import org.apache.spark.annotation.Since
-import org.apache.spark.ml.optim.{ADMMLossFunction, DiffFun, EMSOLossFunction, SeparableDiffFun}
 import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, DifferentiableLossAggregator}
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
 import org.apache.spark.ml.param.{DoubleParam, ParamMap, ParamValidators, Params}
@@ -103,7 +102,7 @@ class ConsensusADMM(partitionMinimizer: IterativeMinimizer[Vector,
           val problems = losses.toIterable
         val partitionLoss = new SeparableDiffFun(problems, lossFunction.getAggregator,
           List.empty[EnumeratedRegularization[Vector, _]])
-        val admmLoss = new ADMMLossFunction(partitionLoss, oldParams, u, state.rho)
+        val admmLoss = new ConsensusADMMLoss(partitionLoss, oldParams, u, state.rho)
         val optIterations = partitionMinimizer.iterations(admmLoss, oldParams)
         var lastIter: IterativeMinimizerState[Vector] = null
         val arrayBuilder = mutable.ArrayBuilder.make[Double]

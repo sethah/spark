@@ -28,7 +28,6 @@ import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg._
-import org.apache.spark.ml.optim.{DiffFun, SeparableDiffFun}
 import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, LogisticAggregator}
 import org.apache.spark.ml.optim.loss._
 import org.apache.spark.ml.optim.minimizers.{HasMinimizer, IterativeMinimizer, IterativeMinimizerState, LBFGS}

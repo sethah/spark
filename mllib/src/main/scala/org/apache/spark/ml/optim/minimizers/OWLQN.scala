@@ -20,8 +20,7 @@ import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{CachedDiffFunction, DiffFunction, LineSearch, OWLQN => BreezeOWLQN}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vector, Vectors}
-import org.apache.spark.ml.optim.loss.VectorL1Regularization
-import org.apache.spark.ml.optim.{DiffFun, HasRegularization}
+import org.apache.spark.ml.optim.loss.{DiffFun, HasRegularization, VectorL1Regularization}
 import org.apache.spark.ml.param.{ParamMap, Params}
 import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
 import org.apache.spark.ml.util.Identifiable

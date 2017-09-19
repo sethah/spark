@@ -16,7 +16,7 @@
  */
 package org.apache.spark.ml.optim.linesearch
 
-import org.apache.spark.ml.optim.{DiffFun}
+import org.apache.spark.ml.optim.loss.DiffFun
 
 class StrongWolfe(
                    c1: Double = 1e-4,

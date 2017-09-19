@@ -14,18 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.ml.optim
+package org.apache.spark.ml.optim.loss
 
-import breeze.optimize.DiffFunction
-import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
-import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, DifferentiableLossAggregator}
-import org.apache.spark.ml.optim.loss.{DifferentiableRegularization, EnumeratedRegularization}
-import org.apache.spark.rdd.RDD
 import org.apache.spark.ml.optim.Implicits._
-
-import scala.reflect.ClassTag
+import org.apache.spark.ml.optim.aggregator.DiffFunAggregator
 
 trait DiffFun[T] extends (T => Double) with Serializable {
 
@@ -84,36 +77,6 @@ trait DiffFun[T] extends (T => Double) with Serializable {
 
 }
 
-object Implicits {
-
-  trait Aggregable[M[_]] extends Serializable {
-
-    def aggregate[A: ClassTag, B: ClassTag](ma: M[A], b: B)(add: (B, A) => B,
-                                                            combine: (B, B) => B): B
-
-  }
-
-  implicit object RDDCanAggregate extends Aggregable[RDD] {
-    override def aggregate[A: ClassTag, B: ClassTag](
-        ma: RDD[A], b: B)(add: (B, A) => B, combine: (B, B) => B): B = {
-      ma.treeAggregate(b)(add, combine)
-    }
-  }
-
-  implicit object IterableCanAggregate extends Aggregable[Iterable] {
-    override def aggregate[A: ClassTag, B: ClassTag](fa: Iterable[A], b: B)(
-        add: (B, A) => B, combine: (B, B) => B): B = {
-      fa.foldLeft(b)(add)
-    }
-  }
-
-  implicit object IteratorCanAggregate extends Aggregable[Iterator] {
-    override def aggregate[A: ClassTag, B: ClassTag](fa: Iterator[A], b: B)(
-        add: (B, A) => B, combine: (B, B) => B): B = {
-      fa.foldLeft(b)(add)
-    }
-  }
-}
 
 trait HasRegularization[T] extends Serializable {
 
@@ -171,48 +134,4 @@ class SeparableDiffFun[M[_]: Aggregable](
   }
 }
 
-/**
- * Loss function for "Efficient Minibatch Stochastic Optimization" by Li, et al. Takes an
- * existing loss function and adds a regularization term that penalizes deviations from the
- * previous parameters.
- *
- * @param subCost Original cost function.
- * @param prev Previous parameters.
- * @param gamma Regularization strength.
- */
-class EMSOLossFunction[F <: DiffFun[Vector]](subCost: F, prev: Vector, gamma: Double)
-  extends DiffFun[Vector] with Serializable {
-
-  override def doCompute(x: Vector): (Double, Vector) = {
-    val (l, g) = subCost.compute(x)
-    val grad = x.copy
-    BLAS.axpy(-1.0, prev, grad)
-    BLAS.scal(gamma, grad)
-    BLAS.axpy(1.0, g, grad)
-    val loss = l + 0.5 * gamma * Vectors.sqdist(x, prev)
-    (loss, grad)
-  }
-
-  override def doComputeInPlace(x: Vector, grad: Vector): Double = {
-    throw new NotImplementedError()
-  }
-}
-
-class ADMMLossFunction[F <: DiffFun[Vector]](subCost: F, z: Vector, u: Vector, rho: Double)
-  extends DiffFun[Vector] with Serializable {
-
-  override def doCompute(x: Vector): (Double, Vector) = {
-    val (l, g) = subCost.compute(x)
-    val grad = x.copy
-    BLAS.axpy(-1.0, z, grad)
-    BLAS.axpy(1.0, u, grad)
-    val loss = l + 0.5 * rho * BLAS.dot(grad, grad)
-    BLAS.axpy(rho, grad, g)
-    (loss, g)
-  }
-
-  override def doComputeInPlace(x: Vector, grad: Vector): Double = {
-    throw new NotImplementedError()
-  }
-}
 

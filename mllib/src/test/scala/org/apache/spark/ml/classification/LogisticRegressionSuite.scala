@@ -125,6 +125,7 @@ class LogisticRegressionSuite
    * so we can validate the training accuracy compared with R's glmnet package.
    */
   ignore("export test data into CSV format") {
+    binaryDataset.write.parquet("target/tmp/LogisticRegressionSuite/binary")
     binaryDataset.rdd.map { case Row(label: Double, features: Vector, weight: Double) =>
       label + "," + weight + "," + features.toArray.mkString(",")
     }.repartition(1).saveAsTextFile("target/tmp/LogisticRegressionSuite/binaryDataset")
@@ -239,7 +240,7 @@ class LogisticRegressionSuite
     val family = "binomial"
     val regParam = 0.12
     val partOpt1 = new LBFGS()
-    val opt1 = new ConsensusADMM(new LBFGS().setMaxIter(50)).setRho(0.01)
+    val opt1 = new ConsensusADMM(new LBFGS().setMaxIter(50)).setRho(0.01).setMaxIter(200)
     .setPrimalTol(1e-8)
     .setDualTol(1e-8)
     val opt2 = new LBFGS()

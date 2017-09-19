@@ -14,27 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.ml.optim.linesearch
+package org.apache.spark.ml.optim.loss
 
-import org.apache.spark.ml.optim.loss.DiffFun
+import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
 
+class ConsensusADMMLoss[F <: DiffFun[Vector]](subCost: F, z: Vector, u: Vector, rho: Double)
+  extends DiffFun[Vector] with Serializable {
 
-trait LineSearch {
+  override def doCompute(x: Vector): (Double, Vector) = {
+    val (l, g) = subCost.compute(x)
+    val grad = x.copy
+    BLAS.axpy(-1.0, z, grad)
+    BLAS.axpy(1.0, u, grad)
+    val loss = l + 0.5 * rho * BLAS.dot(grad, grad)
+    BLAS.axpy(rho, grad, g)
+    (loss, g)
+  }
 
-  def optimize(f: DiffFun[Double], initialGuess: Double): Double
-
-}
-
-class BacktrackingLineSearch(dirNorm: Double) extends LineSearch {
-
-  def optimize(f: DiffFun[Double], initialGuess: Double): Double = {
-    // somewhat of a magic number
-    val beta = 0.8
-    val phiZero = f(0.0)
-    var alpha = 1.0
-    while (f(alpha) > (phiZero - dirNorm * alpha / 10.0) && alpha > 1e-10) {
-      alpha = alpha * beta
-    }
-    alpha
+  override def doComputeInPlace(x: Vector, grad: Vector): Double = {
+    throw new NotImplementedError()
   }
 }

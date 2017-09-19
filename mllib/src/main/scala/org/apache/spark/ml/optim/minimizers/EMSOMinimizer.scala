@@ -17,12 +17,12 @@
 package org.apache.spark.ml.optim.minimizers
 
 import org.apache.spark.annotation.Since
-import org.apache.spark.ml.optim.{DiffFun, EMSOLossFunction, SeparableDiffFun}
 import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, DifferentiableLossAggregator}
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
 import org.apache.spark.ml.param.{DoubleParam, ParamMap, ParamValidators, Params}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.ml.optim.Implicits._
+import org.apache.spark.ml.optim.loss.{DiffFun, EMSOLoss, SeparableDiffFun}
 import org.apache.spark.ml.util.Identifiable
 
 import scala.collection.mutable
@@ -62,15 +62,13 @@ class EMSOMinimizer(partitionMinimizer: IterativeMinimizer[Vector,
     val numFeatures = initialParameters.size
     Iterator.iterate(initialState(lossFunction, initialParameters)) { state =>
       val oldParams = state.params
-      println(s"Old params: ${state.params}, old loss: ${state.loss}")
       val solutions = lossFunction.losses.mapPartitionsWithIndex { (i, problems) =>
         val probIter = problems.toIterable
         val numSamples = probIter.size
         val partitionLoss = new SeparableDiffFun(probIter, lossFunction.getAggregator,
           lossFunction.regularizers)
-        val emsoLoss = new EMSOLossFunction(partitionLoss, oldParams, $(gamma))
+        val emsoLoss = new EMSOLoss(partitionLoss, oldParams, $(gamma))
         val (lastIter, lossHistory) = partitionMinimizer.takeLast(lossFunction, initialParameters)
-        println(s"Partition $i: ${lastIter.params} - ${lossHistory.length}")
         BLAS.scal(numSamples, lastIter.params)
         Iterator.single((lastIter.loss * numSamples, lastIter.params, numSamples.toLong))
       }

@@ -20,8 +20,6 @@ package org.apache.spark.ml.optim
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.{Instance, OffsetInstance}
 import org.apache.spark.ml.linalg._
-import org.apache.spark.ml.optim.minimizers.{IterativeMinimizer, IterativeMinimizerState}
-import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.rdd.RDD
 
 /**
@@ -114,84 +112,3 @@ private[ml] class IterativelyReweightedLeastSquares(
       model.coefficients, model.intercept, model.diagInvAtWA, iter)
   }
 }
-
-//class IRLSLossFunction(
-//                      instances: RDD[Instance],
-//                      val reweightFunc: (Instance, WeightedLeastSquaresModel) => (Double, Double),
-//                      val regParam: Double,
-//  val fitIntercept: Boolean) extends (WeightedLeastSquaresModel => Double) {
-//
-//  override def apply(params: WeightedLeastSquaresModel): Double = {
-//    0.0
-//  }
-//
-//  def compute(params: WeightedLeastSquaresModel): (WeightedLeastSquaresModel, Double) = {
-//    // Update offsets and weights using reweightFunc
-//    val newInstances = instances.map { instance =>
-//      val (newOffset, newWeight) = reweightFunc(instance, params)
-//      Instance(newOffset, newWeight, instance.features)
-//    }
-//
-//    // Estimate new model
-//    val model = new WeightedLeastSquares(fitIntercept, regParam, elasticNetParam = 0.0,
-//      standardizeFeatures = false, standardizeLabel = false).fit(newInstances)
-//
-//    // Check convergence
-////    val oldCoefficients = oldModel.coefficients
-////    val coefficients = model.coefficients
-//    (model, 0.0)
-//
-//  }
-//
-//}
-//
-//class IRLS(
-//            val instances: RDD[Instance],
-//    val reweightFunc: (Instance, WeightedLeastSquaresModel) => (Double, Double),
-//    val fitIntercept: Boolean,
-//    val regParam: Double,
-//    val maxIter: Int,
-//    val tol: Double) extends IterativeMinimizer[WeightedLeastSquaresModel,
-//  IRLSLossFunction, IRLSState] with Logging with Serializable {
-//
-//  override val uid = "irls"
-//
-//  private type State = IRLSState
-//
-//  def initialState(lossFunction: IRLSLossFunction,
-//                  initialParameters: WeightedLeastSquaresModel): IRLSState = {
-//    val loss = lossFunction(initialParameters)
-//    IRLSState(initialParameters, 0, loss) // lossFunction(initialModel.coefficients))
-//  }
-//
-//  override def iterations(lossFunction: IRLSLossFunction,
-//                          initialParameters: WeightedLeastSquaresModel): Iterator[State] = {
-//
-//    Iterator.iterate(initialState(lossFunction, initialParameters)) { state =>
-//      // Update offsets and weights using reweightFunc
-//      val (model, loss) = lossFunction.compute(state.params)
-////      val newInstances = instances.map { instance =>
-////        val (newOffset, newWeight) = reweightFunc(instance, state.params)
-////        Instance(newOffset, newWeight, instance.features)
-////      }
-////
-////      // Estimate new model
-////      val model = new WeightedLeastSquares(fitIntercept, regParam, elasticNetParam = 0.0,
-////        standardizeFeatures = false, standardizeLabel = false).fit(newInstances)
-//
-//      IRLSState(model, state.iter + 1, 0.0)
-//    }.takeWhile { state =>
-//      state.iter < 10
-//    }
-//  }
-//
-//  override def copy(extra: ParamMap): IRLS = defaultCopy(extra)
-//
-//}
-//
-//case class IRLSState(params: WeightedLeastSquaresModel, iter: Int, loss: Double)
-//  extends IterativeMinimizerState[WeightedLeastSquaresModel] {
-//
-////  override val params: DenseVector =
-////    Vectors.dense(model.coefficients.toArray :+ model.intercept).toDense
-//}

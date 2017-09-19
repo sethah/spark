@@ -18,7 +18,6 @@ package org.apache.spark.ml.optim.loss
 
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.feature.Instance
-import org.apache.spark.ml.optim.DiffFun
 import org.apache.spark.ml.linalg.{BLAS, Vector}
 import org.apache.spark.ml.regression.GeneralizedLinearRegression.FamilyAndLink
 import org.apache.spark.mllib.util.MLUtils

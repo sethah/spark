@@ -18,10 +18,6 @@ package org.apache.spark.ml.optim.loss
 
 import breeze.optimize.DiffFunction
 import org.apache.spark.ml.linalg._
-import org.apache.spark.ml.optim.DiffFun
-import org.dmg.pmml.Coefficient
-
-import org.apache.spark.ml.linalg._
 
 /**
  * A Breeze diff function which represents a cost function for differentiable regularization

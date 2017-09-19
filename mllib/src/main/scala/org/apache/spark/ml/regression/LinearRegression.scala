@@ -32,7 +32,7 @@ import org.apache.spark.ml.linalg.BLAS._
 import org.apache.spark.ml.optim.WeightedLeastSquares
 import org.apache.spark.ml.optim.aggregator.LeastSquaresAggregator
 import org.apache.spark.ml.optim.loss.{L2Regularization, RDDLossFunction}
-import org.apache.spark.ml.optim.{DiffFun, SeparableDiffFun, WeightedLeastSquares}
+import org.apache.spark.ml.optim.WeightedLeastSquares
 import org.apache.spark.ml.PredictorParams
 import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, LeastSquaresAggregator}
 import org.apache.spark.ml.optim.loss._

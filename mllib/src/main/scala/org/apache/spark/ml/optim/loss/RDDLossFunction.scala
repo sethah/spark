@@ -23,7 +23,6 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
 import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vector, Vectors}
-import org.apache.spark.ml.optim.{DiffFun}
 import org.apache.spark.ml.optim.aggregator.DifferentiableLossAggregator
 import org.apache.spark.rdd.RDD
 

@@ -17,7 +17,7 @@
 package org.apache.spark.ml.optim.aggregator
 
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
-import org.apache.spark.ml.optim.DiffFun
+import org.apache.spark.ml.optim.loss.DiffFun
 
 /**
  * A parent trait for aggregators used in fitting MLlib models. This parent trait implements

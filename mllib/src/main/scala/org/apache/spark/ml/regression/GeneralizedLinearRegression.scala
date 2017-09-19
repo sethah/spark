@@ -36,7 +36,7 @@ import org.apache.spark.ml.feature.Instance
 import org.apache.spark.ml.linalg.{BLAS, Vector, Vectors}
 import org.apache.spark.ml.optim._
 import org.apache.spark.ml.optim.aggregator.{DiffFunAggregator, GLRAggregator}
-import org.apache.spark.ml.optim.loss.{L2Regularization, StdGLMLoss, VectorL2Regularization}
+import org.apache.spark.ml.optim.loss._
 import org.apache.spark.ml.optim.minimizers.{IterativeMinimizer, IterativeMinimizerState, LBFGS}
 //import org.apache.spark.ml.optim.loss.{L2Regularization, RDDLossFunction, SparkRDDLossFunction}
 //import org.apache.spark.ml.optim.minimizers.LBFGS.LBFGSState

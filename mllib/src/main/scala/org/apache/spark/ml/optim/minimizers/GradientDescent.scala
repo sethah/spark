@@ -20,7 +20,7 @@ import breeze.linalg.{DenseVector => BDV}
 import breeze.optimize.{AdaDeltaGradientDescent, CachedDiffFunction, DiffFunction, StochasticGradientDescent}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.linalg.{BLAS, DenseVector, Vector, Vectors}
-import org.apache.spark.ml.optim.DiffFun
+import org.apache.spark.ml.optim.loss.DiffFun
 import org.apache.spark.ml.param.{ParamMap, Params}
 import org.apache.spark.ml.param.shared.{HasMaxIter, HasTol}
 import org.apache.spark.ml.util.Identifiable
